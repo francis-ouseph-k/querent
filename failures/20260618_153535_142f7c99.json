@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:35:35.728129+00:00",
+  "nl_query": "What is the average number of active grants per faculty user?",
+  "failed_sql": "SELECT AVG(T2.is_available) AS average_active_grants\nFROM user_auxiliary_role AS T1\nJOIN app_user AS T2 ON T1.user_id = T2.id\nWHERE T1.is_available = TRUE",
+  "error": "Validation failed (schema): Hallucinated column(s): app_user.is_available, user_auxiliary_role.is_available. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

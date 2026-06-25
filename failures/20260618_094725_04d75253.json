@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T09:47:25.013324+00:00",
+  "nl_query": "Which users have never been granted an auxiliary role?",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

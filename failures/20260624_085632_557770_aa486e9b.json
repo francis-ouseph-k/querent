@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T08:56:32.557770+00:00",
+  "nl_query": "List all faculty members who prepared the answer key for the Algorithms exam and whether they are also in the evaluator pool for that course.",
+  "failed_sql": "SELECT DISTINCT fc.name AS faculty_name, ep.is_available AS is_in_evaluator_pool\nFROM   faculty_cache fc\nJOIN   answer_key_preparer akp ON akp.faculty_cache_id = fc.id\nJOIN   answer_key ak ON ak.id = akp.answer_key_id AND ak.status = 'APPROVED'\nJOIN   board b ON b.qp_id = ak.qp_id AND b.exam_id = ak.exam_id\nJOIN   academic_unit au ON au.id = b.course_id AND au.unit_type = 'COURSE'\nJOIN   evaluator_pool ep ON ep.faculty_cache_id = fc.id\nWHERE  au.name = 'Algorithms'\nORDER  BY fc.name;",
+  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'board' and 'answer_key_preparer'. Please review the schema for the correct join path.",
+  "retries": 4,
+  "corrected_sql": ""
+}

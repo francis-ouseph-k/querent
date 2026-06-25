@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T11:31:58.476047+00:00",
+  "nl_query": "For each script with an active legal hold, show the hold duration in days, whether the hold overlaps with the board evaluation deadline, whether the script has already been published, and the case reference number.",
+  "failed_sql": "SELECT sh.id, sh.script_id, a.urn, sh.case_id, sh.hold_reason, sh.hold_start_date, (CURRENT_DATE - sh.hold_start_date) AS days_held, au.display_name AS placed_by, CASE WHEN de.released_at IS NULL THEN TRUE ELSE FALSE END AS is_released, CASE WHEN r.published_at IS NOT NULL THEN TRUE ELSE FALSE END AS is_published FROM script_hold sh JOIN answer_script a ON a.id = sh.script_id JOIN app_user au ON au.id = sh.applied_by LEFT JOIN deadline_extension_request de ON de.board_id = sh.board_id LEFT JOIN result r ON r.script_id = a.id WHERE sh.is_active = TRUE AND sh.released_at IS NULL ORDER BY sh.hold_start_date ASC;",
+  "error": "Validation failed (schema): Column 'sh.board_id' does not exist. The Postgres planner suggests 'de.board_id' — use that, or verify the column belongs to the qualifying table in your FROM/JOIN clauses.",
+  "retries": 4,
+  "corrected_sql": ""
+}

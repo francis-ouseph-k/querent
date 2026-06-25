@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T14:28:10.733038+00:00",
+  "nl_query": "Show all scripts where the scan was performed by a scanner device registered at a campus different from the campus where the exam was scheduled, indicating a potential logistics or data entry error.",
+  "failed_sql": "SELECT s.id, s.urn, s.exam_id, s.course_id, s.student_id, s.s3_key, s.dek_id, s.scan_metadata->>'quality_score' AS quality_score, sd.device_name, au.code AS campus_code, au.name AS campus_name, esc.exam_date, esc.campus_id\nFROM   answer_script s\nJOIN   script_assignment sa ON sa.script_id = s.id AND sa.is_active = TRUE\nJOIN   faculty_cache fc ON fc.employee_id = sa.evaluator_id\nJOIN   exam_schedule_cache es ON es.exam_id = s.exam_id\nJOIN   academic_unit au ON au.id = es.campus_id\nJOIN   academic_unit_closure esc ON esc.descendant_id = au.id\nJOIN   scanner_device sd ON sd.id = s.dek_id\nWHERE  sd.campus_id <> es.campus_id\n  AND  s.scan_status = 'SCANNED'\n  AND  s.evaluation_status = 'NOT_ASSIGNED'\nORDER  BY s.exam_date DESC",
+  "error": "Validation failed (schema): Ambiguous column reference: 'campus_id'. It exists in multiple tables (scanner_device, exam_schedule_cache). You must qualify it with a table alias.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T08:22:29.106875+00:00",
+  "nl_query": "How many evaluation attempts have been superseded by a new cycle?",
+  "failed_sql": "SELECT COUNT(ea.id) AS num_superseded_attempts\nFROM   evaluation_attempt ea\nJOIN   answer_script sa ON sa.id = ea.script_id\nWHERE  sa.lifecycle_status = 'ATTEMPTED'\n  AND  sa.is_active = TRUE\n  AND  sa.superseded_by_id IS NOT NULL;",
+  "error": "Validation failed (schema): Hallucinated column(s): evaluation_attempt.lifecycle_status, evaluation_attempt.superseded_by_id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

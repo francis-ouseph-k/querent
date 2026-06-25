@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T14:44:11.822419+00:00",
+  "nl_query": "What is the average number of sections per question paper?",
+  "failed_sql": "SELECT AVG(COUNT(*)) AS avg_sections_per_qp FROM question_paper WHERE qp_id IS NOT NULL GROUP BY qp_id",
+  "error": "Validation failed (schema): Column validation failed: question_paper does NOT have qp_id. Its PK is id. The column named qp_id exists on board and question_section.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

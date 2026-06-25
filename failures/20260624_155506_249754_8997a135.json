@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T15:55:06.249754+00:00",
+  "nl_query": "Which evaluators are currently in the pool for active boards but have no active script assignments, and show their faculty name, department, and the boards they are eligible for.",
+  "failed_sql": "SELECT fc.name AS evaluator_name, au.display_name AS user_display_name, au.department_id, au.department_name, b.id AS board_id FROM evaluator_pool ep JOIN board b ON b.id = ep.board_id JOIN faculty_cache fc ON fc.id = ep.faculty_cache_id JOIN app_user au ON au.faculty_cache_id = fc.id WHERE ep.is_available = TRUE AND b.status NOT IN ('CLOSED', 'SUBMITTED') AND NOT EXISTS (SELECT 1 FROM script_assignment sa WHERE sa.faculty_cache_id = ep.faculty_cache_id AND sa.is_active = TRUE) ORDER BY fc.name, b.id",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column au.department_name does not exist\nLINE 1: ...splay_name, au.faculty_cache_id AS department_id, au.departm...\n                                                             ^\n",
+  "retries": 4,
+  "corrected_sql": ""
+}

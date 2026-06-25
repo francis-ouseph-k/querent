@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:07:06.040432+00:00",
+  "nl_query": "For each question paper, show the paper title, the number of sections, the number of leaf questions, the number of attempt rules configured, the number of approved answer keys, and the number of boards using it, ordered by boards using it descending",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

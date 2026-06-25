@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T07:40:37.693863+00:00",
+  "nl_query": "How many relationships have expired?",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

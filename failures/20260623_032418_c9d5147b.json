@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T03:24:18.656300+00:00",
+  "nl_query": "What is the average number of scripts assigned per evaluator for board 42?",
+  "failed_sql": "SELECT fc.name AS evaluator_name, COUNT(sa.id) AS script_count\nFROM   script_assignment sa\nJOIN   answer_script a ON a.id = sa.script_id\nJOIN   faculty_cache fc ON fc.id = sa.faculty_cache_id\nWHERE  sa.board_id = 42\n  AND  a.lifecycle_status = 'ATTEMPTED'\nGROUP  BY fc.name\nORDER  BY script_count DESC",
+  "error": "Validation failed (schema): Column validation failed: answer_script does NOT have board_id. Join to board via board.course_id = answer_script.course_id AND board.exam_id = answer_script.exam_id.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

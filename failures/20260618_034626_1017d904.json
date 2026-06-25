@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T03:46:26.737771+00:00",
+  "nl_query": "What percentage of the academic calendar days are holidays in January 2026?",
+  "failed_sql": "SELECT COUNT(*) * 100.0 / (SELECT COUNT(*) FROM academic_calendar WHERE academic_year = '2026-01') FROM academic_calendar WHERE academic_year = '2026-01' AND (is_holiday = TRUE OR is_weekend = TRUE)",
+  "error": "Execution error: division by zero\n",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

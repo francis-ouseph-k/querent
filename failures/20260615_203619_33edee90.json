@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T20:36:19.274751+00:00",
+  "nl_query": "Show all question papers with total marks exceeding 100.",
+  "failed_sql": "SELECT qp.id, qp.title, SUM(em.marks_awarded) AS total_marks\nFROM   question_paper qp\nJOIN   evaluation_marks em ON em.question_id = qp.id\nWHERE  qp.is_locked = TRUE\n  AND  qp.status = 'APPROVED'\nGROUP  BY qp.id, qp.title\nHAVING SUM(em.marks_awarded) > 100\nORDER  BY total_marks DESC",
+  "error": "Validation failed (schema): Hallucinated column(s): question_paper.status. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

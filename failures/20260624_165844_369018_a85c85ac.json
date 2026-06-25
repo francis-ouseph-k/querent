@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T16:58:44.369018+00:00",
+  "nl_query": "Which parent questions have exactly three sub-questions?",
+  "failed_sql": "SELECT DISTINCT q.id, q.code, q.path, q.max_marks FROM question q JOIN question_section qs ON q.id = qs.parent_question_id GROUP BY q.id, q.code, q.path, q.max_marks HAVING COUNT(qs.id) = 3",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column qs.parent_question_id does not exist\nLINE 1: ...ROM question q JOIN question_section qs ON q.id = qs.parent_...\n                                                             ^\nHINT:  Perhaps you meant to reference the column \"q.parent_question_id\".\n",
+  "retries": 4,
+  "corrected_sql": ""
+}

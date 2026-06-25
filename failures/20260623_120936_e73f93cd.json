@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T12:09:36.413764+00:00",
+  "nl_query": "For each published result, show the script URN, student name, final marks, computation rule, the list of source attempt types used, the evaluator names for those attempts, and whether the result has been reconciled with ERP.",
+  "failed_sql": "SELECT r.id, a.urn, sc.name AS student_name, r.final_marks, r.computation_rule, ARRAY(SELECT ea.attempt_type FROM evaluation_attempt ea WHERE ea.resulting_attempt_id = r.id), (SELECT au.display_name FROM app_user au WHERE au.id = ea.evaluator_user_id), r.erp_push_status FROM result r JOIN answer_script a ON a.id = r.script_id JOIN student_cache sc ON sc.id = a.student_id JOIN evaluation_attempt ea ON ea.resulting_attempt_id = r.id JOIN app_user au ON au.id = ea.evaluator_user_id",
+  "error": "Validation failed (schema): Column validation failed: evaluation_attempt does NOT have resulting_attempt_id. resulting_attempt_id is on revaluation_request.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

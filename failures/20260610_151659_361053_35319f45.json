@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-10T15:16:59.361053",
+  "nl_query": "how many courses are ready for marks to be pushed to external system?",
+  "failed_sql": "SELECT COUNT(DISTINCT course_id) FROM result WHERE erp_push_status = 'PUSHED'",
+  "error": "Execution error: column \"course_id\" does not exist\nLINE 1: SELECT COUNT(DISTINCT course_id) FROM result WHERE erp_push_...\n                              ^\n",
+  "retries": 0,
+  "corrected_sql": ""
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T09:46:34.950199+00:00",
+  "nl_query": "Display the active honorarium rate card name and its board coordinator weight.",
+  "failed_sql": "SELECT hrc.name, bc.honorarium_weight FROM honorarium_rate_card hrc JOIN board_coordinator bc ON hrc.id = bc.board_coordinator_id WHERE hrc.is_active = TRUE",
+  "error": "Validation failed (schema): Hallucinated column(s): board_coordinator.board_coordinator_id. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

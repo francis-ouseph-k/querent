@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T14:15:23.146919+00:00",
+  "nl_query": "How many students are marked absent per exam?",
+  "failed_sql": "SELECT COUNT(DISTINCT sc.student_id) AS absent_student_count\nFROM   exam_student_mapping esm\nJOIN   student_cache sc\n       ON sc.id = esm.student_id\nJOIN   exam_schedule_cache esc\n       ON esc.id = esm.exam_id\nWHERE  esm.lifecycle_status = 'ABSENT';",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: character varying = bigint\nLINE 4:        ON sc.student_erp_id = esm.student_id\n                                    ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

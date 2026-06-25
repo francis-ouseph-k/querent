@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T23:51:31.394946+00:00",
+  "nl_query": "Count honorarium summaries by role in board.",
+  "failed_sql": "SELECT role_in_board, COUNT(*) AS role_count FROM honorarium_summary WHERE is_active = TRUE GROUP BY role_in_board ORDER BY role_count DESC LIMIT 10;",
+  "error": "Validation failed (schema): Hallucinated column(s): honorarium_summary.is_active, honorarium_summary.role_count. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T09:27:55.662802+00:00",
+  "nl_query": "Count marks entries per question for all PRIMARY attempts.",
+  "failed_sql": "SELECT question_id, COUNT(*) AS num_marks FROM evaluation_marks WHERE attempt_type = 'PRIMARY' AND is_final = TRUE GROUP BY question_id",
+  "error": "Validation failed (schema): Type mismatch: evaluation_marks.attempt_id (BIGINT): string literal 'PRIMARY' used on integer/bigint column — use an unquoted integer (e.g. 123), or filter by a text column (e.g. .code or .name) if matching by label. Tip — integer/bigint columns need unquoted numeric literals (e.g. board_id = 5, not board_id = '5'). If you are filtering by a human-readable label like a course code or name, use the .code or .name VARCHAR column instead of the numeric .id column.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

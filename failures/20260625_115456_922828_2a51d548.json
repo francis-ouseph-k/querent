@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T11:54:56.922828+00:00",
+  "nl_query": "Show workflow transitions that require a reason for board entities.",
+  "failed_sql": "SELECT DISTINCT wst.id, wst.entity_type, wst.from_state, wst.to_state, wst.requires_reason FROM workflow_state_transition wst WHERE wst.requires_reason = TRUE",
+  "error": "Validation failed (schema): Column 'wst.entity_id' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
+  "retries": 4,
+  "corrected_sql": ""
+}

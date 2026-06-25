@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T16:00:19.638728+00:00",
+  "nl_query": "Show the complete moderation audit trail for each script that received moderation: the rule type, parameters, original total, adjusted total, mark difference, and the name of the COE user who applied it, ordered by application date.",
+  "failed_sql": "SELECT mr.rule_type, mr.parameters, ma.original_total, ma.adjusted_total, (ma.adjusted_total - ma.original_total) AS mark_difference, au.display_name AS coe_app_user_name FROM moderation_application ma JOIN moderation_rule mr ON mr.id = ma.moderation_rule_id JOIN app_user au ON au.id = ma.applied_by WHERE ma.script_id IN (SELECT script_id FROM evaluation_marks WHERE is_final = TRUE) ORDER BY ma.applied_at",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column ma.rule_type does not exist\nLINE 1: EXPLAIN (FORMAT JSON) SELECT ma.rule_type, mr.parameters, ma...\n                                     ^\nHINT:  Perhaps you meant to reference the column \"mr.rule_type\".\n",
+  "retries": 4,
+  "corrected_sql": ""
+}

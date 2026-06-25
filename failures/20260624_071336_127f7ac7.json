@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-24T07:13:36.994742+00:00",
+  "nl_query": "Which bundles have been in SCANNING status for more than 24 hours without reaching COMPLETE, and show the exam hall, bundle code, scanned count, expected count, and the device that last scanned a script in that bundle?",
+  "failed_sql": "SELECT b.id, b.bundle_code, b.exam_id, b.expected_count, b.scanned_count, sh.device_id, sh.scanned_at, EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - sh.scanned_at)) / 3600 AS hours_since_scan\nFROM   bundle b\nJOIN   scan_history  sh ON sh.script_id = b.id\nJOIN   answer_script  a ON a.id = sh.script_id\nWHERE  b.status = 'OPEN'\n  AND  b.scanned_count < b.expected_count\n  AND  sh.scanned_at < CURRENT_TIMESTAMP - INTERVAL '24 hours'\n  AND  sh.replaced_previous = FALSE\nGROUP BY b.id, b.bundle_code, b.exam_id, b.expected_count, b.scanned_count, sh.device_id, sh.scanned_at\nORDER BY hours_since_scan DESC;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table \"a\"\nLINE 3: LEFT JOIN   scan_history sh ON sh.script_id = a.id\n                                                      ^\n",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T11:39:44.777027+00:00",
+  "nl_query": "What is the average number of active grants per faculty user?",
+  "failed_sql": "SELECT COUNT(*)::NUMERIC / COUNT(DISTINCT user_auxiliary_role.user_id) AS average_active_grants_per_faculty\nFROM   user_auxiliary_role\nWHERE  user_auxiliary_role.scope_type = 'GLOBAL'\n  AND user_auxiliary_role.effective_to IS NULL\n  AND user_auxiliary_role.is_active = TRUE",
+  "error": "Validation failed (schema): Hallucinated column(s): user_auxiliary_role.is_active. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

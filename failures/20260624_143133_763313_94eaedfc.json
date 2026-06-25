@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T14:31:33.763313+00:00",
+  "nl_query": "Average number of preparers per approved answer key",
+  "failed_sql": "SELECT COUNT(DISTINCT akp.faculty_cache_id) AS average_preparers_per_approved_answer_key\nFROM   answer_key_preparer akp\nJOIN   answer_key          ak ON ak.id = akp.answer_key_id\nWHERE  ak.status = 'APPROVED'",
+  "error": "Validation failed (semantic): The question asks for an aggregation 'per' or 'by' something, but the SQL lacks a GROUP BY clause. You MUST include a GROUP BY clause when grouping data.",
+  "retries": 4,
+  "corrected_sql": ""
+}

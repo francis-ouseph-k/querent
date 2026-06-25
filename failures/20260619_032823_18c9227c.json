@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T03:28:23.574654+00:00",
+  "nl_query": "For each question paper, show the paper title, total marks, number of leaf questions, number of answer key rubrics defined, number of preparers, approval status, and the name of the user who approved it.",
+  "failed_sql": "SELECT qp.title, qp.total_marks, COUNT(CASE WHEN q.max_marks IS NOT NULL THEN 1 END) AS num_leaf_questions, COUNT(DISTINCT akr.question_id) AS num_answer_key_rubrics, COUNT(DISTINCT akp.employee_id) AS num_preparers, ak.status AS approval_status, au.name AS approved_by_name FROM question_paper qp JOIN board b ON b.qp_id = qp.id JOIN answer_key ak ON ak.qp_id = b.qp_id AND ak.status = 'APPROVED' JOIN answer_key_rubric akr ON akr.answer_key_id = ak.id JOIN question q ON q.id = akr.question_id JOIN answer_key_preparer akp ON akp.answer_key_id = ak.id JOIN app_user au ON au.id = ak.approved_by GROUP BY qp.title, qp.total_marks, ak.status, au.name",
+  "error": "Validation failed (schema): Hallucinated column(s): app_user.name, app_user.name. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

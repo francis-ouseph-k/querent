@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T15:08:39.165491+00:00",
+  "nl_query": "Which faculty members have prepared answer keys for papers where they are also assigned as the board coordinator, creating a potential conflict of interest?",
+  "failed_sql": "SELECT fc_p.employee_erp_id AS preparer_employee_id, fc.name AS preparer_name, bc.id AS board_id, bc.name AS board_name\nFROM   faculty_cache       fc_p\nJOIN   answer_key_preparer akp ON akp.faculty_cache_id = fc_p.id\nJOIN   answer_key          ak ON ak.id = akp.answer_key_id\nJOIN   board_coordinator bc ON bc.faculty_cache_id = fc_p.id\nJOIN   board b ON b.id = bc.board_id\nJOIN   question_paper qp ON qp.id = b.qp_id\nWHERE  akp.faculty_cache_id = bc.faculty_cache_id\n  AND  akp.faculty_cache_id = fc.id\n  AND  ak.status = 'APPROVED'\n  AND  bc.status = 'EVAL_IN_PROGRESS'\nORDER  BY fc_p.employee_erp_id, bc.id;",
+  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (answer_key, question_paper, board, board_coordinator, faculty_cache). You must qualify it with a table alias.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

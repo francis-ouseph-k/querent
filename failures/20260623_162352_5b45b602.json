@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T16:23:52.336271+00:00",
+  "nl_query": "For each question paper, show the paper title, total marks, number of leaf questions, number of answer key rubrics defined, number of preparers, approval status, and the name of the user who approved it.",
+  "failed_sql": "SELECT qp.title, qp.total_marks, COUNT(q.id) AS num_leaf_questions, COUNT(akr.id) AS num_answer_key_rubrics, COUNT(DISTINCT akp.approved_by) AS num_preparers, ak.status AS approval_status, app_user.display_name AS approved_by_name FROM question_paper qp JOIN question_section qs ON qs.qp_id = qp.id JOIN question q ON q.section_id = qs.id JOIN answer_key ak ON ak.qp_id = qp.id AND ak.status = 'APPROVED' JOIN answer_key_rubric akr ON akr.answer_key_id = ak.id JOIN answer_key_preparer akp ON akp.answer_key_id = ak.id JOIN app_user ON app_user.id = akp.approved_by GROUP BY qp.title, qp.total_marks, ak.status, app_user.display_name",
+  "error": "Validation failed (schema): Hallucinated column(s): answer_key_preparer.approved_by, answer_key_preparer.approved_by. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

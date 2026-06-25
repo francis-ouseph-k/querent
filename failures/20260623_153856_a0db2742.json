@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T15:38:56.121039+00:00",
+  "nl_query": "What is the average duration of a legal hold in days?",
+  "failed_sql": "SELECT AVG(DATEDIFF(CURRENT_DATE, sh.hold_start_date)) AS avg_hold_duration_days FROM script_hold sh WHERE sh.is_active = TRUE AND sh.released_at IS NULL",
+  "error": "Validation failed (semantic): The question asks for 'average duration' or 'average time'. You MUST use EXTRACT(EPOCH FROM (end_ts - start_ts)) / 86400 to compute durations before averaging. Do NOT use AVG(timestamp - timestamp).",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

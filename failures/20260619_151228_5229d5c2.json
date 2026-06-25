@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T15:12:28.491092+00:00",
+  "nl_query": "Which honorarium rate cards are inactive?",
+  "failed_sql": "SELECT hrc.id, hrc.name, hrc.rates, hrc.board_coordinator_weight, hrc.created_at, hrc.updated_at FROM honorarium_rate_card hrc LEFT JOIN active_key_encryption_key ak ON ak.is_active = TRUE AND ak.kek_id = hrc.id WHERE ak.is_active = FALSE",
+  "error": "Validation failed (schema): Hallucinated column(s): active_key_encryption_key.is_active, active_key_encryption_key.is_active. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

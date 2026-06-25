@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T09:32:50.122143+00:00",
+  "nl_query": "Count blocked scripts per block reason category.",
+  "failed_sql": "SELECT sh.block_status, sh.block_reason, COUNT(*) AS script_count\nFROM script_hold sh\nJOIN answer_script a ON sh.script_id = a.id\nGROUP BY sh.block_status, sh.block_reason\nORDER BY script_count DESC;",
+  "error": "Validation failed (schema): Column validation failed: script_hold does NOT have block_status. block_status is on answer_script.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

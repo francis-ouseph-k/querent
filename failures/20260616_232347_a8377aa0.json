@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-16T23:23:47.465698+00:00",
+  "nl_query": "For each notification type, show the count of unacknowledged notifications, the age of the oldest unacknowledged notification in hours, and the average time taken to acknowledge.",
+  "failed_sql": "SELECT nt.type, COUNT(n.id) AS unacknowledged_count,",
+  "error": "Validation failed (schema): Hallucinated column(s): relationship_type_config.type, relationship_type_config.type. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T14:35:37.007612+00:00",
+  "nl_query": "List all faculty members who prepared the answer key for the Algorithms exam and whether they are also in the evaluator pool for that course.",
+  "failed_sql": "SELECT fc.name AS faculty_name, ep.is_available AS is_in_evaluator_pool FROM evaluator_pool ep JOIN board b ON b.id = ep.board_id JOIN faculty_cache fc ON fc.id = ep.faculty_cache_id JOIN answer_key_preparer akp ON akp.faculty_cache_id = fc.id JOIN answer_key ak ON ak.id = akp.answer_key_id WHERE ak.qp_id = (SELECT id FROM question_paper WHERE title ILIKE '%Algorithms%') AND ak.status = 'APPROVED' AND ep.is_available = TRUE ORDER BY fc.name",
+  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (faculty_cache, question_paper, board, answer_key, evaluator_pool). You must qualify it with a table alias.",
+  "retries": 4,
+  "corrected_sql": ""
+}

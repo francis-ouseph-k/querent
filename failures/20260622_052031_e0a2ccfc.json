@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T05:20:31.106174+00:00",
+  "nl_query": "How many board coordinators have a custom honorarium weight?",
+  "failed_sql": "SELECT COUNT(DISTINCT bc.employee_id) AS custom_honorarium_weight_count\nFROM   board_coordinator bc\nJOIN   faculty_cache     fc ON fc.employee_id = bc.employee_id\nWHERE  bc.honorarium_weight != (SELECT honorarium_rate_card.board_coordinator_weight\n                                 FROM   honorarium_rate_card\n                                 WHERE  is_active = TRUE);",
+  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (board_coordinator, honorarium_rate_card). You must qualify it with a table alias.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

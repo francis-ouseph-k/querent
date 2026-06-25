@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T21:00:05.871823+00:00",
+  "nl_query": "Count the number of question papers created per source type this semester.",
+  "failed_sql": "SELECT source_type, COUNT(*) AS paper_count\nFROM question_paper\nWHERE exam_date BETWEEN '2023-09-01' AND '2023-12-31'\nAND is_active = TRUE\nGROUP BY source_type\nORDER BY paper_count DESC;",
+  "error": "Validation failed (schema): Hallucinated column(s): question_paper.paper_count, question_paper.exam_date. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

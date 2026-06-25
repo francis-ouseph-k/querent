@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-16T00:34:42.321006+00:00",
+  "nl_query": "How many answer keys were approved per month?",
+  "failed_sql": "SELECT DATE_TRUNC('month', ak.created_at) AS month, COUNT(ak.id) AS approved_count\nFROM   answer_key ak\nWHERE  ak.status = 'APPROVED'\nGROUP BY month\nORDER BY month ASC;",
+  "error": "Validation failed (schema): Hallucinated column(s): answer_key.month, answer_key.month. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

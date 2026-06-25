@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T13:11:31.953521+00:00",
+  "nl_query": "Which bundles have been in SCANNING status for more than 24 hours without reaching COMPLETE, and show the exam hall, bundle code, scanned count, expected count, and the device that last scanned a script in that bundle?",
+  "failed_sql": "SELECT DISTINCT b.id, b.bundle_code, b.exam_hall, b.scanned_count, b.expected_count, sh.device_id\nFROM   bundle b\nJOIN   scan_history  sh ON sh.script_id = b.id\nJOIN   answer_script  a ON a.id = sh.script_id\nWHERE  b.status = 'OPEN'\n  AND  sh.scanned_at < CURRENT_TIMESTAMP - INTERVAL '24 hours'\n  AND  b.scanned_count < b.expected_count\n  AND  sh.status <> 'COMPLETE'\nGROUP BY b.id, b.bundle_code, b.exam_hall, b.scanned_count, b.expected_count, sh.device_id\nORDER BY b.scanned_count DESC",
+  "error": "Validation failed (schema): Hallucinated column(s): exam_schedule_cache.exam_hall, exam_schedule_cache.exam_hall, scan_history.status. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

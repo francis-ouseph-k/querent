@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-16T00:03:27.629875+00:00",
+  "nl_query": "What is the distribution of audit log actions across entity types?",
+  "failed_sql": "SELECT entity_type, COUNT(*) AS action_count\nFROM audit_log\nWHERE is_critical = TRUE\nGROUP BY entity_type\nORDER BY action_count DESC;",
+  "error": "Validation failed (schema): Hallucinated column(s): audit_log.action_count. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

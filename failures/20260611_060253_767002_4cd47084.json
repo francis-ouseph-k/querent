@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-11T06:02:53.767002",
+  "nl_query": "List all evaluators for the evaluation board for course id MBA01 alondg with their workloads",
+  "failed_sql": "SELECT fc.employee_id, fc.name, COUNT(DISTINCT ea.id) AS workload\nFROM   faculty_cache fc\nJOIN   evaluation_attempt ea ON ea.evaluator_id = fc.employee_id\nJOIN   script_assignment sa ON sa.evaluator_id = fc.employee_id\nJOIN   exam_student_mapping esm ON esm.student_id = sa.student_id\nJOIN   academic_unit au ON au.id = esm.course_id\nWHERE  au.id = 'MBA01'\n  AND  ea.status = 'IN_PROGRESS'\n  AND  ea.is_active = TRUE\nGROUP  BY fc.employee_id, fc.name\nORDER  BY workload DESC;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column sa.student_id does not exist\nLINE 1: ...JOIN exam_student_mapping esm ON esm.student_id = sa.student...\n                                                             ^\nHINT:  Perhaps you meant to reference the column \"esm.student_id\".\n",
+  "retries": 2,
+  "corrected_sql": ""
+}

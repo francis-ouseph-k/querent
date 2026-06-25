@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T13:43:21.094328+00:00",
+  "nl_query": "What percentage of revaluation requests result in a new attempt being created?",
+  "failed_sql": "SELECT COUNT(CASE WHEN rr.approval_status = 'APPROVED' THEN 1 ELSE NULL END) * 100.0 / COUNT(rr.id) AS revaluation_to_attempt_percentage\nFROM revaluation_request rr\nJOIN evaluation_attempt ea ON ea.id = rr.resulting_attempt_id\nWHERE ea.is_active = TRUE",
+  "error": "Execution error: division by zero\n",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

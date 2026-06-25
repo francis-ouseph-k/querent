@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T15:13:08.287384+00:00",
+  "nl_query": "Which boards have all scripts scanned but less than 80 percent of those scripts have been assigned to evaluators, and show the course code, total scripts, assigned count, and assignment gap.",
+  "failed_sql": "SELECT b.id AS board_id, au.code AS academic_unit_code, COUNT(DISTINCT a.id) AS total_scripts, COUNT(DISTINCT sa.id) AS assigned_count, (total_scripts - assigned_count) AS script_assignment_gap\nFROM   board b\nJOIN   academic_unit au ON au.id = b.course_id\nJOIN   answer_script a ON a.course_id = au.id\nJOIN   script_assignment sa ON sa.script_id = a.id AND sa.is_active = TRUE\nWHERE  a.lifecycle_status = 'ATTEMPTED' AND a.scan_status = 'SCANNED'\nGROUP  BY b.id, au.code\nHAVING COUNT(DISTINCT a.id) * 0.8 < COUNT(DISTINCT sa.id)\nORDER  BY script_assignment_gap ASC LIMIT 100;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column \"total_scripts\" does not exist\nLINE 1: ...cripts, COUNT(DISTINCT sa.id) AS assigned_count, (total_scri...\n                                                             ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

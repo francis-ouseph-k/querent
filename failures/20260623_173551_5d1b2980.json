@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T17:35:51.140190+00:00",
+  "nl_query": "Count the number of active relationships per relationship type.",
+  "failed_sql": "SELECT rt.relationship_type, COUNT(*) AS active_relationship_count\nFROM   relationship_type_config rt\nJOIN   academic_unit_relationship aur ON aur.relationship_type = rt.relationship_type\nWHERE  aur.is_active = TRUE\nGROUP  BY rt.relationship_type\nORDER  BY active_relationship_count DESC",
+  "error": "Validation failed (semantic): The question asks for an aggregation 'per' or 'by' something, but the SQL lacks a GROUP BY clause. You MUST include a GROUP BY clause when grouping data.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

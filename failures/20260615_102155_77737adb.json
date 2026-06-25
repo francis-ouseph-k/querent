@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T10:21:55.218072+00:00",
+  "nl_query": "What is the average duration of a legal hold in days?",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T12:39:43.632642+00:00",
+  "nl_query": "For every script currently under legal hold, show the student name, course code, hold reason, case reference, hold start date, hold duration in days, and the display name of the user who approved the hold.",
+  "failed_sql": "SELECT a.student_id, sc.name AS academic_unit_code, sh.hold_reason, sh.case_id, sh.hold_start_date, (CURRENT_DATE - sh.hold_start_date) AS days_held, au_approved.display_name AS approved_by FROM answer_script a JOIN script_hold sh ON a.script_id = sh.script_id JOIN student_cache sc ON a.student_id = sc.student_id JOIN app_user au_approved ON au_approved.id = sh.approved_by WHERE sh.is_active = TRUE AND sh.released_at IS NULL",
+  "error": "Validation failed (schema): Hallucinated column(s): answer_script.script_id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T10:06:25.558989+00:00",
+  "nl_query": "Which honorarium rate cards are inactive?",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

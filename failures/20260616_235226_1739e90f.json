@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-16T23:52:26.572390+00:00",
+  "nl_query": "List all faculty members who prepared the answer key for the Algorithms exam and whether they are also in the evaluator pool for that course.",
+  "failed_sql": "SELECT fc.name, akp.employee_id, ep.is_available FROM faculty_cache fc JOIN answer_key_preparer akp ON akp.employee_id = fc.employee_id JOIN answer_key ak ON ak.id = akp.answer_key_id JOIN board b ON ak.qp_id = b.qp_id JOIN evaluator_pool ep ON ep.board_id = b.id WHERE akp.employee_id = fc.employee_id AND ak.qp_id = 'ALGORITHMS' AND ep.is_available = TRUE",
+  "error": "Validation failed (schema): Type mismatch: answer_key.qp_id (BIGINT): string literal 'ALGORITHMS' used on integer/bigint column — use an unquoted integer (e.g. 123), or filter by a text column (e.g. .code or .name) if matching by label. Tip — integer/bigint columns need unquoted numeric literals (e.g. board_id = 5, not board_id = '5'). If you are filtering by a human-readable label like a course code or name, use the .code or .name VARCHAR column instead of the numeric .id column.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

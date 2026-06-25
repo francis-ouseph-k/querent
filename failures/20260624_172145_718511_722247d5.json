@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T17:21:45.718511+00:00",
+  "nl_query": "How many students have a WITHHELD eligibility status across all current exams?",
+  "failed_sql": "SELECT COUNT(DISTINCT esm.student_id) AS num_students_withheld\nFROM   exam_student_mapping esm\nJOIN   exam_schedule_cache  esc ON esc.id = esm.exam_id\nWHERE  esm.eligibility_status = 'WITHHELD'\n  AND  esc.status           = 'EVAL_IN_PROGRESS'",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column esc.status does not exist\nLINE 5:   AND  esc.status           = 'EVAL_IN_PROGRESS' LIMIT 1000\n               ^\n",
+  "retries": 4,
+  "corrected_sql": ""
+}

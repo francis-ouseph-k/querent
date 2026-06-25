@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:56:36.981827+00:00",
+  "nl_query": "Show the daily scanning velocity for each exam in December 2025: the number of scripts scanned per day, the change from the previous day, and the number of new bundles opened.",
+  "failed_sql": "SELECT e.exam_id, e.exam_date, COUNT(sh.id) AS scripts_scanned, (COUNT(sh.id) - LAG(COUNT(sh.id)) OVER (PARTITION BY e.exam_id ORDER BY e.exam_date)) AS change, COUNT(CASE WHEN sh.status = 'OPEN' THEN 1 ELSE NULL END) AS new_bundles_opened\nFROM   exam_schedule_cache e\nJOIN   scan_history sh ON sh.exam_id = e.exam_id\nWHERE  e.exam_date BETWEEN '2025-12-01' AND '2025-12-31'\nGROUP  BY e.exam_id, e.exam_date\nORDER  BY e.exam_id, e.exam_date;",
+  "error": "Validation failed (schema): Hallucinated column(s): scan_history.exam_id, scan_history.status. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

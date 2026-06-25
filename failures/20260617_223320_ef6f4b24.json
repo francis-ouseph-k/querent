@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-17T22:33:20.028694+00:00",
+  "nl_query": "Which boards have a board coordinator who is also listed as a primary evaluator in the pool, and what is the total number of scripts that coordinator has evaluated versus coordinated?",
+  "failed_sql": "SELECT b.id, b.status, COUNT(DISTINCT ea_p.script_id) AS scripts_evaluated, COUNT(DISTINCT ea_c.script_id) AS scripts_coordinated\nFROM board b\nJOIN board_coordinator bc ON bc.board_id = b.id\nJOIN faculty_cache fc ON fc.employee_id = bc.employee_id\nJOIN evaluator_pool ep ON ep.board_id = b.id AND ep.eligible_role = 'PRIMARY' AND ep.is_available = TRUE\nJOIN script_assignment sa_p ON sa_p.evaluator_id = fc.employee_id AND sa_p.attempt_type = 'PRIMARY' AND sa_p.is_active = TRUE\nJOIN script_assignment sa_c ON sa_c.evaluator_id = fc.employee_id AND sa_c.attempt_type = 'BOARD_COORDINATOR' AND sa_c.is_active = TRUE\nGROUP BY b.id, b.status\nORDER BY b.status DESC;",
+  "error": "Validation failed (schema): Invalid value: script_assignment.attempt_type = 'BOARD_COORDINATOR' is not a valid value for this column. Allowed values: PRIMARY, REVAL, REVIEW, THIRD. Tip — this column is constrained to a fixed set of values by a CHECK constraint; only the listed values can ever exist in the data.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

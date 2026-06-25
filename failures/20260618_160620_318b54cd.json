@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T16:06:20.999720+00:00",
+  "nl_query": "For each notification type, show the count of unacknowledged notifications, the age of the oldest unacknowledged notification in hours, and the average time taken to acknowledge.",
+  "failed_sql": "SELECT n.type, COUNT(*) AS unacknowledged_count, (CURRENT_TIMESTAMP - MIN(n.created_at))::INTERVAL / INTERVAL '1 hour' AS oldest_age_hours, AVG(CURRENT_TIMESTAMP - n.created_at) AS average_acknowledgment_time_hours\nFROM   notification n\nJOIN   app_user au ON au.id = n.user_id\nWHERE  n.is_acknowledged = FALSE\nGROUP BY n.type\nORDER BY unacknowledged_count DESC;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: interval / interval\nLINE 1: ...NT_TIMESTAMP - MIN(n.created_at))::INTERVAL * 1.0 / INTERVAL...\n                                                             ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

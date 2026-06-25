@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T06:49:31.336068+00:00",
+  "nl_query": "How many script pages have OCR confidence scores below 0.8?",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T16:10:52.160821+00:00",
+  "nl_query": "For each audit log entry related to a result correction, show the result ID, the old marks, the new marks, the name of the user who made the correction, the reason given, and the time elapsed since the previous correction on the same result.",
+  "failed_sql": "SELECT r.id AS result_id, em_old.marks_awarded AS old_evaluation_marks, em_new.marks_awarded AS new_evaluation_marks, au.display_name AS actor, al.reason AS reason, (al.created_at - al.previous_correction.created_at) AS time_elapsed FROM result r JOIN evaluation_marks em_old ON em_old.attempt_id = r.id AND em_old.is_final = TRUE JOIN evaluation_marks em_new ON em_new.attempt_id = r.id AND em_new.is_final = TRUE JOIN app_user au ON au.id = al.user_id JOIN audit_log al ON al.entity_type = 'result' AND al.entity_id = r.id LEFT JOIN audit_log al_previous_correction ON al_previous_correction.entity_type = 'result' AND al_previous_correction.entity_id = r.id AND al_previous_correction.action = 'MARK_MOD' AND al_previous_correction.new_value->>'marks_awarded' = em_new.marks_awarded ORDER BY al.created_at DESC",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table \"al\"\nLINE 1: ...m_new.is_final = TRUE JOIN app_user au ON au.id = al.user_id...\n                                                             ^\n",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

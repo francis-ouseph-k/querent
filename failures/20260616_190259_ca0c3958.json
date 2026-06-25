@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-16T19:02:59.610898+00:00",
+  "nl_query": "For each board in EVAL_IN_PROGRESS status, show the course code, total scripts, number of scripts in each evaluation status, the board coordinator name and honorarium weight, and the number of calendar days remaining until the deadline.",
+  "failed_sql": "SELECT b.id, b.course_id, b.exam_id, b.status, au.code AS academic_unit_code, COUNT(a.id) AS total_scripts, SUM(CASE WHEN a.evaluation_status = 'NOT_ASSIGNED' THEN 1 ELSE 0 END) AS scripts_not_assigned, SUM(CASE WHEN a.evaluation_status = 'ASSIGNED' THEN 1 ELSE 0 END) AS scripts_assigned, SUM(CASE WHEN a.evaluation_status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS scripts_in_progress, SUM(CASE WHEN a.evaluation_status = 'FROZEN' THEN 1 ELSE 0 END) AS scripts_frozen, SUM(CASE WHEN a.evaluation_status = 'SUBMITTED' THEN 1 ELSE 0 END) AS scripts_submitted, COALESCE(bco.name, 'N/A') AS board_coordinator_name, COALESCE(hr.weight_applied, 0) AS honorarium_weight, (EXTRACT(EPOCH FROM (b.deadline - CURRENT_TIMESTAMP)) / 86400) AS days_remaining_until_deadline FROM board b JOIN academic_unit au ON au.id = b.course_id JOIN academic_unit au2 ON au2.id = b.exam_id JOIN faculty_cache fc ON fc.department_id = au2.id JOIN board_coordinator bco ON bco.board_id = b.id JOIN honorarium_summary hr ON hr.board_id = b.id LEFT JOIN app_user au ON au.id = bco.employee_id WHERE b.status = 'EVAL_IN_PROGRESS' GROUP BY b.id, b.course_id, b.exam_id, b.status, au.code, bco.name, hr.weight_applied ORDER BY b.id",
+  "error": "Validation failed (schema): Hallucinated table(s): academic_unit2. These tables do not exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

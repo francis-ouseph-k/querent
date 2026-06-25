@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-16T01:48:40.878715+00:00",
+  "nl_query": "Count data retention policies by whether they are active.",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

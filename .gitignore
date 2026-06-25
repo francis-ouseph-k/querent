@@ -1,0 +1,10 @@
+__pycache__/
+temp_*.txt
+temp_*.json
+scratch_*.py
+patch_reviewer_feedback.py
+
+.env
+*.pyc
+.vscode/
+logs/

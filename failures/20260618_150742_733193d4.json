@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:07:42.788194+00:00",
+  "nl_query": "Which scripts have scan metadata indicating a quality score below 0.5, have been rescanned at least once, and are currently assigned to an evaluator but not yet frozen?",
+  "failed_sql": "SELECT a.id, a.urn, a.scan_metadata, sh.replaced_previous, sa.is_active\nFROM   answer_script a\nJOIN   scan_history  sh ON sh.script_id = a.id\nJOIN   script_assignment sa ON sa.script_id = a.id\nWHERE  a.scan_metadata->>'quality_score'::FLOAT < 0.5\n  AND  sh.replaced_previous = TRUE\n  AND  sa.is_active = TRUE\nLIMIT  1000;",
+  "error": "Execution error: invalid input syntax for type double precision: \"quality_score\"\nLINE 5: WHERE  a.scan_metadata->>'quality_score'::FLOAT < 0.5\n                                 ^\n",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

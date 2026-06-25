@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T16:26:20.078869+00:00",
+  "nl_query": "What percentage of the academic calendar days are holidays in January 2026?",
+  "failed_sql": "SELECT (SUM(CASE WHEN ac.is_holiday THEN 1 ELSE 0 END) * 100.0 / COUNT(ac.cal_date)) AS holiday_percentage\nFROM   academic_calendar ac\nJOIN   academic_unit au ON au.id = ac.academic_year\nWHERE  au.unit_type = 'COURSE'\n  AND  ac.cal_date BETWEEN '2026-01-01' AND '2026-01-31'",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: bigint = character varying\nLINE 3: JOIN   academic_unit au ON au.id = ac.academic_year::VARCHAR\n                                         ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

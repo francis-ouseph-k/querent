@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-16T20:46:23.008415+00:00",
+  "nl_query": "Which evaluation policies are currently effective for boards that have at least one script with a pending revaluation request, and show the policy scope, deviation threshold, and review requirement.",
+  "failed_sql": "SELECT ep.id, ep.board_id, ep.course_id, ep.deviation_threshold, ep.review_required, b.course_id AS board_course_id, b.exam_id AS board_exam_id, b.qp_id AS board_qp_id, b.status AS board_status, b.deadline AS board_deadline, b.deadline_enforcement AS board_deadline_enforcement, b.rate_card_snapshot AS board_rate_card_snapshot, b.version AS board_version, b.created_at AS board_created_at, b.updated_at AS board_updated_at\nFROM   evaluation_policy ep\nJOIN   board b ON b.id = ep.board_id\nJOIN   revaluation_request rr ON rr.board_id = b.id\nWHERE  rr.approval_status = 'PENDING'\nGROUP BY ep.id, ep.board_id, ep.course_id, ep.deviation_threshold, ep.review_required, b.course_id, b.exam_id, b.qp_id, b.status, b.deadline, b.deadline_enforcement, b.rate_card_snapshot, b.version, b.created_at, b.updated_at",
+  "error": "Validation failed (schema): Hallucinated column(s): board.updated_at, board.updated_at, revaluation_request.board_id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

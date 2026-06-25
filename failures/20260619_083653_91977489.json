@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T08:36:53.615753+00:00",
+  "nl_query": "For each board in EVAL_IN_PROGRESS status, show the course code, total scripts, number of scripts in each evaluation status, the board coordinator name and honorarium weight, and the number of calendar days remaining until the deadline.",
+  "failed_sql": "SELECT au.code AS academic_unit_code, COUNT(a.id) AS total_scripts, COUNT(CASE WHEN ea.evaluation_status = 'NOT_ASSIGNED' THEN 1 END) AS not_assigned, COUNT(CASE WHEN ea.evaluation_status = 'ASSIGNED' THEN 1 END) AS assigned, COUNT(CASE WHEN ea.evaluation_status = 'IN_PROGRESS' THEN 1 END) AS in_progress, COUNT(CASE WHEN ea.evaluation_status = 'FROZEN' THEN 1 END) AS frozen, COUNT(CASE WHEN ea.evaluation_status = 'SUBMITTED' THEN 1 END) AS submitted, (b.deadline - b.created_at) AS days_remaining, bc.name AS board_coordinator_name, bc.honorarium_weight FROM academic_unit au JOIN board b ON au.id = b.course_id JOIN script_assignment sa ON sa.board_id = b.id JOIN evaluation_attempt ea ON ea.script_id = sa.script_id JOIN board_coordinator bc ON bc.board_id = b.id WHERE b.status = 'EVAL_IN_PROGRESS' GROUP BY au.code, b.deadline, bc.name, bc.honorarium_weight ORDER BY au.code, b.deadline",
+  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (board_coordinator, script_assignment, academic_unit, board, evaluation_attempt). You must qualify it with a table alias.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

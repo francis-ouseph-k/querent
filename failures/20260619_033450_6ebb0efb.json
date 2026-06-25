@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T03:34:50.237300+00:00",
+  "nl_query": "Show the complete timeline for each board created last month: creation date, first script assignment date, first evaluation attempt start date, first freeze date, last submission date, and the total number of days the board has been open.",
+  "failed_sql": "SELECT b.id, b.created_at, sa.assigned_at AS first_script_assignment_date, ea.started_at AS first_evaluation_attempt_start_date, em.frozen_at AS first_freeze_date, r.submitted_at AS last_submission_date, (r.submitted_at - b.created_at) AS days_open FROM board b JOIN script_assignment sa ON sa.board_id = b.id JOIN evaluation_attempt ea ON ea.script_id = sa.script_id JOIN evaluation_marks em ON em.attempt_id = ea.id JOIN result r ON r.script_id = sa.script_id WHERE b.created_at >= NOW() - INTERVAL '1 month' AND b.status = 'EVAL_IN_PROGRESS' GROUP BY b.id, b.created_at, sa.assigned_at, ea.started_at, em.frozen_at, r.submitted_at ORDER BY b.created_at ASC LIMIT 100;",
+  "error": "Validation failed (schema): Hallucinated column(s): script_assignment.board_id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

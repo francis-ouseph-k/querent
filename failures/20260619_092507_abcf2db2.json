@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T09:25:07.516447+00:00",
+  "nl_query": "What is the average number of pages per scanned script?",
+  "failed_sql": "SELECT AVG(scan_metadata->>'page_count') AS avg_pages_per_script FROM answer_script",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: invalid input syntax for type integer: \"page_count\"\nLINE 1: EXPLAIN (FORMAT JSON) SELECT AVG(scan_metadata->>'page_count...\n                                                         ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

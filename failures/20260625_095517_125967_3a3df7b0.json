@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T09:55:17.125967+00:00",
+  "nl_query": "For each department, show the department name, number of courses, number of faculty members, number of active boards, number of scripts currently in evaluation, and the average marks awarded per script.",
+  "failed_sql": "SELECT au.name AS academic_unit_name, COUNT(DISTINCT au.id) AS num_courses, COUNT(DISTINCT fc.id) AS num_faculty_members, COUNT(DISTINCT b.id) AS num_active_boards, COUNT(DISTINCT CASE WHEN ea.evaluation_status = 'NOT_ASSIGNED' THEN ea.script_id END) AS num_scripts_in_evaluation, AVG(COUNT(em.marks_awarded)) OVER (PARTITION BY au.id) AS avg_evaluation_marks_per_script FROM academic_unit au JOIN academic_unit_closure c ON au.id = c.descendant_id JOIN faculty_cache fc ON fc.department_id = au.id JOIN board b ON b.course_id = au.id JOIN evaluation_attempt ea ON ea.board_id = b.id JOIN evaluation_marks em ON em.attempt_id = ea.id GROUP BY au.name, au.id, fc.id, b.id, ea.id ORDER BY num_courses DESC;",
+  "error": "Validation failed (schema): Column 'sa.course_id' does not exist. The Postgres planner suggests 'b.course_id' — use that, or verify the column belongs to the qualifying table in your FROM/JOIN clauses.",
+  "retries": 4,
+  "corrected_sql": ""
+}

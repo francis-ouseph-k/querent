@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T04:19:32.294994+00:00",
+  "nl_query": "What percentage of published results use the SECOND_EVAL rule?",
+  "failed_sql": "SELECT COUNT(*) FILTER (WHERE r.erp_push_status = 'RECONCILED' AND ea.computation_rule = 'SECOND_EVAL') * 100.0 / NULLIF(COUNT(*), 0) AS second_eval_pct\nFROM   result r\nJOIN   evaluation_attempt ea ON ea.script_id = r.script_id\nWHERE  r.erp_push_status = 'RECONCILED' AND r.published_at IS NOT NULL",
+  "error": "Validation failed (schema): Hallucinated column(s): evaluation_attempt.computation_rule. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

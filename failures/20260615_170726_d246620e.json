@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T17:07:26.244122+00:00",
+  "nl_query": "Show the complete faculty eligibility and performance chain: faculty name, department, courses they are mapped to, boards they are in the pool for, scripts assigned, scripts submitted, and their average evaluation speed.",
+  "failed_sql": "SELECT fc.name AS faculty_name, au.name AS academic_unit, au.code AS course_code, b.id AS board_id, sa.id AS script_assignment_id, sa.script_id AS script_id, sa.submitted_at AS submitted_at, AVG(ea.total_marks) AS average_evaluation_speed\nFROM   faculty_cache fc\nJOIN   academic_unit au ON au.id = fc.department_id\nJOIN   faculty_course_mapping fcm ON fcm.employee_id = fc.employee_id\nJOIN   board b ON b.course_id = fcm.course_id\nJOIN   script_assignment sa ON sa.evaluator_id = fc.employee_id\nJOIN   evaluation_attempt ea ON ea.assignment_id = sa.id\nWHERE  ea.status = 'SUBMITTED'\nGROUP  BY fc.name, au.name, au.code, b.id, sa.id, sa.script_id, sa.submitted_at\nORDER  BY average_evaluation_speed DESC;",
+  "error": "Validation failed (schema): Hallucinated column(s): script_assignment.submitted_at, script_assignment.submitted_at. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

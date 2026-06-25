@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T17:42:07.547152+00:00",
+  "nl_query": "Count scripts per lifecycle status for exams scheduled in December 2025.",
+  "failed_sql": "SELECT es.exam_erp_id, es.course_id, es.exam_date, es.exam_type, COUNT(a.id) AS script_count\nFROM   exam_schedule_cache es\nJOIN   answer_script a ON a.exam_id = es.id\nWHERE  es.exam_date BETWEEN '2025-12-01' AND '2025-12-31'\nGROUP  BY es.exam_erp_id, es.course_id, es.exam_date, es.exam_type\nORDER  BY script_count DESC;",
+  "error": "Validation failed (semantic): The question asks for an aggregation 'per' or 'by' something, but the SQL lacks a GROUP BY clause. You MUST include a GROUP BY clause when grouping data.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T10:49:14.342244+00:00",
+  "nl_query": "How many boards have a board-level policy overriding the course-level policy?",
+  "failed_sql": "SELECT COUNT(DISTINCT ep.board_id) AS board_policy_override_count\nFROM   evaluation_policy ep\nWHERE  ep.scope_type = 'BOARD'\n  AND  ep.is_active = TRUE;",
+  "error": "Validation failed (schema): Table or alias 'evaluation_policy' is referenced (e.g. in an ON clause or SELECT list) but is not declared in the FROM/JOIN clauses. Add the missing table to the FROM list, or check JOIN ordering — a JOIN's ON clause cannot reference a table that appears later in the JOIN chain.",
+  "retries": 4,
+  "corrected_sql": ""
+}

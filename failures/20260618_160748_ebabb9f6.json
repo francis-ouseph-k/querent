@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T16:07:48.036910+00:00",
+  "nl_query": "Show all scripts where the scan was performed by a scanner device registered at a campus different from the campus where the exam was scheduled, indicating a potential logistics or data entry error.",
+  "failed_sql": "SELECT sh.script_id, sh.scanned_at, sh.device_id, sd.device_name, au.code AS campus_code, au.name AS campus_name FROM scan_history sh JOIN scanner_device sd ON sd.id = sh.device_id JOIN academic_unit au ON au.id = sd.campus_id JOIN exam_schedule_cache esc ON esc.exam_id::bigint = sh.script_id WHERE sd.campus_id != esc.campus_id ORDER BY sh.scanned_at DESC LIMIT 1000;",
+  "error": "Execution error: invalid input syntax for type bigint: \"EX2025_CS101_END\"\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

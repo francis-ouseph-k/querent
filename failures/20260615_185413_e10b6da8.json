@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T18:54:13.897374+00:00",
+  "nl_query": "Which questions participate in a GROUP-type attempt rule?",
+  "failed_sql": "SELECT q.id, q.code, q.path, arg.group_label, argq.question_id AS group_member_question_id\nFROM   attempt_rule_group          arg\nJOIN   attempt_rule_group_question argq ON argq.group_id       = arg.id\nJOIN   question                    q_parent ON q_parent.id = arg.question_id\nJOIN   question                    q_member ON q_member.id = argq.question_id\nWHERE  arg.rule_type = 'GROUP'\nORDER  BY q_parent.path, arg.group_label, q_member.display_order;",
+  "error": "Validation failed (schema): Hallucinated column(s): attempt_rule_group.question_id, attempt_rule_group.rule_type. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

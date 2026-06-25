@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-24T05:10:58.735021+00:00",
+  "nl_query": "What is the average number of history corrections per published result?",
+  "failed_sql": "SELECT COUNT(*) / COUNT(DISTINCT r.id) AS avg_corrections_per_result FROM result r JOIN result_history rh ON rh.result_id = r.id",
+  "error": "Validation failed (semantic): SQL applies COUNT(rh.id) but 'rh.id' is also a GROUP BY key. COUNT over a GROUP BY key is tautological: SUM returns the value itself, COUNT(DISTINCT) always returns 1. Use a different column for the aggregation, or restructure the query.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

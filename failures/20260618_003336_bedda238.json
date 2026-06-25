@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T00:33:36.688118+00:00",
+  "nl_query": "Which answer key rubrics contain the word diagram in the text?",
+  "failed_sql": "SELECT akr.id, akr.rubric_text, akr.max_marks\nFROM   answer_key        ak\nJOIN   answer_key_rubric akr ON akr.answer_key_id = ak.id\nWHERE  ak.qp_id       = :qp_id\n  AND  ak.status      = 'APPROVED'\n  AND  akr.rubric_text LIKE '%diagram%';",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: syntax error at or near \":\"\nLINE 1: ...akr ON akr.answer_key_id = ak.id WHERE ak.qp_id = :qp_id AND...\n                                                             ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

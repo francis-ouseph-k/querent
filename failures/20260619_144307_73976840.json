@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T14:43:07.706828+00:00",
+  "nl_query": "Show all scripts where the legal hold was approved by the COE Office.",
+  "failed_sql": "SELECT sh.id, sh.case_id, sh.hold_reason, au_approved.display_name AS approved_by\nFROM script_hold sh\nJOIN app_user au_applied ON au_applied.id = sh.applied_by\nJOIN app_user au_approved ON au_approved.id = sh.approved_by\nWHERE sh.script_id = :script_id;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: there is no parameter $1\nLINE 1: ...approved.id = sh.approved_by WHERE sh.script_id = $1 LIMIT 1...\n                                                             ^\n",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

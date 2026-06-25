@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T03:12:54.607819+00:00",
+  "nl_query": "For each question paper, show the paper title, the number of sections, the number of leaf questions, the number of attempt rules configured, the number of approved answer keys, and the number of boards using it, ordered by boards using it descending.",
+  "failed_sql": "SELECT qp.title AS paper_title, COUNT(DISTINCT qs.id) AS num_sections, COUNT(DISTINCT q.id) AS num_leaf_questions, COUNT(DISTINCT ar.id) AS num_attempt_rules, COUNT(DISTINCT ak.id) AS num_approved_answer_keys, COUNT(DISTINCT b.id) AS num_boards USING_paper FROM question_paper qp JOIN question_section qs ON qs.qp_id = qp.id JOIN question q ON q.section_id = qs.id JOIN attempt_rule ar ON ar.question_id = q.id JOIN answer_key ak ON ak.qp_id = qp.id JOIN board b ON b.qp_id = qp.id WHERE qp.status = 'APPROVED' GROUP BY qp.title ORDER BY num_boards DESC",
+  "error": "Validation failed (schema): Hallucinated column(s): question_paper.status. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T05:53:27.230570+00:00",
+  "nl_query": "Show the rubric images stored for question 1a in the Data Structures paper.",
+  "failed_sql": "SELECT akr.rubric_images FROM answer_key_rubric akr JOIN question q ON q.id = akr.question_id JOIN question_paper qp ON qp.id = q.qp_id WHERE q.code = '1a' AND qp.title = 'Data Structures' AND akr.status = 'APPROVED'",
+  "error": "Validation failed (schema): Hallucinated column(s): answer_key_rubric.status. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

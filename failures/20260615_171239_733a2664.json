@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T17:12:39.614573+00:00",
+  "nl_query": "For each notification type, show the count of unacknowledged notifications, the age of the oldest unacknowledged notification in hours, and the average time taken to acknowledge.",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

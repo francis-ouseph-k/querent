@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T12:26:43.772974+00:00",
+  "nl_query": "How many questions belong to exactly one attempt rule group?",
+  "failed_sql": "SELECT COUNT(T1.group_id) FROM attempt_rule_group AS T1 JOIN attempt_rule_group_question AS T2 ON T1.id = T2.group_id GROUP BY T1.group_id HAVING COUNT(T2.question_id) = 1",
+  "error": "Validation failed (schema): Column 't1.group_id' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
+  "retries": 4,
+  "corrected_sql": ""
+}

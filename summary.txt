@@ -1,0 +1,219 @@
+Total Errors: 33
+Total Successes: 158
+
+--- ERRORS ---
+Q18: What is the average time between exam schedule creation and board creation?
+Error: Validation failed (schema): Hallucinated column(s): board.synced_at. Use only columns that exist in the schema.
+
+Q23: What is the average final honorarium amount per board coordinator?
+Error: Execution error: invalid input syntax for type bigint: "EMP001"
+
+
+Q30: For each active scanner device, show the device name, campus, total scripts scanned this month, number of rescans performed, average OCR confidence of pages scanned, and the timestamp of the last scan, filtering devices with zero scans.
+Error: Validation failed (schema): Hallucinated column(s): scan_history.extracted_metadata. Use only columns that exist in the schema.
+
+Q31: Which bundles have been in SCANNING status for more than 24 hours without reaching COMPLETE, and show the exam hall, bundle code, scanned count, expected count, and the device that last scanned a script in that bundle?
+Error: Validation failed (schema): Hallucinated column(s): exam_schedule_cache.exam_hall, exam_schedule_cache.exam_hall. Use only columns that exist in the schema.
+
+Q32: For every script currently under legal hold, show the student name, course code, hold reason, case reference, hold start date, hold duration in days, and the display name of the user who approved the hold.
+Error: Validation failed (schema): Hallucinated column(s): academic_unit_closure.code. Use only columns that exist in the schema.
+
+Q33: Identify all students who are marked ELIGIBLE in the exam roster but have no corresponding answer script with lifecycle status ATTEMPTED, indicating a potential scanning gap.
+Error: Validation failed (schema): Hallucinated column(s): unaliased.lifecycle_status, unaliased.lifecycle_status. Use only columns that exist in the schema.
+
+Q34: For each board in EVAL_IN_PROGRESS status, show the course code, total scripts, number of scripts in each evaluation status, the board coordinator name and honorarium weight, and the number of calendar days remaining until the deadline.
+Error: Validation failed (schema): Hallucinated column(s): board_coordinator.name, unaliased.deadline, board_coordinator.name, script_assignment.course_id, answer_script.script_id. Use only columns that exist in the schema.
+
+Q35: Which evaluators are currently in the pool for active boards but have no active script assignments, and show their faculty name, department, and the boards they are eligible for.
+Error: Validation failed (schema): Hallucinated column(s): academic_unit.display_name, evaluator_pool.employee_id, evaluator_pool.employee_id. Use only columns that exist in the schema.
+
+Q38: For each published result, show the script URN, student name, final marks, computation rule, the list of source attempt types used, the evaluator names for those attempts, and whether the result has been reconciled with ERP.
+Error: Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table "ea"
+LINE 1: ...d = a.student_id JOIN faculty_cache fc ON fc.id = ea.faculty...
+                                                             ^
+
+
+Q40: Show all approved revaluation requests where the resulting evaluation attempt was created but the evaluator has not started marking within 3 working days of the attempt assignment.
+Error: Validation failed (cost): EXPLAIN revealed a SQL error: function working_day_offset(timestamp with time zone, integer, character varying) does not exist
+LINE 1: ...ive = TRUE AND ea.frozen_at < CURRENT_TIMESTAMP - working_da...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+
+
+Q41: For each audit log entry related to a result correction, show the result ID, the old marks, the new marks, the name of the user who made the correction, the reason given, and the time elapsed since the previous correction on the same result.
+Error: Validation failed (schema): Hallucinated column(s): evaluation_marks.result_id, evaluation_marks.result_id. Use only columns that exist in the schema.
+
+Q46: For each question paper, show the paper title, total marks, number of leaf questions, number of answer key rubrics defined, number of preparers, approval status, and the name of the user who approved it.
+Error: Validation failed (schema): Hallucinated column(s): answer_key_preparer.preparer_id, answer_key_preparer.preparer_id. Use only columns that exist in the schema.
+
+Q48: Show all scripts where the primary evaluator has frozen the attempt, a review evaluator has been assigned, but the review attempt has not yet started, including the primary evaluator name, review evaluator name, and board code.
+Error: Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: character varying = bigint
+LINE 1: ..._id JOIN faculty_cache fc1 ON fc1.employee_erp_id = sa_pri.f...
+                                                             ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+
+
+Q49: For each faculty member, show their name, department, total scripts assigned as primary evaluator, total scripts submitted, total honorarium approved, and the average marks they awarded per script.
+Error: Validation failed (schema): Hallucinated column(s): script_assignment.course_id. Use only columns that exist in the schema.
+
+Q51: Show the daily scanning velocity for each exam in December 2025: the number of scripts scanned per day, the change from the previous day, and the number of new bundles opened.
+Error: Validation failed (schema): Column validation failed: scan_history does NOT have bundle_id. Join to bundle via: answer_script a ON a.id = sh.script_id JOIN bundle b ON b.id = a.bundle_id.
+
+Q52: For each script with an active legal hold, show the hold duration in days, whether the hold overlaps with the board evaluation deadline, whether the script has already been published, and the case reference number.
+Error: Validation failed (syntax): SQL syntax error: Invalid expression / Unexpected token. Line 1, Col: 2303.
+  k_reason, sh.block_comments, a.lifecycle_status, a.scan_status, a.evaluation_status, a.block_status [4mAS[0m script_block_status, a.total_marks, a.is_held, a.created_at, a.updated_at, b.id AS board_id, b.exam
+
+Q61: For each student who filed a revaluation request that was approved, show their name, original final marks, revaluation attempt total marks, the absolute difference, and whether the difference exceeds the board's configured deviation threshold.
+Error: Validation failed (schema): Ambiguous column reference: 'total_marks'. It exists in multiple tables (answer_script, evaluation_attempt). You must qualify it with a table alias.
+
+Q63: Show the complete faculty eligibility and performance chain: faculty name, department, courses they are mapped to, boards they are in the pool for, scripts assigned, scripts submitted, and their average evaluation speed.
+Error: Validation failed (schema): Column validation failed: script_assignment does NOT have created_at. Use assigned_at instead.
+
+Q69: List all revaluation extension requests that are still pending.
+Error: Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table "reval_extension_request"
+LINE 1: EXPLAIN (FORMAT JSON) SELECT reval_extension_request.id AS r...
+                                     ^
+
+
+Q79: Show all attempt rule groups with their group labels.
+Error: Validation failed (schema): Hallucinated column(s): attempt_rule_group.rule_type, attempt_rule_group.rule_type, attempt_rule_group.rule_type. Use only columns that exist in the schema.
+
+Q105: What is the average number of sections per question paper?
+Error: Validation failed (schema): Hallucinated column(s): unaliased.count. Use only columns that exist in the schema.
+
+Q115: How many board coordinators have a custom honorarium weight?
+Error: Validation failed (schema): Hallucinated column(s): board_coordinator.employee_id, board_coordinator.employee_id. Use only columns that exist in the schema.
+
+Q121: Count configurations by data type.
+Error: Validation failed (schema): Hallucinated column(s): configuration.config_type, configuration.config_type. Use only columns that exist in the schema.
+
+Q133: Count active script assignments per evaluator.
+Error: Validation failed (schema): Hallucinated column(s): app_user.employee_erp_id. Use only columns that exist in the schema.
+
+Q146: Count blocked scripts per block reason category.
+Error: Validation failed (schema): Hallucinated column(s): board.block_status, board.block_reason, board.block_status, board.block_reason. Use only columns that exist in the schema.
+
+Q155: Count academic units by whether they have children.
+Error: Validation failed (schema): Hallucinated column(s): unaliased.count, unaliased.count. Use only columns that exist in the schema.
+
+Q162: Show the attempt rule configuration for question 2 in the Data Structures paper.
+Error: Validation failed (schema): Hallucinated column(s): question.title. Use only columns that exist in the schema.
+
+Q163: Which questions are grouped under the Choice group for attempt rule 1?
+Error: Validation failed (schema): Hallucinated column(s): attempt_rule_group_question.group_name, attempt_rule_group_question.group_name. Use only columns that exist in the schema.
+
+Q166: List all students with WITHHELD eligibility for the Data Structures end-semester exam.
+Error: Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (exam_student_mapping, exam_schedule_cache, student_cache). You must qualify it with a table alias.
+
+Q169: List all board coordinators with a honorarium weight different from 1.0.
+Error: Validation failed (schema): Hallucinated column(s): board_coordinator.employee_id, board_coordinator.employee_id. Use only columns that exist in the schema.
+
+Q170: Display the active honorarium rate card name and its board coordinator weight.
+Error: Validation failed (schema): Hallucinated column(s): honorarium_rate_card.board_coordinator_id. Use only columns that exist in the schema.
+
+Q179: List all scripts with a block status of ABSENT.
+Error: ambiguous_query
+
+Q182: Which users have never been granted an auxiliary role?
+Error: Validation failed (cost): EXPLAIN revealed a SQL error: column "user_id" does not exist
+LINE 1: EXPLAIN (FORMAT JSON) SELECT user_id FROM app_user WHERE ext...
+                                     ^
+
+
+--- SUCCESSES (Sample) ---
+Q1: Show all leaf questions in the Algorithms paper that have no rubric defined in the approved answer key.
+Query: SELECT q.id, q.code, q.path, q.max_marks, q.display_order FROM question q JOIN question_paper qp ON qp.id = q.qp_id WHERE qp.title ILIKE '%Algorithms%' AND NOT EXISTS (SELECT 1 FROM answer_key ak WHERE ak.qp_id = qp.id) ORDER BY q.path
+
+Q2: Show the ltree path and level for every question in Section A of the Data Structures paper.
+Query: SELECT q.id AS question_id, q.code AS question_code, q.path AS question_path, q.level AS question_level FROM question q JOIN question_section qs ON q.section_id = qs.id JOIN question_paper qp ON qs.qp_id = qp.id WHERE qp.title = 'Data Structures' AND qp.source_document->>'key_name' = 'paper' AND qs.name = 'Section A'
+
+Q3: What is the average time between a revaluation request and its extension request?
+Query: SELECT AVG(ext.created_at - req.created_at) AS avg_time_between_request_and_extension
+FROM revaluation_request req
+JOIN revaluation_extension_request ext ON ext.revaluation_request_id = req.id
+WHERE req.approval_status = 'APPROVED'
+
+Q4: What is the maximum depth of any node in the academic hierarchy?
+Query: SELECT MAX(depth) FROM academic_unit_closure
+
+Q5: How many bundles are still open after 48 hours?
+Query: SELECT COUNT(*) FROM bundle WHERE status = 'OPEN' AND created_at < NOW() - INTERVAL '48 hours'
+
+Q6: How many evaluation attempts have been superseded by a new cycle?
+Query: SELECT COUNT(ea.id) AS superseded_attempts
+FROM   evaluation_attempt ea
+WHERE  ea.evaluation_cycle < (
+           SELECT MAX(ea2.evaluation_cycle)
+           FROM   evaluation_attempt ea2
+           WHERE  ea2.script_id = ea.script_id
+       );
+
+Q7: How many script pages have OCR confidence scores below 0.8?
+Query: SELECT COUNT(*) FROM script_page WHERE (extracted_metadata->>'confidence')::FLOAT < 0.8
+
+Q8: What is the average number of annotations per frozen attempt?
+Query: SELECT AVG(total_annotations) AS avg_annotations_per_freeze FROM (SELECT COUNT(*) AS total_annotations FROM evaluation_attempt ea JOIN evaluation_annotation ea_a ON ea_a.attempt_id = ea.id WHERE ea.status = 'FROZEN' AND ea.is_active = TRUE GROUP BY ea.id) sub
+
+Q9: How many boards use hard deadline enforcement?
+Query: SELECT COUNT(*) FROM board WHERE deadline_enforcement = 'HARD_BLOCK'
+
+Q10: What percentage of revaluation requests result in a new attempt being created?
+Query: SELECT CASE WHEN COUNT(*) = 0 THEN NULL ELSE COUNT(CASE WHEN rr.approval_status = 'APPROVED' THEN 1 END) * 100.0 / COUNT(*) END AS revaluation_to_attempt_ratio FROM revaluation_request rr
+
+Q11: How many results per board have failed ERP push?
+Query: SELECT b.id AS board_id, COUNT(r.id) AS failed_erp_push_count
+FROM   board b
+JOIN   result r ON r.board_id = b.id
+WHERE  r.erp_push_status = 'FAILED'
+GROUP  BY b.id
+ORDER  BY failed_erp_push_count DESC
+
+Q12: What is the average number of history corrections per published result?
+Query: SELECT AVG(history_correction_count) AS avg_history_corrections_per_result
+FROM (
+  SELECT COUNT(*) AS history_correction_count
+  FROM result
+  JOIN result_history rh ON rh.result_id = result.id
+  GROUP BY result.id
+) sub
+
+Q13: What percentage of KEKs have a valid_to date set?
+Query: SELECT COUNT(*) FILTER (WHERE valid_to IS NOT NULL) * 100.0 / NULLIF(COUNT(*), 0) AS percentage_valid_to
+FROM   key_encryption_key;
+
+Q14: What is the average time between answer key creation and approval?
+Query: SELECT AVG(T2.created_at - T1.created_at) AS avg_time_between_creation_and_approval
+FROM   answer_key     T1
+JOIN   app_user       T2 ON T2.id = T1.approved_by
+WHERE  T1.status = 'APPROVED'
+
+Q15: Count attempt rules by the number of questions they govern.
+Query: SELECT COUNT(*) AS rule_count, ar.question_id FROM attempt_rule ar GROUP BY ar.question_id
+
+Q16: What is the scan completion rate per bundle?
+Query: SELECT b.bundle_code, b.exam_id, COUNT(a.id) FILTER (WHERE a.scan_status = 'SCANNED') * 100.0 / NULLIF(COUNT(a.id), 0) AS scan_completion_rate FROM bundle b LEFT JOIN answer_script a ON a.bundle_id = b.id GROUP BY b.bundle_code, b.exam_id ORDER BY scan_completion_rate DESC;
+
+Q17: What is the average duration of a legal hold in days?
+Query: SELECT AVG(AGE(CURRENT_DATE, sh.hold_start_date)) AS avg_hold_duration_days FROM script_hold sh WHERE sh.is_active = TRUE AND sh.released_at IS NULL
+
+Q19: How many boards have a board-level policy overriding the course-level policy?
+Query: SELECT COUNT(DISTINCT b.id) AS board_count
+FROM   board b
+JOIN   evaluation_policy ep ON ep.board_id = b.id
+WHERE  ep.effective_from IS NOT NULL
+  AND ep.effective_to IS NULL
+  AND ep.course_id IS NULL
+
+Q20: Count revaluation extensions approved per board.
+Query: SELECT b.id AS board_id, COUNT(der.id) AS approved_extensions
+FROM   deadline_extension_request der
+JOIN   board b ON b.id = der.board_id
+WHERE  der.approval_status = 'APPROVED'
+GROUP  BY b.id
+ORDER  BY approved_extensions DESC;
+
+Q21: What percentage of published results use the SECOND_EVAL rule?
+Query: SELECT COUNT(*) FILTER (WHERE r.computation_rule = 'SECOND_EVAL') * 100.0 / NULLIF(COUNT(*), 0) AS second_eval_pct
+FROM   result r
+WHERE  r.published_at IS NOT NULL
+

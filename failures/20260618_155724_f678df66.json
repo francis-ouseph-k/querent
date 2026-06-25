@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:57:24.901808+00:00",
+  "nl_query": "For each script with an active legal hold, show the hold duration in days, whether the hold overlaps with the board evaluation deadline, whether the script has already been published, and the case reference number.",
+  "failed_sql": "SELECT sh.id, sh.script_id, a.urn, sh.case_id, sh.hold_reason, sh.hold_start_date, (CURRENT_DATE - sh.hold_start_date) AS days_held, a.erp_push_status, b.deadline, b.status AS board_status FROM script_hold sh JOIN answer_script a ON a.id = sh.script_id JOIN board b ON b.id = a.board_id WHERE sh.is_active = TRUE AND sh.released_at IS NULL AND a.erp_push_status = 'PUSHED' AND b.status = 'EVAL_IN_PROGRESS' ORDER BY days_held DESC LIMIT 100;",
+  "error": "Validation failed (schema): Hallucinated column(s): answer_script.erp_push_status, answer_script.board_id, answer_script.erp_push_status. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

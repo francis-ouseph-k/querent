@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-09T13:51:26.421152",
+  "nl_query": "What is the workload on each evaluator?",
+  "failed_sql": "SELECT ...",
+  "error": "Validation failed (syntax): SQL syntax error: Invalid expression / Unexpected token. Line 1, Col: 8.\n  SELECT \u001b[4m.\u001b[0m..",
+  "retries": 2,
+  "corrected_sql": ""
+}

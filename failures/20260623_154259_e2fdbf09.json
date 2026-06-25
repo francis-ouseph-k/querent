@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T15:42:59.702430+00:00",
+  "nl_query": "Count revaluation extensions approved per board.",
+  "failed_sql": "SELECT b.id AS board_id, COUNT(der.id) AS approved_extensions\nFROM   revaluation_extension_request der\nJOIN   board b ON b.id = der.board_id\nWHERE  der.approval_status = 'APPROVED'\nGROUP  BY b.id",
+  "error": "Validation failed (semantic): The question asks for an aggregation 'per' or 'by' something, but the SQL lacks a GROUP BY clause. You MUST include a GROUP BY clause when grouping data.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

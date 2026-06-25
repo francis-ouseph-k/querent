@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T08:45:09.435237+00:00",
+  "nl_query": "For each student who filed a revaluation request that was approved, show their name, original final marks, revaluation attempt total marks, the absolute difference, and whether the difference exceeds the board's configured deviation threshold.",
+  "failed_sql": "SELECT sc.name AS student_name, ra.original_final_marks, ra.revaluation_total_marks, ABS(ra.original_final_marks - ra.revaluation_total_marks) AS variance, ep.deviation_threshold FROM revaluation_request ra JOIN answer_script a ON a.id = ra.script_id JOIN student_cache sc ON sc.id = a.student_id JOIN evaluation_attempt ea ON ea.script_id = a.id AND ea.is_active = TRUE JOIN evaluation_marks em ON em.attempt_id = ea.id JOIN board b ON b.id = ea.board_id CROSS JOIN LATERAL (SELECT ep2.deviation_threshold, ep2.review_required, ep2.third_eval_trigger FROM evaluation_policy ep2 WHERE (ep2.board_id = ea.board_id) OR (ep2.course_id = b.course_id AND ep2.board_id IS NULL) OR (ep2.course_id IS NULL AND ep2.board_id IS NULL) ORDER BY CASE WHEN ep2.board_id IS NOT NULL THEN 1 WHEN ep2.course_id IS NOT NULL THEN 2 ELSE 3 END LIMIT 1) ep WHERE ra.approval_status = 'APPROVED' AND ea.attempt_type = 'REVAL' AND ea.status IN ('FROZEN', 'SUBMITTED') AND em.is_final = TRUE ORDER BY variance DESC",
+  "error": "Validation failed (schema): Hallucinated column(s): revaluation_request.original_final_marks, revaluation_request.revaluation_total_marks, revaluation_request.original_final_marks, revaluation_request.revaluation_total_marks. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

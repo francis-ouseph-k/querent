@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-17T05:06:36.286734+00:00",
+  "nl_query": "Count the number of active relationships per relationship type.",
+  "failed_sql": "SELECT rt.relationship_type, COUNT(*) AS active_relationship_count\nFROM relationship_type_config rt\nWHERE rt.is_active = TRUE\nGROUP BY rt.relationship_type\nORDER BY active_relationship_count DESC;",
+  "error": "Validation failed (schema): Hallucinated column(s): relationship_type_config.active_relationship_count. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

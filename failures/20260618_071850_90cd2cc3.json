@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T07:18:50.922948+00:00",
+  "nl_query": "Count notifications per type.",
+  "failed_sql": "SELECT type, COUNT(*) AS notification_count FROM notification WHERE is_active = TRUE GROUP BY type ORDER BY notification_count DESC LIMIT 10;",
+  "error": "Validation failed (schema): Hallucinated column(s): notification.is_active. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

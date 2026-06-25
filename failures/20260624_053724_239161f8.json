@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-24T05:37:24.042491+00:00",
+  "nl_query": "Identify all students who are marked ELIGIBLE in the exam roster but have no corresponding answer script with lifecycle status ATTEMPTED, indicating a potential scanning gap.",
+  "failed_sql": "SELECT sc.student_erp_id, sc.name, esm.eligibility_status, a.lifecycle_status\nFROM   exam_student_mapping esm\nJOIN   student_cache sc ON sc.id = esm.student_id\nJOIN   answer_script a ON a.urn        = esm.urn\n                                AND a.student_id = esm.student_id\n                                AND a.exam_id    = esm.exam_id\n                                AND a.course_id  = esm.course_id\nWHERE  esm.eligibility_status = 'ELIGIBLE'\n  AND  a.lifecycle_status     = 'ATTEMPTED'\nLIMIT  100;",
+  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'answer_script' and 'exam_student_mapping'. Please review the schema for the correct join path.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

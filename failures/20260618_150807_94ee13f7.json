@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:08:07.441492+00:00",
+  "nl_query": "For each department, show the department name, number of courses, number of faculty members, number of active boards, number of scripts currently in evaluation, and the average marks awarded per script.",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

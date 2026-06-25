@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T10:18:10.946233+00:00",
+  "nl_query": "For each faculty member, show their name, department, total scripts assigned as primary evaluator, total scripts submitted, total honorarium approved, and the average marks they awarded per script.",
+  "failed_sql": "SELECT fc.name AS faculty_name, au.academic_unit_name, COUNT(sa.id) AS total_scripts_primary_evaluator, COUNT(ea.id) AS total_scripts_submitted, SUM(hs.final_amount) AS total_honorarium_approved, AVG(em.marks_awarded) AS average_marks_per_script\nFROM   faculty_cache fc\nJOIN   app_user au ON au.faculty_cache_id = fc.id\nJOIN   script_assignment sa ON sa.faculty_cache_id = fc.id\nJOIN   evaluation_attempt ea ON ea.assignment_id = sa.id\nJOIN   honorarium_summary hs ON hs.faculty_cache_id = fc.id\nJOIN   evaluation_marks em ON em.attempt_id = ea.id\nWHERE  ea.attempt_type = 'PRIMARY'\nGROUP  BY fc.name, au.academic_unit_name\nORDER  BY total_scripts_primary_evaluator DESC, total_scripts_submitted DESC, total_honorarium_approved DESC, average_marks_per_script DESC",
+  "error": "Validation failed (semantic): SQL joins multiple child fact tables (e.g., marks, assignments, honorarium) in the same flat query block. This causes a Cartesian product and inflates aggregate counts. You MUST pre-aggregate child tables in separate CTEs before joining them to the parent entity.",
+  "retries": 4,
+  "corrected_sql": ""
+}

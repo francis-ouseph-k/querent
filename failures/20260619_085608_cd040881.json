@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T08:56:08.208734+00:00",
+  "nl_query": "Identify all scripts where the cached total marks on the answer script row differs from the total marks on the latest active evaluation attempt by more than 0.5 marks, indicating a cache synchronization issue.",
+  "failed_sql": "SELECT a.id AS script_id, a.urn, sc.student_id, sc.name, sc.synced_at, (SUM(em.marks_awarded) - a.total_marks) AS discrepancy\nFROM   answer_script a\nJOIN   script_assignment sa ON sa.script_id = a.id\nJOIN   evaluation_attempt ea ON ea.script_id = sa.script_id AND ea.evaluator_id = sa.evaluator_id\nJOIN   evaluation_marks em ON em.attempt_id = ea.id\nJOIN   student_cache sc ON sc.student_id = a.student_id\nWHERE  a.evaluation_status = 'SUBMITTED'\n  AND  a.is_active = TRUE\n  AND  em.is_final = TRUE\nGROUP  BY a.id, a.urn, sc.student_id, sc.name, sc.synced_at\nHAVING (SUM(em.marks_awarded) - a.total_marks) > 0.5\nLIMIT  100;",
+  "error": "Validation failed (schema): Type mismatch: answer_script.lifecycle_status (VARCHAR): boolean literal used on string column. Tip — integer/bigint columns need unquoted numeric literals (e.g. board_id = 5, not board_id = '5'). If you are filtering by a human-readable label like a course code or name, use the .code or .name VARCHAR column instead of the numeric .id column.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

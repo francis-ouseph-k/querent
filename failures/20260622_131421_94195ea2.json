@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T13:14:21.974663+00:00",
+  "nl_query": "For each board in EVAL_IN_PROGRESS status, show the course code, total scripts, number of scripts in each evaluation status, the board coordinator name and honorarium weight, and the number of calendar days remaining until the deadline.",
+  "failed_sql": "SELECT au.code AS academic_unit_code, COUNT(a.id) AS total_scripts, SUM(CASE WHEN ea.status = 'NOT_ASSIGNED' THEN 1 ELSE 0 END) AS scripts_not_assigned, SUM(CASE WHEN ea.status = 'ASSIGNED' THEN 1 ELSE 0 END) AS scripts_assigned, SUM(CASE WHEN ea.status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS scripts_in_progress, SUM(CASE WHEN ea.status = 'FROZEN' THEN 1 ELSE 0 END) AS scripts_frozen, SUM(CASE WHEN ea.status = 'SUBMITTED' THEN 1 ELSE 0 END) AS scripts_submitted, (SELECT COUNT(cal_date) FROM academic_calendar ac WHERE ac.academic_year = b.academic_year AND ac.cal_date BETWEEN b.created_at::DATE AND b.deadline) AS working_days_remaining, bc.name AS board_coordinator_name, bc.honorarium_weight FROM board b JOIN academic_unit au ON au.id = b.course_id JOIN script_assignment sa ON sa.board_id = b.id JOIN evaluation_attempt ea ON ea.assignment_id = sa.id JOIN faculty_cache fc ON fc.id = sa.faculty_cache_id JOIN board_coordinator bc ON bc.board_id = b.id WHERE b.status = 'EVAL_IN_PROGRESS' GROUP BY au.code, bc.name, bc.honorarium_weight",
+  "error": "Validation failed (syntax): SQL syntax error: Invalid expression / Unexpected token. Line 1, Col: 752.\n   AS board_coordinator_name, bc.honorarium_weight FROM script_assignment sa JOIN answer_script as ON \u001b[4msa\u001b[0m.id = as.id JOIN board b ON as.board_id = b.id JOIN academic_unit au ON au.id = b.course_id JOIN eva",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T08:26:06.502743+00:00",
+  "nl_query": "Which boards have all scripts scanned but less than 80 percent of those scripts have been assigned to evaluators, and show the course code, total scripts, assigned count, and assignment gap.",
+  "failed_sql": "SELECT au.code AS academic_unit_code, COUNT(DISTINCT a.id) AS total_scripts, COUNT(DISTINCT sa.id) AS assigned_count, (total_scripts - assigned_count) AS script_assignment_gap FROM academic_unit au JOIN exam_schedule_cache esc ON au.id = esc.course_id JOIN answer_script a ON a.exam_id = esc.id JOIN script_assignment sa ON sa.script_id = a.id WHERE a.lifecycle_status = 'ATTEMPTED' AND a.scan_status = 'SCANNED' AND sa.is_active = TRUE GROUP BY au.code HAVING (total_scripts - assigned_count) < 80",
+  "error": "Validation failed (schema): Hallucinated column(s): academic_unit.total_scripts, academic_unit.total_scripts, academic_unit.total_scripts. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": ""
+}

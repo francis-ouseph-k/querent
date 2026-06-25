@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T16:03:28.127401+00:00",
+  "nl_query": "Show all exam schedules that have at least one bundle created but no answer scripts registered, indicating a potential data synchronization gap between the scanning team and the evaluation system.",
+  "failed_sql": "SELECT esc.exam_id, esc.course_id, esc.exam_date, esc.exam_type\nFROM   exam_schedule_cache esc\nJOIN   bundle b ON b.exam_id = esc.exam_id\nWHERE  b.status = 'OPEN'\n  AND  esc.status <> 'COMPLETE'\n  AND  NOT EXISTS (\n         SELECT 1 FROM answer_script a WHERE a.exam_id = esc.exam_id\n       )\nORDER  BY esc.exam_date DESC",
+  "error": "Validation failed (schema): Hallucinated column(s): exam_schedule_cache.status. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

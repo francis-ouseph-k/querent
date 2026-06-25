@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T17:49:32.691547+00:00",
+  "nl_query": "Which users have never been granted an auxiliary role?",
+  "failed_sql": "SELECT user_id FROM app_user WHERE id NOT IN (SELECT user_id FROM user_auxiliary_role)",
+  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (user_auxiliary_role, app_user). You must qualify it with a table alias.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

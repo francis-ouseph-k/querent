@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T12:36:20.837779+00:00",
+  "nl_query": "For each script with an active legal hold, show the hold duration in days, whether the hold overlaps with the board evaluation deadline, whether the script has already been published, and the case reference number.",
+  "failed_sql": "SELECT sh.id, sh.script_id, a.urn, sh.case_id, sh.hold_reason, sh.hold_start_date, sh.hold_end_date, sh.released_at, sh.is_active, (CURRENT_DATE - sh.hold_start_date) AS days_held, au.display_name AS placed_by, CASE WHEN de.expiry_date IS NOT NULL THEN TRUE ELSE FALSE END AS is_board_deadline_overlapping, r.published_at IS NOT NULL AS has_script_been_published FROM script_hold sh JOIN answer_script a ON a.id = sh.script_id JOIN app_user au ON au.id = sh.applied_by LEFT JOIN deadline_extension_request de ON de.board_id = sh.board_id LEFT JOIN result r ON r.script_id = a.id WHERE sh.is_active = TRUE AND sh.released_at IS NULL ORDER BY sh.hold_start_date ASC;",
+  "error": "Validation failed (schema): Hallucinated column(s): script_hold.board_id, deadline_extension_request.expiry_date. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T13:50:36.079945+00:00",
+  "nl_query": "Count blocked scripts per block reason category.",
+  "failed_sql": "SELECT b.block_status, COUNT(*) AS script_count\nFROM   answer_script      a\nJOIN   script_assignment sa ON sa.script_id = a.id AND sa.is_active = TRUE\nJOIN   board b ON b.course_id = a.course_id AND b.exam_id = a.exam_id\nWHERE  b.block_status IS NOT NULL\nGROUP  BY b.block_status, b.block_reason\nORDER  BY script_count DESC;",
+  "error": "Validation failed (schema): Hallucinated table(s): answer_script asr. These tables do not exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

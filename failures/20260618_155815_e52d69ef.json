@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:58:15.168761+00:00",
+  "nl_query": "Which scripts have a mismatch between the number of pages recorded in scan metadata and the number of script_page rows stored in the database?",
+  "failed_sql": "SELECT sh.script_id, a.urn, (sh.scan_metadata->>'expected_pages')::INTEGER AS expected, (sh.scan_metadata->>'actual_pages')::INTEGER AS actual, COUNT(*) AS script_page_count, MAX(sh.scanned_at) AS latest_scan\nFROM   scan_history sh\nJOIN   answer_script a ON a.id = sh.script_id\nJOIN   script_page sp ON sp.script_id = a.id\nGROUP  BY sh.script_id, a.urn\nHAVING COUNT(*) <> (sh.scan_metadata->>'expected_pages')::INTEGER\nORDER  BY script_page_count DESC\nLIMIT  200;",
+  "error": "Validation failed (schema): Hallucinated column(s): scan_history.scan_metadata, scan_history.scan_metadata, scan_history.scan_metadata. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

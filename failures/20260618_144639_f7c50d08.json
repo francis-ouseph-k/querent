@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T14:46:39.542615+00:00",
+  "nl_query": "How many script pages have OCR confidence scores below 0.8?",
+  "failed_sql": "SELECT COUNT(*) AS script_page_count\nFROM   script_page sp\nJOIN   answer_script a ON a.id = sp.script_id\nWHERE  sp.extracted_metadata->>'confidence'::FLOAT < 0.8",
+  "error": "Execution error: invalid input syntax for type double precision: \"confidence\"\nLINE 4: WHERE  sp.extracted_metadata->>'confidence'::FLOAT < 0.8 LIM...\n                                       ^\n",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

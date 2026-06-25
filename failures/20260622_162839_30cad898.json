@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T16:28:39.814357+00:00",
+  "nl_query": "Show the complete timeline for each board created last month: creation date, first script assignment date, first evaluation attempt start date, first freeze date, last submission date, and the total number of days the board has been open.",
+  "failed_sql": "SELECT b.id, b.created_at AS creation_date, sa.assigned_at AS first_script_assignment_date, ea.started_at AS first_evaluation_attempt_start_date, ea.frozen_at AS first_freeze_date, r.submitted_at AS last_submission_date, (r.submitted_at - b.created_at) / 86400 AS days_open FROM board b JOIN script_assignment sa ON sa.board_id = b.id JOIN evaluation_attempt ea ON ea.script_id = sa.script_id JOIN result r ON r.script_id = sa.script_id WHERE b.created_at >= CURRENT_DATE - INTERVAL '1 month' GROUP BY b.id ORDER BY b.created_at ASC",
+  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (evaluation_attempt, script_assignment, result, board). You must qualify it with a table alias.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

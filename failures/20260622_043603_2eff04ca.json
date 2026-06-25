@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T04:36:03.610196+00:00",
+  "nl_query": "Which scripts have scan metadata indicating a quality score below 0.5, have been rescanned at least once, and are currently assigned to an evaluator but not yet frozen?",
+  "failed_sql": "SELECT a.id AS script_id, a.urn, sa.evaluator_id, sa.assigned_at, sa.attempt_type, ea.status FROM answer_script a JOIN script_assignment sa ON sa.script_id = a.id JOIN evaluation_attempt ea ON ea.assignment_id = sa.id WHERE a.scan_metadata->>'quality_score'::NUMERIC < 0.5 AND sa.replaced_previous = TRUE AND ea.status = 'ASSIGNED' AND a.lifecycle_status = 'ATTEMPTED' AND a.block_status = 'NONE'",
+  "error": "Validation failed (schema): Type mismatch: answer_script.scan_status (VARCHAR): boolean literal used on string column. Tip — integer/bigint columns need unquoted numeric literals (e.g. board_id = 5, not board_id = '5'). If you are filtering by a human-readable label like a course code or name, use the .code or .name VARCHAR column instead of the numeric .id column.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

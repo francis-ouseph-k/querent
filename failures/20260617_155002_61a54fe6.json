@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-17T15:50:02.289515+00:00",
+  "nl_query": "Show the ltree path and level for every question in Section A of the Data Structures paper.",
+  "failed_sql": "SELECT q.id, q.code, q.path, q.level FROM question q JOIN question_paper qp ON qp.id = q.qp_id JOIN question_section qs ON qs.id = q.section_id WHERE qs.name = 'Section A' AND qp.title = 'Data Structures' AND qp.is_active = TRUE AND qs.is_active = TRUE AND q.is_active = TRUE",
+  "error": "Validation failed (schema): Hallucinated column(s): question.is_active, question_section.is_active. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

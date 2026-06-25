@@ -1,0 +1,352 @@
+  0           0 RESUME                   0
+
+  1           2 LOAD_CONST               0 ('\ngeneration/disambiguation/router.py\n───────────────────────────────────\n\nIntent router that evaluates a query against registered DisambiguationSpecs.\n')
+              4 STORE_NAME               0 (__doc__)
+
+  7           6 LOAD_CONST               1 (0)
+              8 LOAD_CONST               2 (None)
+             10 IMPORT_NAME              1 (re)
+             12 STORE_NAME               1 (re)
+
+  8          14 LOAD_CONST               1 (0)
+             16 LOAD_CONST               3 (('Callable', 'List', 'Optional', 'Tuple'))
+             18 IMPORT_NAME              2 (typing)
+             20 IMPORT_FROM              3 (Callable)
+             22 STORE_NAME               3 (Callable)
+             24 IMPORT_FROM              4 (List)
+             26 STORE_NAME               4 (List)
+             28 IMPORT_FROM              5 (Optional)
+             30 STORE_NAME               5 (Optional)
+             32 IMPORT_FROM              6 (Tuple)
+             34 STORE_NAME               6 (Tuple)
+             36 POP_TOP
+
+ 10          38 LOAD_CONST               4 (1)
+             40 LOAD_CONST               5 (('DisambiguationSpec',))
+             42 IMPORT_NAME              7 (spec)
+             44 IMPORT_FROM              8 (DisambiguationSpec)
+             46 STORE_NAME               8 (DisambiguationSpec)
+             48 POP_TOP
+
+ 11          50 LOAD_CONST               4 (1)
+             52 LOAD_CONST               6 (('get_semantic_disambiguator',))
+             54 IMPORT_NAME              9 (semantic_disambiguator)
+             56 IMPORT_FROM             10 (get_semantic_disambiguator)
+             58 STORE_NAME              10 (get_semantic_disambiguator)
+             60 POP_TOP
+
+ 12          62 LOAD_CONST               1 (0)
+             64 LOAD_CONST               7 (('get_logger',))
+             66 IMPORT_NAME             11 (utils.logging_config)
+             68 IMPORT_FROM             12 (get_logger)
+             70 STORE_NAME              12 (get_logger)
+             72 POP_TOP
+
+ 15          74 PUSH_NULL
+             76 LOAD_NAME               12 (get_logger)
+             78 LOAD_NAME               13 (__name__)
+             80 PRECALL                  1
+             84 CALL                     1
+             94 STORE_NAME              14 (logger)
+
+ 17          96 PUSH_NULL
+             98 LOAD_BUILD_CLASS
+            100 LOAD_CONST               8 (<code object DisambiguationRouter at 0x00000277EB2BC870, file "D:\work\CONFIDENTAIL\KREUPASANAM\digital-evaluation_ai\nl_to_sql\generation\disambiguation\enricher.py", line 17>)
+            102 MAKE_FUNCTION            0
+            104 LOAD_CONST               9 ('DisambiguationRouter')
+            106 PRECALL                  2
+            110 CALL                     2
+            120 STORE_NAME              15 (DisambiguationRouter)
+            122 LOAD_CONST               2 (None)
+            124 RETURN_VALUE
+
+Disassembly of <code object DisambiguationRouter at 0x00000277EB2BC870, file "D:\work\CONFIDENTAIL\KREUPASANAM\digital-evaluation_ai\nl_to_sql\generation\disambiguation\enricher.py", line 17>:
+ 17           0 RESUME                   0
+              2 LOAD_NAME                0 (__name__)
+              4 STORE_NAME               1 (__module__)
+              6 LOAD_CONST               0 ('DisambiguationRouter')
+              8 STORE_NAME               2 (__qualname__)
+
+ 18          10 LOAD_CONST               1 ('Evaluates user queries against known ambiguity rules and semantic models.')
+             12 STORE_NAME               3 (__doc__)
+
+ 20          14 LOAD_CONST               2 ('specs')
+             16 LOAD_NAME                4 (List)
+             18 LOAD_NAME                5 (DisambiguationSpec)
+             20 BINARY_SUBSCR
+             30 BUILD_TUPLE              2
+             32 LOAD_CONST               3 (<code object __init__ at 0x00000277EB211A30, file "D:\work\CONFIDENTAIL\KREUPASANAM\digital-evaluation_ai\nl_to_sql\generation\disambiguation\enricher.py", line 20>)
+             34 MAKE_FUNCTION            4 (annotations)
+             36 STORE_NAME               6 (__init__)
+
+ 28          38 NOP
+
+ 24          40 LOAD_CONST              10 ((None,))
+             42 LOAD_CONST               5 ('query')
+
+ 26          44 LOAD_NAME                7 (str)
+
+ 24          46 LOAD_CONST               6 ('entities')
+
+ 27          48 LOAD_NAME                4 (List)
+             50 LOAD_NAME                7 (str)
+             52 BINARY_SUBSCR
+
+ 24          62 LOAD_CONST               7 ('enrich_option')
+
+ 28          64 LOAD_NAME                8 (Optional)
+             66 LOAD_NAME                9 (Callable)
+             68 LOAD_NAME                7 (str)
+             70 BUILD_LIST               1
+             72 LOAD_NAME                7 (str)
+             74 BUILD_TUPLE              2
+             76 BINARY_SUBSCR
+             86 BINARY_SUBSCR
+
+ 24          96 LOAD_CONST               8 ('return')
+
+ 29          98 LOAD_NAME               10 (Tuple)
+            100 LOAD_NAME               11 (bool)
+            102 LOAD_NAME                4 (List)
+            104 LOAD_NAME                7 (str)
+            106 BINARY_SUBSCR
+            116 LOAD_NAME                4 (List)
+            118 LOAD_NAME                7 (str)
+            120 BINARY_SUBSCR
+            130 BUILD_TUPLE              3
+            132 BINARY_SUBSCR
+
+ 24         142 BUILD_TUPLE              8
+            144 LOAD_CONST               9 (<code object detect_ambiguity at 0x00000277EB475C80, file "D:\work\CONFIDENTAIL\KREUPASANAM\digital-evaluation_ai\nl_to_sql\generation\disambiguation\enricher.py", line 24>)
+            146 MAKE_FUNCTION            5 (defaults, annotations)
+            148 STORE_NAME              12 (detect_ambiguity)
+            150 LOAD_CONST               4 (None)
+            152 RETURN_VALUE
+
+Disassembly of <code object __init__ at 0x00000277EB211A30, file "D:\work\CONFIDENTAIL\KREUPASANAM\digital-evaluation_ai\nl_to_sql\generation\disambiguation\enricher.py", line 20>:
+ 20           0 RESUME                   0
+
+ 21           2 LOAD_FAST                1 (specs)
+              4 LOAD_FAST                0 (self)
+              6 STORE_ATTR               0 (specs)
+
+ 22          16 LOAD_GLOBAL              3 (NULL + get_semantic_disambiguator)
+             28 PRECALL                  0
+             32 CALL                     0
+             42 LOAD_FAST                0 (self)
+             44 STORE_ATTR               2 (semantic_disambiguator)
+             54 LOAD_CONST               0 (None)
+             56 RETURN_VALUE
+
+Disassembly of <code object detect_ambiguity at 0x00000277EB475C80, file "D:\work\CONFIDENTAIL\KREUPASANAM\digital-evaluation_ai\nl_to_sql\generation\disambiguation\enricher.py", line 24>:
+              0 MAKE_CELL                9 (entity_set)
+
+ 24           2 RESUME                   0
+
+ 40           4 LOAD_FAST                1 (query)
+              6 LOAD_METHOD              0 (lower)
+             28 PRECALL                  0
+             32 CALL                     0
+             42 STORE_FAST               4 (lower)
+
+ 41          44 BUILD_LIST               0
+             46 STORE_FAST               5 (auto_resolved_choices)
+
+ 43          48 LOAD_FAST                0 (self)
+             50 LOAD_ATTR                1 (specs)
+             60 GET_ITER
+        >>   62 EXTENDED_ARG             1
+             64 FOR_ITER               259 (to 584)
+             66 STORE_FAST               6 (spec)
+
+ 45          68 LOAD_FAST                6 (spec)
+             70 LOAD_METHOD              2 (is_triggered)
+             92 LOAD_FAST                4 (lower)
+             94 PRECALL                  1
+             98 CALL                     1
+            108 POP_JUMP_FORWARD_IF_TRUE     1 (to 112)
+
+ 46         110 JUMP_BACKWARD           25 (to 62)
+
+ 49     >>  112 LOAD_FAST                6 (spec)
+            114 LOAD_METHOD              3 (is_resolved)
+            136 LOAD_FAST                4 (lower)
+            138 PRECALL                  1
+            142 CALL                     1
+            152 POP_JUMP_FORWARD_IF_FALSE     1 (to 156)
+
+ 50         154 JUMP_BACKWARD           47 (to 62)
+
+ 54     >>  156 LOAD_FAST                2 (entities)
+            158 POP_JUMP_FORWARD_IF_FALSE    54 (to 268)
+
+ 55         160 LOAD_GLOBAL              9 (NULL + set)
+            172 LOAD_FAST                2 (entities)
+            174 PRECALL                  1
+            178 CALL                     1
+            188 STORE_DEREF              9 (entity_set)
+
+ 56         190 LOAD_CLOSURE             9 (entity_set)
+            192 BUILD_TUPLE              1
+            194 LOAD_CONST               1 (<code object <listcomp> at 0x00000277EB256BC0, file "D:\work\CONFIDENTAIL\KREUPASANAM\digital-evaluation_ai\nl_to_sql\generation\disambiguation\enricher.py", line 56>)
+            196 MAKE_FUNCTION            8 (closure)
+
+ 57         198 LOAD_FAST                6 (spec)
+            200 LOAD_ATTR                5 (options)
+
+ 56         210 GET_ITER
+            212 PRECALL                  0
+            216 CALL                     0
+            226 STORE_FAST               7 (matching_options)
+
+ 60         228 LOAD_GLOBAL             13 (NULL + len)
+            240 LOAD_FAST                7 (matching_options)
+            242 PRECALL                  1
+            246 CALL                     1
+            256 LOAD_CONST               2 (1)
+            258 COMPARE_OP               2 (==)
+            264 POP_JUMP_FORWARD_IF_FALSE     1 (to 268)
+
+ 61         266 JUMP_BACKWARD          103 (to 62)
+
+ 64     >>  268 LOAD_FAST                0 (self)
+            270 LOAD_ATTR                7 (semantic_disambiguator)
+            280 LOAD_METHOD              8 (resolve)
+
+ 65         302 LOAD_FAST                4 (lower)
+
+ 66         304 LOAD_FAST                6 (spec)
+            306 LOAD_ATTR                5 (options)
+
+ 67         316 LOAD_FAST                3 (enrich_option)
+
+ 64         318 KW_NAMES                 3
+            320 PRECALL                  3
+            324 CALL                     3
+            334 STORE_FAST               8 (semantic_choice)
+
+ 69         336 LOAD_FAST                8 (semantic_choice)
+            338 POP_JUMP_FORWARD_IF_FALSE    57 (to 454)
+
+ 74         340 LOAD_GLOBAL             18 (logger)
+            352 LOAD_METHOD             10 (info)
+
+ 75         374 LOAD_CONST               4 ('disambiguation_router')
+
+ 76         376 LOAD_CONST               5 ('semantic_disambiguation_resolved')
+
+ 77         378 LOAD_FAST                6 (spec)
+            380 LOAD_ATTR               11 (term)
+
+ 78         390 LOAD_FAST                8 (semantic_choice)
+
+ 74         392 KW_NAMES                 6
+            394 PRECALL                  4
+            398 CALL                     4
+            408 POP_TOP
+
+ 80         410 LOAD_FAST                5 (auto_resolved_choices)
+            412 LOAD_METHOD             12 (append)
+            434 LOAD_FAST                8 (semantic_choice)
+            436 PRECALL                  1
+            440 CALL                     1
+            450 POP_TOP
+
+ 81         452 JUMP_BACKWARD          196 (to 62)
+
+ 84     >>  454 LOAD_GLOBAL             18 (logger)
+            466 LOAD_METHOD             10 (info)
+
+ 85         488 LOAD_CONST               4 ('disambiguation_router')
+
+ 86         490 LOAD_CONST               7 ('ambiguity_detected')
+
+ 87         492 LOAD_FAST                6 (spec)
+            494 LOAD_ATTR               11 (term)
+
+ 88         504 LOAD_GLOBAL             13 (NULL + len)
+            516 LOAD_FAST                6 (spec)
+            518 LOAD_ATTR                5 (options)
+            528 PRECALL                  1
+            532 CALL                     1
+
+ 84         542 KW_NAMES                 8
+            544 PRECALL                  4
+            548 CALL                     4
+            558 POP_TOP
+
+ 90         560 LOAD_CONST               9 (True)
+            562 LOAD_FAST                6 (spec)
+            564 LOAD_ATTR                5 (options)
+            574 BUILD_LIST               0
+            576 BUILD_TUPLE              3
+            578 SWAP                     2
+            580 POP_TOP
+            582 RETURN_VALUE
+
+ 92     >>  584 LOAD_CONST              10 (False)
+            586 BUILD_LIST               0
+            588 LOAD_FAST                5 (auto_resolved_choices)
+            590 BUILD_TUPLE              3
+            592 RETURN_VALUE
+
+Disassembly of <code object <listcomp> at 0x00000277EB256BC0, file "D:\work\CONFIDENTAIL\KREUPASANAM\digital-evaluation_ai\nl_to_sql\generation\disambiguation\enricher.py", line 56>:
+              0 COPY_FREE_VARS           1
+              2 MAKE_CELL                1 (opt)
+
+ 56           4 RESUME                   0
+              6 BUILD_LIST               0
+              8 LOAD_FAST                0 (.0)
+        >>   10 FOR_ITER                31 (to 74)
+
+ 57          12 STORE_DEREF              1 (opt)
+
+ 58          14 LOAD_GLOBAL              1 (NULL + any)
+             26 LOAD_CLOSURE             1 (opt)
+             28 BUILD_TUPLE              1
+             30 LOAD_CONST               0 (<code object <genexpr> at 0x00000277EB288FA0, file "D:\work\CONFIDENTAIL\KREUPASANAM\digital-evaluation_ai\nl_to_sql\generation\disambiguation\enricher.py", line 58>)
+             32 MAKE_FUNCTION            8 (closure)
+             34 LOAD_DEREF               2 (entity_set)
+             36 GET_ITER
+             38 PRECALL                  0
+             42 CALL                     0
+             52 PRECALL                  1
+             56 CALL                     1
+
+ 56          66 POP_JUMP_BACKWARD_IF_FALSE    29 (to 10)
+
+ 57          68 LOAD_DEREF               1 (opt)
+
+ 56          70 LIST_APPEND              2
+             72 JUMP_BACKWARD           32 (to 10)
+        >>   74 RETURN_VALUE
+
+Disassembly of <code object <genexpr> at 0x00000277EB288FA0, file "D:\work\CONFIDENTAIL\KREUPASANAM\digital-evaluation_ai\nl_to_sql\generation\disambiguation\enricher.py", line 58>:
+              0 COPY_FREE_VARS           1
+
+ 58           2 RETURN_GENERATOR
+              4 POP_TOP
+              6 RESUME                   0
+              8 LOAD_FAST                0 (.0)
+        >>   10 FOR_ITER                47 (to 106)
+             12 STORE_FAST               1 (tbl)
+             14 LOAD_GLOBAL              1 (NULL + re)
+             26 LOAD_ATTR                1 (search)
+             36 LOAD_CONST               0 ('\\b')
+             38 LOAD_GLOBAL              1 (NULL + re)
+             50 LOAD_ATTR                2 (escape)
+             60 LOAD_FAST                1 (tbl)
+             62 PRECALL                  1
+             66 CALL                     1
+             76 FORMAT_VALUE             0
+             78 LOAD_CONST               0 ('\\b')
+             80 BUILD_STRING             3
+             82 LOAD_DEREF               2 (opt)
+             84 PRECALL                  2
+             88 CALL                     2
+             98 YIELD_VALUE
+            100 RESUME                   1
+            102 POP_TOP
+            104 JUMP_BACKWARD           48 (to 10)
+        >>  106 LOAD_CONST               1 (None)
+            108 RETURN_VALUE

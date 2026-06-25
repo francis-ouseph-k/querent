@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T16:56:01.511627+00:00",
+  "nl_query": "Show the complete faculty eligibility and performance chain: faculty name, department, courses they are mapped to, boards they are in the pool for, scripts assigned, scripts submitted, and their average evaluation speed.",
+  "failed_sql": "SELECT fc.name AS faculty_name, au.display_name AS user_display_name, d.name AS department_name, b.id AS board_id, sa.script_id, sa.submitted_at, AVG(EXTRACT(EPOCH FROM sa.submitted_at - sa.assigned_at)) / 86400 AS avg_evaluation_speed\nFROM   faculty_course_mapping fcm\nJOIN   faculty_cache fc ON fc.id = fcm.faculty_cache_id\nJOIN   academic_unit au ON au.id = fc.department_id\nJOIN   board b ON b.course_id = fcm.course_id AND b.exam_id = fcm.course_id\nJOIN   script_assignment sa ON sa.faculty_cache_id = fc.id AND sa.is_active = TRUE\nLEFT   JOIN academic_unit d ON d.id = fc.department_id\nLEFT   JOIN app_user au ON au.faculty_cache_id = fc.id\nWHERE  fcm.is_active = TRUE\nGROUP BY fc.name, au.display_name, d.name, b.id, sa.script_id, sa.submitted_at\nORDER BY fc.name, b.id, sa.script_id;",
+  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'board' and 'faculty_course_mapping'. Please review the schema for the correct join path.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

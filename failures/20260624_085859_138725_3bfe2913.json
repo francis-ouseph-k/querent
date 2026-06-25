@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T08:58:59.138725+00:00",
+  "nl_query": "Show workflow transitions that require a reason for board entities.",
+  "failed_sql": "SELECT entity_type, from_state, to_state, requires_reason FROM workflow_state_transition WHERE requires_reason = TRUE",
+  "error": "Validation failed (schema): Hallucinated column(s): workflow_state_transition.board_id. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": ""
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T11:48:49.761602+00:00",
+  "nl_query": "Which faculty members have prepared answer keys for papers where they are also assigned as the board coordinator, creating a potential conflict of interest?",
+  "failed_sql": "SELECT DISTINCT fc.name AS evaluator_name, fc.employee_erp_id FROM answer_key_preparer ap JOIN answer_key ak ON ap.answer_key_id = ak.id JOIN board b ON ak.qp_id = b.qp_id JOIN board_coordinator bc ON bc.board_id = b.id JOIN faculty_cache fc ON fc.id = bc.faculty_cache_id WHERE fc.id = ap.faculty_cache_id AND fc.id = bc.faculty_cache_id",
+  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'answer_key' and 'board'. Please review the schema for the correct join path.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

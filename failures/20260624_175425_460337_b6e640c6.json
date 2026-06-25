@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T17:54:25.460337+00:00",
+  "nl_query": "Display the active honorarium rate card name and its board coordinator weight.",
+  "failed_sql": "SELECT hrc.name, bc.honorarium_weight FROM honorarium_rate_card hrc JOIN board_coordinator bc ON hrc.id = bc.board_coordinator_id WHERE hrc.is_active = TRUE AND bc.effective_from <= CURRENT_DATE AND (bc.effective_to IS NULL OR bc.effective_to >= CURRENT_DATE)",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column hrc.board_coordinator_id does not exist\nLINE 1: ...nator bc JOIN honorarium_rate_card hrc ON bc.id = hrc.board_...\n                                                             ^\n",
+  "retries": 4,
+  "corrected_sql": ""
+}

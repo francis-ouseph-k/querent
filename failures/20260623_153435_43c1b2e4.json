@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T15:34:35.188549+00:00",
+  "nl_query": "How many results per board have failed ERP push?",
+  "failed_sql": "SELECT r.board_id, COUNT(*) AS result_count\nFROM   result r\nWHERE  r.erp_push_status = 'FAILED'\nGROUP  BY r.board_id\nORDER  BY r.board_id;",
+  "error": "Validation failed (semantic): The question asks for an aggregation 'per' or 'by' something, but the SQL lacks a GROUP BY clause. You MUST include a GROUP BY clause when grouping data.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

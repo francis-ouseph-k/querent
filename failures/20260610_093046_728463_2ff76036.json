@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-10T09:30:46.728463",
+  "nl_query": "Scripts pending primary evaluation (evaluation_status = NOT_ASSIGNED) for Delhi Campus",
+  "failed_sql": "SELECT a.id, a.urn, a.evaluation_status, a.block_status, a.total_marks, b.name AS board_name, sa.assigned_at\nFROM   answer_script a\nJOIN   script_assignment sa ON sa.script_id = a.id\nJOIN   faculty_cache fc ON fc.employee_id = sa.evaluator_id\nJOIN   board b ON b.id = sa.board_id\nWHERE  a.evaluation_status = 'NOT_ASSIGNED'\n  AND  a.block_status      = 'NONE'\n  AND  b.campus_id       = 'DELHI'\n  AND  a.is_active        = TRUE\nORDER  BY sa.assigned_at DESC\nLIMIT  200;",
+  "error": "Execution error: column sa.board_id does not exist\nLINE 5: JOIN   board b ON b.id = sa.board_id\n                                 ^\n",
+  "retries": 0,
+  "corrected_sql": ""
+}

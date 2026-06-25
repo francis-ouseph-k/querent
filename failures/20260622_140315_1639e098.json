@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T14:03:15.292523+00:00",
+  "nl_query": "How many deadline extensions were requested versus approved this quarter?",
+  "failed_sql": "SELECT COUNT(CASE WHEN der.approval_status = 'APPROVED' THEN 1 ELSE NULL END) AS approved_extensions, COUNT(CASE WHEN der.approval_status = 'PENDING' THEN 1 ELSE NULL END) AS pending_extensions FROM deadline_extension_request der JOIN board b ON b.id = der.board_id WHERE b.status = 'EVAL_IN_PROGRESS' AND b.academic_year = :academic_year",
+  "error": "Validation failed (schema): Hallucinated column(s): board.academic_year. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

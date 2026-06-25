@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T09:50:47.344507+00:00",
+  "nl_query": "What is the average number of history corrections per published result?",
+  "failed_sql": "SELECT AVG(COUNT(*)) AS avg_history_corrections_per_result FROM result_history GROUP BY result_id",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: aggregate function calls cannot be nested\nLINE 1: EXPLAIN (FORMAT JSON) SELECT AVG(COUNT(*)) AS avg_history_co...\n                                         ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

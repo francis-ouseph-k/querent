@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T14:42:25.211793+00:00",
+  "nl_query": "Show all scanner devices registered at the Main Campus that are active and have scanned at least one script.",
+  "failed_sql": "SELECT sd.id, sd.device_id, sd.device_name, sd.last_seen_at, sd.registered_at\nFROM   scanner_device sd\nJOIN   academic_unit au ON au.id = sd.campus_id\nWHERE  au.unit_type = 'CAMPUS' AND au.code = 'MAIN'\n  AND  sd.is_active = TRUE\n  AND  sd.id IN (SELECT device_id FROM scan_history WHERE script_id IN (SELECT id FROM answer_script))\nORDER  BY sd.device_name;",
+  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (scan_history, scanner_device, answer_script, academic_unit). You must qualify it with a table alias.",
+  "retries": 4,
+  "corrected_sql": ""
+}

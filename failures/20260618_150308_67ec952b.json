@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:03:08.780501+00:00",
+  "nl_query": "For each active evaluation attempt, show the script URN, student name, evaluator name, assignment type, attempt type, section name if split, current status, total marks, and the number of marks entries.",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

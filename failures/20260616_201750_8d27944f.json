@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-16T20:17:50.124438+00:00",
+  "nl_query": "For each department, show the department name, number of courses, number of faculty members, number of active boards, number of scripts currently in evaluation, and the average marks awarded per script.",
+  "failed_sql": "SELECT au.name AS academic_unit_name, COUNT(DISTINCT course.id) AS course_count, COUNT(DISTINCT faculty_cache.employee_id) AS faculty_count, COUNT(DISTINCT board.id) AS board_count, COUNT(DISTINCT a.id) AS script_count, AVG(evaluation_marks.marks_awarded) AS average_marks_per_script\nFROM   academic_unit au\nJOIN   academic_unit_closure c ON c.ancestor_id = au.id\nJOIN   academic_unit course ON course.id = c.descendant_id\nJOIN   faculty_cache ON faculty_cache.department_id = au.id\nJOIN   board ON board.course_id = au.id\nJOIN   script_assignment sa ON sa.evaluator_id = faculty_cache.employee_id\nJOIN   answer_script a ON a.id = sa.script_id\nJOIN   evaluation_marks em ON em.attempt_id = sa.attempt_id\nWHERE  au.unit_type = 'COURSE' AND a.evaluation_status = 'ATTEMPTED' AND sa.is_active = TRUE\nGROUP  BY au.name\nORDER  BY script_count DESC;",
+  "error": "Validation failed (schema): Hallucinated column(s): script_assignment.attempt_id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

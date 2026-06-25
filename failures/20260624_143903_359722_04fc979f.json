@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T14:39:03.359722+00:00",
+  "nl_query": "Which parent questions have exactly three sub-questions?",
+  "failed_sql": "SELECT q.id, q.code, q.path, q.max_marks FROM question q JOIN question_section qs ON q.id = qs.parent_question_id GROUP BY q.id, q.code, q.path, q.max_marks HAVING COUNT(qs.id) = 3",
+  "error": "Validation failed (schema): Hallucinated column(s): question_section.parent_question_id. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": ""
+}

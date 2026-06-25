@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-17T03:35:23.304218+00:00",
+  "nl_query": "How many attempt rules are configured as PICK_N versus GROUP?",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

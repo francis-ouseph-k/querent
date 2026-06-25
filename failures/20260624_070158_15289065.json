@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-24T07:01:58.249589+00:00",
+  "nl_query": "What is the average number of active grants per faculty user?",
+  "failed_sql": "SELECT au.display_name AS faculty_name, COUNT(DISTINCT uar.id) AS active_grants_count\nFROM   app_user au\nJOIN   user_auxiliary_role uar ON uar.user_id = au.id\nWHERE  uar.scope_type = 'BOARD'\n  AND  uar.effective_from <= CURRENT_DATE\n  AND (uar.effective_to IS NULL OR uar.effective_to > CURRENT_DATE)\nGROUP  BY au.display_name\nORDER  BY active_grants_count DESC\nLIMIT  100;",
+  "error": "Validation failed (semantic): SQL applies COUNT(au.id) but 'au.id' is also a GROUP BY key. COUNT over a GROUP BY key is tautological: SUM returns the value itself, COUNT(DISTINCT) always returns 1. Use a different column for the aggregation, or restructure the query.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

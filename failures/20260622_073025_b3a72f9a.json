@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T07:30:25.995324+00:00",
+  "nl_query": "What is the average final honorarium amount per board coordinator?",
+  "failed_sql": "SELECT bc.board_id, AVG(hs.final_amount) AS avg_final_honorarium_amount FROM board_coordinator bc JOIN faculty_cache fc ON fc.employee_erp_id::BIGINT = bc.faculty_cache_id JOIN honorarium_summary hs ON hs.board_id = bc.board_id WHERE hs.approval_status IN ('APPROVED', 'EXPORTED') GROUP BY bc.board_id ORDER BY avg_final_honorarium_amount DESC",
+  "error": "Execution error: invalid input syntax for type bigint: \"EMP001\"\n",
+  "retries": 3,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

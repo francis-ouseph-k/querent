@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T13:16:21.349917+00:00",
+  "nl_query": "List workflow transitions allowed for the CUSTODIAN role on answer scripts.",
+  "failed_sql": "SELECT ts.id, ts.entity_type, ts.from_state, ts.to_state, ts.requires_reason, ts.created_at FROM workflow_state_transition ts JOIN app_user au ON au.id = ts.created_by WHERE au.user_type = 'CUSTODIAN' AND ts.entity_type = 'answer_script'",
+  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'faculty_cache' and 'workflow_state_transition'. Please review the schema for the correct join path.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-16T21:35:38.147519+00:00",
+  "nl_query": "For each script with an active legal hold, show the hold duration in days, whether the hold overlaps with the board evaluation deadline, whether the script has already been published, and the case reference number.",
+  "failed_sql": "SELECT ...",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table \"script\"\nLINE 1: ...tion, script_hold.case_id, script_hold.is_active, script.scr...\n                                                             ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

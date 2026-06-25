@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T08:25:49.216035+00:00",
+  "nl_query": "Show the daily scanning velocity for each exam in December 2025: the number of scripts scanned per day, the change from the previous day, and the number of new bundles opened.",
+  "failed_sql": "SELECT esc.exam_date AS date, COUNT(DISTINCT sh.script_id) AS scripts_scanned, (COUNT(DISTINCT sh.script_id) - LAG(COUNT(DISTINCT sh.script_id)) OVER (PARTITION BY esc.exam_date ORDER BY esc.exam_date)) AS change_from_previous_day, COUNT(CASE WHEN sh.bundle_id IS NULL THEN 1 END) AS new_bundles_opened FROM exam_schedule_cache esc JOIN bundle b ON b.exam_id = esc.id JOIN scan_history sh ON sh.bundle_id = b.id WHERE esc.academic_year = '2025-2025' AND esc.exam_date >= DATE_TRUNC('year', CURRENT_DATE) AND esc.exam_date < DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '1 year' GROUP BY esc.exam_date ORDER BY esc.exam_date;",
+  "error": "Validation failed (schema): Column validation failed: scan_history does NOT have bundle_id. Join to bundle via: answer_script a ON a.id = sh.script_id JOIN bundle b ON b.id = a.bundle_id.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

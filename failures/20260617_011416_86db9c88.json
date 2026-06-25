@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-17T01:14:16.601401+00:00",
+  "nl_query": "Which questions participate in a GROUP-type attempt rule?",
+  "failed_sql": "SELECT q.id, q.code, q.path, ar.rule_type, ar.min_select, ar.max_select, ar.config_json FROM attempt_rule ar JOIN question q ON q.id = ar.question_id JOIN attempt_rule_group_question argq ON argq.question_id = q.id JOIN attempt_rule_group arg ON arg.id = argq.group_id WHERE ar.rule_type = 'GROUP' AND q.qp_id = :qp_id ORDER BY q.path, ar.rule_type",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: syntax error at or near \":\"\nLINE 1: ...oup_id WHERE ar.rule_type = 'GROUP' AND q.qp_id = :qp_id ORD...\n                                                             ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

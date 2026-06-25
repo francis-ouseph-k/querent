@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T08:17:15.868271+00:00",
+  "nl_query": "Which questions are grouped under the Choice group for attempt rule 1?",
+  "failed_sql": "SELECT q.id, q.code, q.max_marks, argq.question_id AS group_member_question_id\nFROM   attempt_rule                ar\nJOIN   attempt_rule_group          arg  ON arg.attempt_rule_id = ar.id\nJOIN   attempt_rule_group_question argq ON argq.group_id       = arg.id\nJOIN   question                    q   ON q.id = argq.question_id\nWHERE  ar.id = :rule_id\n  AND  arg.group_label = 'Choice'\nORDER  BY q.display_order;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: syntax error at or near \":\"\nLINE 1: ...estion q ON q.id = argq.question_id WHERE ar.id = :rule_id A...\n                                                             ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

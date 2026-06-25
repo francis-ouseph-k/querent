@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T12:05:05.262370+00:00",
+  "nl_query": "How many students are marked absent per exam?",
+  "failed_sql": "SELECT COUNT(DISTINCT esm.student_id) AS absent_student_count\nFROM   exam_student_mapping esm\nJOIN   answer_script a ON a.student_id = esm.student_id AND a.exam_id = esm.exam_id\nWHERE  a.lifecycle_status = 'ABSENT';",
+  "error": "Validation failed (semantic): The question asks for an aggregation 'per' or 'by' something, but the SQL lacks a GROUP BY clause. You MUST include a GROUP BY clause when grouping data.",
+  "retries": 4,
+  "corrected_sql": ""
+}

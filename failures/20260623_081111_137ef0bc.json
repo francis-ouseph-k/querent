@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T08:11:11.169352+00:00",
+  "nl_query": "Show the complete encryption and scanning chain for each script created in the last 7 days: script URN, DEK ID, KEK external ID, KEK scope, KEK status, scanner device name, and whether the DEK was re-wrapped after a Direct Connect outage.",
+  "failed_sql": "SELECT a.urn, dek.id AS dek_id, kek.external_id AS kek_external_id, kek.scope AS kek_scope, kek.status AS kek_status, sd.device_name AS scanner_device_name, CASE WHEN al.action = 'DEK_REWRAP' THEN TRUE ELSE FALSE END AS re_wrapped_after_direct_connect\nFROM   answer_script a\nJOIN   data_encryption_key dek ON dek.id = a.dek_id\nJOIN   key_encryption_key  kek ON kek.id = dek.key_encryption_key_id\nLEFT   JOIN scanner_device  sd  ON sd.id = kek.workstation_id\nLEFT   JOIN audit_log al ON al.entity_type = 'data_encryption_key' AND al.entity_id = dek.id AND al.action = 'DEK_REWRAP'\nWHERE  a.created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'\nGROUP  BY a.urn, dek.id, kek.external_id, kek.scope, kek.status, sd.device_name, re_wrapped_after_direct_connect\nORDER  BY a.created_at DESC;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column \"a.created_at\" must appear in the GROUP BY clause or be used in an aggregate function\nLINE 1: ...ce_name, re_wrapped_after_direct_connect ORDER BY a.created_...\n                                                             ^\n",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

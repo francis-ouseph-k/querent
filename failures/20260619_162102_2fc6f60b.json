@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T16:21:02.521448+00:00",
+  "nl_query": "Identify all scripts where the cached total marks on the answer script row differs from the total marks on the latest active evaluation attempt by more than 0.5 marks, indicating a cache synchronization issue.",
+  "failed_sql": "SELECT a.id AS script_id, a.urn, a.student_id, sc.name, sc.synced_at, ea.total_marks AS latest_attempt_total_marks, em.total_marks AS cached_total_marks, (ea.total_marks - em.total_marks) AS discrepancy\nFROM   answer_script a\nJOIN   student_cache sc ON sc.student_id = a.student_id\nJOIN   evaluation_attempt ea ON ea.script_id = a.id AND ea.is_active = TRUE\nJOIN   evaluation_marks em ON em.attempt_id = ea.id\nWHERE  ea.status IN ('FROZEN', 'SUBMITTED')\n  AND  em.is_final = TRUE\nGROUP  BY a.id, a.urn, a.student_id, sc.name, sc.synced_at, ea.total_marks, em.total_marks\nHAVING (ea.total_marks - em.total_marks) > 0.5\nLIMIT  100;",
+  "error": "Validation failed (schema): Hallucinated column(s): evaluation_marks.total_marks, evaluation_marks.total_marks, evaluation_marks.total_marks, evaluation_marks.total_marks. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

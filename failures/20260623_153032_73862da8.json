@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T15:30:32.068867+00:00",
+  "nl_query": "How many evaluation attempts have been superseded by a new cycle?",
+  "failed_sql": "SELECT COUNT(ea.id) AS superseded_attempts\nFROM   evaluation_attempt ea\nWHERE  ea.evaluation_cycle < (\n           SELECT MAX(ea2.evaluation_cycle)\n           FROM   evaluation_attempt ea2\n           WHERE  ea2.script_id = ea.script_id\n       );",
+  "error": "Validation failed (schema): Hallucinated table(s): max_cycles. These tables do not exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

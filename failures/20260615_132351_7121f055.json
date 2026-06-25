@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T13:23:51.416484+00:00",
+  "nl_query": "Show the complete moderation audit trail for each script that received moderation: the rule type, parameters, original total, adjusted total, mark difference, and the name of the COE user who applied it, ordered by application date.",
+  "failed_sql": "SELECT mr.rule_type, mr.parameters, ma.original_total, ma.adjusted_total, ma.applied_at, au.display_name AS applied_by\nFROM   moderation_application ma\nJOIN   moderation_rule        mr ON mr.id = ma.moderation_rule_id\nJOIN   app_user               au ON au.id = ma.applied_by\nWHERE  ma.script_id IN (\n  SELECT script_id\n  FROM   moderation_application\n  WHERE  applied_at >= :start_date\n  AND    applied_at <= :end_date\n)\nORDER BY ma.applied_at DESC;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: syntax error at or near \":\"\nLINE 8:   WHERE  applied_at >= :start_date\n                               ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

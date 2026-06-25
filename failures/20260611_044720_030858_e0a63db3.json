@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-11T04:47:20.030858",
+  "nl_query": "How many courses for active exam that have scans completed & board formed but evaluation assignment pending?",
+  "failed_sql": "SELECT COUNT(DISTINCT exam_student_mapping.course_id) AS pending_count\nFROM exam_student_mapping\nJOIN exam_schedule_cache ON exam_schedule_cache.exam_id = exam_student_mapping.exam_id\nJOIN answer_script ON answer_script.exam_id = exam_schedule_cache.exam_id\nJOIN script_assignment ON script_assignment.script_id = answer_script.id\nWHERE exam_student_mapping.eligibility_status = 'ELIGIBLE'\n  AND exam_schedule_cache.exam_date >= '2023-01-01'\n  AND exam_schedule_cache.exam_date <= '2023-12-31'\n  AND answer_script.scan_status = 'SCANNED'\n  AND script_assignment.is_active = TRUE\n  AND script_assignment.attempt_type = 'PRIMARY'\n  AND script_assignment.evaluation_status = 'NOT_ASSIGNED'",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column script_assignment.evaluation_status does not exist\nLINE 1: ...ND script_assignment.attempt_type = 'PRIMARY' AND script_ass...\n                                                             ^\n",
+  "retries": 2,
+  "corrected_sql": ""
+}

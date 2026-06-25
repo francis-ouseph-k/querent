@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T08:17:02.371741+00:00",
+  "nl_query": "Show the complete encryption and scanning chain for each script created in the last 7 days: script URN, DEK ID, KEK external ID, KEK scope, KEK status, scanner device name, and whether the DEK was re-wrapped after a Direct Connect outage.",
+  "failed_sql": "SELECT a.urn, dek.id AS dek_id, kek.external_id AS kek_external_id, kek.scope AS kek_scope, kek.status AS kek_status, sd.device_name AS scanner_device_name, CASE WHEN al.entity_type = 'data_encryption_key' AND al.action = 'DEK_REWRAP' THEN TRUE ELSE FALSE END AS was_rewrapped_after_outage FROM answer_script a JOIN data_encryption_key dek ON dek.id = a.dek_id JOIN key_encryption_key kek ON kek.id = dek.key_encryption_key_id LEFT JOIN scanner_device sd ON sd.id = kek.workstation_id LEFT JOIN audit_log al ON al.entity_type = 'data_encryption_key' AND al.entity_id = dek.id AND al.action = 'DEK_REWRAP' WHERE a.created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days' ORDER BY a.created_at DESC;",
+  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'audit_log' and 'data_encryption_key'. Please review the schema for the correct join path.",
+  "retries": 4,
+  "corrected_sql": ""
+}

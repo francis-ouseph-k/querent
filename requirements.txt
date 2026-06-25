@@ -1,0 +1,63 @@
+# ── Retrieval / token counting ────────────────────────────────────────────────
+# FIX #17 — tiktoken was used in retrieval/orchestrator.py for accurate token
+# counting in the context budget manager but was missing from requirements.txt.
+# Without it the code silently fell back to len(text)//4 which is inaccurate
+# for non-ASCII text and code, causing context budget miscalculations.
+tiktoken>=0.6.0
+
+# ── Core ────────────────────────────────────────────────────────────────────
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+
+# ── DDL / SQL parsing ────────────────────────────────────────────────────────
+# sqlparse>=0.4.4
+# L1: sqlparse is not imported in Phase 1 or Phase 2 — all SQL parsing uses sqlglot.
+# Kept here as a placeholder in case a simpler tokeniser is needed for a future
+# component (e.g. a lightweight CLI formatter).  Uncomment if needed.
+#sqlglot>=20.0.0
+sqlglot>=26.1.2
+
+# ── Graph ────────────────────────────────────────────────────────────────────
+networkx>=3.2.0
+
+# ── Embeddings ──────────────────────────────────────────────────────────────
+sentence-transformers>=2.3.0   # BGE-small-en-v1.5 + cross-encoder reranker
+
+# ── Vector store ────────────────────────────────────────────────────────────
+qdrant-client>=1.7.0
+
+# ── Search ──────────────────────────────────────────────────────────────────
+opensearch-py>=2.4.0
+
+# ── LLM inference ───────────────────────────────────────────────────────────
+llama-cpp-python>=0.2.50       # llama.cpp Python bindings
+
+# ── Database ────────────────────────────────────────────────────────────────
+psycopg2-binary>=2.9.9
+# asyncpg>=0.29.0
+# L1: asyncpg is not imported anywhere in Phase 1 or Phase 2.  Only psycopg2
+# is used for DB access (ThreadedConnectionPool + cursor).  Kept here as a
+# placeholder in case an async FastAPI layer (Phase 3 roadmap) is added.
+# Uncomment when adding the async API layer.
+
+
+# ── CLI ─────────────────────────────────────────────────────────────────────
+rich>=13.7.0                   # terminal formatting / tables
+prompt_toolkit>=3.0.43         # readline-style input with history
+
+# ── Logging / observability ──────────────────────────────────────────────────
+structlog>=24.1.0
+
+# ── Utilities ───────────────────────────────────────────────────────────────
+httpx>=0.26.0
+# L1: httpx is not directly imported in Phase 1 (qdrant-client and opensearch-py
+# use it internally on some install variants).  Kept explicit for env stability.
+# tenacity>=8.2.3
+# L1: tenacity is not imported anywhere — retry logic is manual in RetryValidator.
+# Kept here for future use if the retry loop is refactored to use decorators.
+
+# ── MCP ───────────────────────────────────────────────────────────────
+mcp>=1.27,<2
+fastmcp>=3.2,<4
+uvicorn>=0.30

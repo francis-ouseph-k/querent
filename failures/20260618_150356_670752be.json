@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:03:56.602189+00:00",
+  "nl_query": "Show the complete moderation audit trail for each script that received moderation: the rule type, parameters, original total, adjusted total, mark difference, and the name of the COE user who applied it, ordered by application date.",
+  "failed_sql": "SELECT mr.rule_type, mr.parameters, ma.original_total, ma.adjusted_total, (ma.adjusted_total - ma.original_total) AS mark_difference, au.display_name AS applied_by\nFROM   moderation_application ma\nJOIN   moderation_rule        mr ON mr.id = ma.moderation_rule_id\nJOIN   app_user              au ON au.id = ma.applied_by\nWHERE  ma.script_id = :script_id\n  AND  ma.status           = 'APPLIED'\nORDER  BY ma.applied_at",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: syntax error at or near \"AND\"\nLINE 1: ...u ON au.id = ma.applied_by WHERE ma.script_id = ? AND ma.app...\n                                                             ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

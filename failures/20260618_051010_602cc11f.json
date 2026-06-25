@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T05:10:10.063593+00:00",
+  "nl_query": "What percentage of scripts are blocked for administrative reasons?",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

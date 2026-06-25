@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T16:51:42.017930+00:00",
+  "nl_query": "Show the complete faculty eligibility and performance chain: faculty name, department, courses they are mapped to, boards they are in the pool for, scripts assigned, scripts submitted, and their average evaluation speed.",
+  "failed_sql": "SELECT fc.name AS evaluator_name, au.display_name AS user_display_name, d.name AS department_name, b.id AS board_id, sa.script_id AS script_id, sa.submitted_at AS submitted_at, AVG(ea.total_marks) AS avg_evaluation_speed\nFROM   faculty_course_mapping fcm\nJOIN   faculty_cache fc ON fc.id = fcm.faculty_cache_id\nJOIN   academic_unit au ON au.id = fcm.course_id\nJOIN   board b ON b.course_id = fcm.course_id\nJOIN   script_assignment sa ON sa.faculty_cache_id = fc.id AND sa.is_active = TRUE\nJOIN   evaluation_attempt ea ON ea.assignment_id = sa.id AND ea.is_active = TRUE\nWHERE  fcm.is_active = TRUE\nGROUP BY fc.name, au.display_name, d.name, b.id, sa.script_id, sa.submitted_at\nORDER BY fc.name, au.display_name, d.name, b.id, sa.script_id, sa.submitted_at;",
+  "error": "Validation failed (schema): Hallucinated table(s): academic_unit_board. These tables do not exist in the schema.",
+  "retries": 4,
+  "corrected_sql": ""
+}

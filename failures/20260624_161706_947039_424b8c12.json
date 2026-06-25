@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T16:17:06.947039+00:00",
+  "nl_query": "For each question paper, show the paper title, total marks, number of leaf questions, number of answer key rubrics defined, number of preparers, approval status, and the name of the user who approved it.",
+  "failed_sql": "SELECT qp.title, qp.total_marks, COUNT(CASE WHEN q.max_marks IS NOT NULL THEN 1 END) AS num_leaf_questions, COUNT(DISTINCT akr.question_id) AS num_answer_key_rubrics, COUNT(DISTINCT ak_preparer.approved_by) AS num_preparers, ak.status AS approval_status, app_user.display_name AS approved_by_name FROM question_paper qp JOIN board b ON b.qp_id = qp.id JOIN evaluation_attempt ea ON ea.board_id = b.id JOIN script_assignment sa ON sa.assignment_id = ea.id JOIN answer_key ak ON ak.qp_id = qp.id AND ak.status = 'APPROVED' JOIN answer_key_rubric akr ON akr.answer_key_id = ak.id JOIN faculty_cache fc ON fc.id = sa.faculty_cache_id JOIN app_user app_user ON app_user.id = ak_preparer.approved_by GROUP BY qp.title, qp.total_marks, ak.status, app_user.display_name",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column sa.assignment_id does not exist\nLINE 1: ...N ea.board_id = b.id JOIN script_assignment sa ON sa.assignm...\n                                                             ^\nHINT:  Perhaps you meant to reference the column \"ea.assignment_id\".\n",
+  "retries": 4,
+  "corrected_sql": ""
+}

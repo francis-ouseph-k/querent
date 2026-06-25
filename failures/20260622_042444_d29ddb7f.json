@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T04:24:44.547730+00:00",
+  "nl_query": "Which bundles have been in SCANNING status for more than 24 hours without reaching COMPLETE, and show the exam hall, bundle code, scanned count, expected count, and the device that last scanned a script in that bundle?",
+  "failed_sql": "SELECT b.id, b.bundle_code, b.exam_hall, b.scanned_count, b.expected_count, sh.device_id\nFROM   bundle b\nJOIN   scan_history  sh ON sh.script_id = b.id\nWHERE  b.status = 'OPEN'\n  AND  sh.scanned_at < CURRENT_TIMESTAMP - INTERVAL '24 hours'\n  AND  sh.status <> 'COMPLETE'\nGROUP BY b.id, b.bundle_code, b.exam_hall, b.scanned_count, b.expected_count, sh.device_id\nORDER BY sh.scanned_at DESC",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: invalid input syntax for type timestamp with time zone: \"COMPLETE\"\nLINE 1: ...ESTAMP - INTERVAL '24 hours' AND sh.scanned_at <> 'COMPLETE'...\n                                                             ^\n",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

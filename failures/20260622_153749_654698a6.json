@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T15:37:49.049399+00:00",
+  "nl_query": "What is the average number of history corrections per published result?",
+  "failed_sql": "SELECT AVG(sub.count_col) FROM (SELECT result_id, COUNT(*) AS count_col FROM result_history GROUP BY result_id) sub",
+  "error": "Validation failed (schema): Hallucinated column(s): unaliased.count. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

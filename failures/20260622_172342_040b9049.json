@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T17:23:42.499246+00:00",
+  "nl_query": "Count critical audit log entries per week.",
+  "failed_sql": "SELECT ac.academic_year, ac.cal_date, COUNT(al.id) AS critical_count\nFROM audit_log al\nJOIN academic_calendar ac ON ac.id = al.created_at::date\nWHERE al.is_critical = TRUE\nGROUP BY ac.academic_year, ac.cal_date\nORDER BY ac.academic_year, ac.cal_date",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: bigint = date\nLINE 3: JOIN academic_calendar ac ON ac.id = al.created_at::date\n                                           ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

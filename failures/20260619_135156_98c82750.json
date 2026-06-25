@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T13:51:56.778993+00:00",
+  "nl_query": "Show the complete question hierarchy for the Data Structures paper, including section names, question codes, ltree paths, max marks, attempt rule types, and group labels, highlighting any questions that lack a rubric in the approved answer key.",
+  "failed_sql": "SELECT qs.id AS section_id, qs.name, q.id AS question_id, q.code, q.path, q.level, q.max_marks, q.display_order, ar.rule_type, arg.group_label FROM question_paper qp JOIN question_section qs ON qs.qp_id = qp.id JOIN question q ON q.section_id = qs.id JOIN attempt_rule ar ON ar.question_id = q.id JOIN attempt_rule_group arg ON arg.attempt_rule_id = ar.id JOIN attempt_rule_group_question argq ON argq.group_id = arg.id JOIN question q_member ON q_member.id = argq.question_id WHERE qp.id = :qp_id AND q.max_marks IS NOT NULL AND q_member.max_marks IS NOT NULL AND ak.status = 'APPROVED' GROUP BY qs.id, qs.name, q.id, q.code, q.path, q.level, q.max_marks, q.display_order, ar.rule_type, arg.group_label HAVING COUNT(ak.id) = 0",
+  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (question, attempt_rule_group, question_paper, attempt_rule, question_section). You must qualify it with a table alias.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

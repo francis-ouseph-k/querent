@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T04:19:04.081660+00:00",
+  "nl_query": "Show the attempt rule configuration for question 2 in the Data Structures paper.",
+  "failed_sql": "SELECT ar.id AS rule_id, ar.rule_type, ar.min_select, ar.max_select, ar.config_json\nFROM   attempt_rule                ar\nJOIN   question                    q_parent ON q_parent.id = ar.question_id\nWHERE  q_parent.qp_id = :qp_id\n  AND  ar.question_id  = :question_id\nORDER  BY ar.id;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: syntax error at or near \"AND\"\nLINE 1: ...rent.id = ar.question_id WHERE q_parent.qp_id = ? AND ar.que...\n                                                             ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T13:06:11.108184+00:00",
+  "nl_query": "What is the average final honorarium amount per board coordinator?",
+  "failed_sql": "SELECT b.id AS board_id, AVG(hs.final_amount) AS avg_final_honorarium_amount\nFROM   board_coordinator bc\nJOIN   faculty_cache     fc ON fc.employee_erp_id = bc.employee_id\nJOIN   honorarium_summary hs ON hs.board_id = bc.board_id\nWHERE  bc.effective_from <= CURRENT_DATE\n  AND (bc.effective_to IS NULL OR bc.effective_to >= CURRENT_DATE)\nGROUP  BY b.id\nORDER  BY avg_final_honorarium_amount DESC;",
+  "error": "Validation failed (schema): Hallucinated column(s): board_coordinator.employee_id. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

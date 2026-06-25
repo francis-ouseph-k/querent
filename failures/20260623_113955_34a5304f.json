@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T11:39:55.164138+00:00",
+  "nl_query": "What is the average time between exam schedule creation and board creation?",
+  "failed_sql": "SELECT avg(T2.created_at - T1.created_at) AS avg_time FROM exam_schedule_cache AS T1 JOIN board AS T2 ON T2.exam_id = T1.id WHERE T2.status = 'EVAL_IN_PROGRESS'",
+  "error": "Validation failed (schema): Column validation failed: exam_schedule_cache does NOT have created_at. Use synced_at for the last sync timestamp.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

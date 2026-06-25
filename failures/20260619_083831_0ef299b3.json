@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T08:38:31.776769+00:00",
+  "nl_query": "For each active evaluation attempt, show the script URN, student name, evaluator name, assignment type, attempt type, section name if split, current status, total marks, and the number of marks entries.",
+  "failed_sql": "SELECT a.urn, sc.name AS student_name, fc.name AS evaluator_name, sa.attempt_type AS script_assignment_type, ea.attempt_type AS evaluation_attempt_type, qs.name AS section_name, ea.status, ea.total_marks, COUNT(em.id) AS num_evaluation_marks\nFROM   answer_script a\nJOIN   script_assignment sa ON sa.script_id = a.id\nJOIN   evaluation_attempt ea ON ea.script_id = a.id\nJOIN   faculty_cache fc ON fc.employee_id = ea.evaluator_user_id\nJOIN   script_page sp ON sp.script_id = a.id\nJOIN   question_section qs ON qs.id = sp.question_section_id\nJOIN   academic_unit au ON au.id = qs.course_id AND au.unit_type = 'COURSE'\nJOIN   student_cache sc ON sc.student_id = a.student_id\nWHERE  ea.is_active = TRUE\nGROUP BY a.urn, sc.name, fc.name, sa.attempt_type, ea.attempt_type, qs.name, ea.status, ea.total_marks\nORDER BY ea.attempt_type, a.urn;",
+  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (answer_script, script_assignment, question_section, evaluation_attempt, script_page, academic_unit). You must qualify it with a table alias.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

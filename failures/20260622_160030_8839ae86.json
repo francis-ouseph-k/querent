@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T16:00:30.719861+00:00",
+  "nl_query": "Which evaluators are currently in the pool for active boards but have no active script assignments, and show their faculty name, department, and the boards they are eligible for.",
+  "failed_sql": "SELECT fc.name AS evaluator_name, au.display_name AS academic_unit, ep.eligible_role, ep.is_available FROM evaluator_pool ep JOIN faculty_cache fc ON fc.id = ep.faculty_cache_id JOIN app_user au ON au.faculty_cache_id = fc.id WHERE ep.is_available = TRUE AND b.status NOT IN ('CLOSED', 'SUBMITTED') AND NOT EXISTS (SELECT 1 FROM script_assignment sa WHERE sa.faculty_cache_id = ep.faculty_cache_id AND sa.is_active = TRUE) ORDER BY fc.name, b.id",
+  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (evaluator_pool, faculty_cache, script_assignment, app_user). You must qualify it with a table alias.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

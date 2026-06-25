@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T14:02:06.508450+00:00",
+  "nl_query": "How many board coordinators have a custom honorarium weight?",
+  "failed_sql": "SELECT COUNT(DISTINCT bc.id) AS custom_honorarium_weight_count\nFROM   board_coordinator bc\nJOIN   faculty_cache     fc ON fc.employee_erp_id = bc.employee_id\nWHERE  bc.honorarium_weight != (SELECT honorarium_rate_card.board_coordinator_weight\n                                 FROM   honorarium_rate_card\n                                 WHERE  is_active = TRUE)",
+  "error": "Validation failed (schema): Hallucinated column(s): board_coordinator.employee_cache_id. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

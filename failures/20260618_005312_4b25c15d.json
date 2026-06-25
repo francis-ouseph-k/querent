@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T00:53:12.243417+00:00",
+  "nl_query": "List evaluation attempts that have been archived.",
+  "failed_sql": "SELECT ea.id, ea.board_id, ea.evaluator_id, ea.evaluator_user_id, ea.status, ea.archived_at, ea.created_at, ea.updated_at FROM evaluation_attempt ea WHERE ea.archived_at IS NOT NULL AND ea.is_active = TRUE",
+  "error": "Validation failed (schema): Hallucinated column(s): evaluation_attempt.updated_at. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

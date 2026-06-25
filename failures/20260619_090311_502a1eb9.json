@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T09:03:11.722557+00:00",
+  "nl_query": "List all faculty members who prepared the answer key for the Algorithms exam and whether they are also in the evaluator pool for that course.",
+  "failed_sql": "SELECT DISTINCT fc.name, ep.is_available FROM faculty_cache fc JOIN answer_key_preparer akp ON akp.employee_id = fc.employee_id JOIN answer_key ak ON ak.id = akp.answer_key_id JOIN board b ON b.qp_id = ak.id JOIN academic_unit au ON au.id = b.course_id JOIN evaluator_pool ep ON ep.employee_id = fc.employee_id WHERE ak.qp_id = (SELECT qp_id FROM question_paper WHERE title = 'Algorithms') AND au.unit_type = 'COURSE' AND ep.board_id = au.id AND ep.eligible_role = 'PRIMARY' AND ep.is_available = TRUE",
+  "error": "Validation failed (schema): Ambiguous column reference: 'qp_id'. It exists in multiple tables (answer_key, board). You must qualify it with a table alias.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

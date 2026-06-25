@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T17:39:10.673444+00:00",
+  "nl_query": "Show the attempt rule configuration for question 2 in the Data Structures paper.",
+  "failed_sql": "SELECT ar.id AS rule_id, ar.rule_type, ar.min_select, ar.max_select, arg.group_label FROM attempt_rule AS ar JOIN question AS q_parent ON q_parent.id = ar.question_id JOIN attempt_rule_group AS arg ON arg.attempt_rule_id = ar.id JOIN attempt_rule_group_question argq ON argq.group_id = arg.id JOIN question AS q_member ON q_member.id = argq.question_id WHERE q_parent.qp_id = (SELECT id FROM question_paper WHERE title ILIKE '%Data Structures%') AND q_member.id = 2 ORDER BY ar.id, arg.group_label, q_member.display_order",
+  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (attempt_rule_group, attempt_rule, question_paper, question). You must qualify it with a table alias.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

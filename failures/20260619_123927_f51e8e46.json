@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T12:39:27.777291+00:00",
+  "nl_query": "Show all approved revaluation requests where the resulting evaluation attempt was created but the evaluator has not started marking within 3 working days of the attempt assignment.",
+  "failed_sql": "SELECT rr.id AS request_id, rr.script_id, rr.approved_at, ea.id AS attempt_id, ea.status, ea.evaluator_user_id, au.display_name AS evaluator\nFROM revaluation_request rr\nJOIN evaluation_attempt ea ON ea.id = rr.resulting_attempt_id\nJOIN script_assignment sa ON sa.id = ea.assignment_id\nJOIN faculty_cache fc ON fc.employee_id = sa.evaluator_id\nJOIN app_user au ON au.id = ea.evaluator_user_id\nWHERE rr.approval_status = 'APPROVED'\n  AND ea.status = 'ASSIGNED'\n  AND ea.is_active = TRUE\n  AND ea.started_at < (SELECT working_day_offset(sa.cal_date, 3, rr.academic_year) FROM exam_schedule_cache sa WHERE sa.exam_id = ea.script_id)\nORDER BY rr.approved_at ASC",
+  "error": "Validation failed (schema): Hallucinated column(s): exam_schedule_cache.cal_date. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

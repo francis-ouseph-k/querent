@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T11:52:40.076956+00:00",
+  "nl_query": "List all faculty members who prepared the answer key for the Algorithms exam and whether they are also in the evaluator pool for that course.",
+  "failed_sql": "SELECT fc.name AS faculty_name, ep.is_available AS is_in_evaluator_pool FROM faculty_cache fc JOIN answer_key_preparer akp ON akp.faculty_cache_id = fc.id JOIN answer_key ak ON ak.id = akp.answer_key_id JOIN board b ON b.qp_id = ak.qp_id AND b.exam_id = :exam_id JOIN evaluator_pool ep ON ep.faculty_cache_id = fc.id WHERE ak.qp_id = :qp_id AND ak.status = 'APPROVED' AND ep.is_available = TRUE ORDER BY fc.name;",
+  "error": "Validation failed (schema): Column 'esc.title' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
+  "retries": 4,
+  "corrected_sql": ""
+}

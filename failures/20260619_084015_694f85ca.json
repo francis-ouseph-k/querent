@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T08:40:15.407826+00:00",
+  "nl_query": "For each published result, show the script URN, student name, final marks, computation rule, the list of source attempt types used, the evaluator names for those attempts, and whether the result has been reconciled with ERP.",
+  "failed_sql": "SELECT r.id, r.script_id, a.urn, sc.name AS student_name, r.final_marks, r.computation_rule, jsonb_agg(em.attempt_type) AS source_attempt_types, jsonb_agg(fc.display_name) AS evaluator_names, r.erp_push_status = 'RECONCILED' AS is_reconciled FROM result r JOIN answer_script a ON r.script_id = a.id JOIN student_cache sc ON a.student_id = sc.student_id JOIN evaluation_marks em ON r.source_attempt_ids @> ARRAY[em.attempt_id] JOIN faculty_cache fc ON em.evaluator_user_id = fc.id GROUP BY r.id, r.script_id, a.urn, sc.name, r.final_marks, r.computation_rule, r.erp_push_status ORDER BY r.id",
+  "error": "Validation failed (schema): Hallucinated column(s): faculty_cache.display_name, evaluation_marks.evaluator_user_id, faculty_cache.id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

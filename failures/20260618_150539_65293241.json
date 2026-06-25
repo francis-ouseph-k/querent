@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:05:39.443598+00:00",
+  "nl_query": "Which boards have honorarium summaries computed but not yet approved, and what is the total pending honorarium amount per board broken down by evaluator role?",
+  "failed_sql": "SELECT b.id AS board_id, b.name AS board_name, SUM(hs.final_amount) AS total_pending_honorarium, hs.role_in_board AS evaluator_role\nFROM board b\nJOIN honorarium_summary hs ON b.id = hs.board_id\nJOIN faculty_cache fc ON fc.employee_id = hs.employee_id\nWHERE hs.approval_status = 'PENDING'\nGROUP BY b.id, b.name, hs.role_in_board\nORDER BY total_pending_honorarium DESC",
+  "error": "Validation failed (schema): Hallucinated column(s): board.name, board.name. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T09:38:34.240304+00:00",
+  "nl_query": "How many relationships have expired?",
+  "failed_sql": "SELECT COUNT(*) FROM academic_unit_relationship WHERE status = 'EXPIRED'",
+  "error": "Validation failed (schema): Type mismatch: academic_unit_relationship.is_active (BOOLEAN): non-boolean string literal 'EXPIRED' on boolean column. Tip — integer/bigint columns need unquoted numeric literals (e.g. board_id = 5, not board_id = '5'). If you are filtering by a human-readable label like a course code or name, use the .code or .name VARCHAR column instead of the numeric .id column.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

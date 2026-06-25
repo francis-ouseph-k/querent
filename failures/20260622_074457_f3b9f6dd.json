@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T07:44:57.888246+00:00",
+  "nl_query": "Show all approved revaluation requests where the resulting evaluation attempt was created but the evaluator has not started marking within 3 working days of the attempt assignment.",
+  "failed_sql": "SELECT rr.id AS request_id, rr.script_id, rr.approved_at, ea.id AS attempt_id, ea.evaluator_user_id, au.display_name AS evaluator, ea.started_at, ea.frozen_at, ea.total_marks, ea.status FROM revaluation_request rr JOIN evaluation_attempt ea ON ea.id = rr.resulting_attempt_id JOIN app_user au ON au.id = ea.evaluator_user_id WHERE rr.approval_status = 'APPROVED' AND ea.status = 'FROZEN' AND ea.is_active = TRUE AND ea.frozen_at < CURRENT_TIMESTAMP - working_day_offset(ea.script_assignment.assigned_at, 3, academic_year) ORDER BY ea.frozen_at ASC LIMIT 200;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: function working_day_offset(timestamp with time zone, integer, character varying) does not exist\nLINE 1: ...ive = TRUE AND ea.frozen_at < CURRENT_TIMESTAMP - working_da...\n                                                             ^\nHINT:  No function matches the given name and argument types. You might need to add explicit type casts.\n",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T16:57:15.214797+00:00",
+  "nl_query": "How many questions belong to exactly one attempt rule group?",
+  "failed_sql": "SELECT COUNT(DISTINCT qg.question_id) AS num_questions_per_group\nFROM   attempt_rule_group_question qg\nJOIN   attempt_rule ar ON ar.id = qg.attempt_rule_id\nWHERE  ar.rule_type = 'GROUP'",
+  "error": "Validation failed (schema): Hallucinated column(s): attempt_rule_group_question.attempt_rule_id. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

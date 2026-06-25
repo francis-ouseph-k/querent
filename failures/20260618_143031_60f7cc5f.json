@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T14:30:31.113407+00:00",
+  "nl_query": "Show the ltree path and level for every question in Section A of the Data Structures paper.",
+  "failed_sql": "SELECT q.path, q.level FROM question q JOIN question_section qs ON q.section_id = qs.id WHERE qs.name = 'Section A' AND qs.qp_id = (SELECT id FROM question_paper WHERE title = 'Data Structures') LIMIT 1000;",
+  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (question, question_section, question_paper). You must qualify it with a table alias.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

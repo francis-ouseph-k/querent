@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-24T06:35:02.497299+00:00",
+  "nl_query": "For each evaluator currently active, show their current workload: number of scripts assigned, number in progress, number frozen, number submitted, and the average time in hours between start and freeze for their attempts.",
+  "failed_sql": "SELECT fc.name AS evaluator_name, COUNT(sa.id) AS scripts_assigned, COUNT(CASE WHEN ea.status = 'IN_PROGRESS' THEN 1 END) AS in_progress, COUNT(CASE WHEN ea.status = 'FROZEN' THEN 1 END) AS frozen, COUNT(CASE WHEN ea.status = 'SUBMITTED' THEN 1 END) AS submitted, AVG(EXTRACT(EPOCH FROM (ea.frozen_at - ea.started_at)) / 3600) AS avg_time_in_hours FROM faculty_cache fc JOIN script_assignment sa ON fc.id = sa.faculty_cache_id JOIN evaluation_attempt ea ON sa.id = ea.assignment_id WHERE fc.is_active = TRUE AND ea.is_active = TRUE GROUP BY fc.name ORDER BY scripts_assigned DESC LIMIT 50;",
+  "error": "Validation failed (semantic): SQL applies COUNT(sa.id) but 'sa.id' is also a GROUP BY key. COUNT over a GROUP BY key is tautological: SUM returns the value itself, COUNT(DISTINCT) always returns 1. Use a different column for the aggregation, or restructure the query.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

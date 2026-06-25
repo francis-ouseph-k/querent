@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T17:59:55.348814+00:00",
+  "nl_query": "Which academic unit relationships are no longer active?",
+  "failed_sql": "SELECT aur.id, aur.relationship_type, au_from.code AS from_code, au_to.code AS to_code, aur.effective_from, aur.effective_to FROM academic_unit_relationship aur JOIN academic_unit au_from ON au_from.id = aur.from_unit_id JOIN academic_unit au_to ON au_to.id = aur.to_unit_id WHERE aur.is_active = FALSE",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table \"au\"\nLINE 1: EXPLAIN (FORMAT JSON) SELECT au.id, au.relationship_type, au...\n                                     ^\n",
+  "retries": 4,
+  "corrected_sql": ""
+}

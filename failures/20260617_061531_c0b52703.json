@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-17T06:15:31.577009+00:00",
+  "nl_query": "Count active script assignments per evaluator.",
+  "failed_sql": "SELECT ea.evaluator_user_id, COUNT(DISTINCT sa.id) AS active_assignment_count\nFROM   evaluation_attempt ea\nJOIN   script_assignment sa ON sa.evaluator_id = ea.evaluator_user_id\nWHERE  ea.is_active = TRUE\nGROUP  BY ea.evaluator_user_id\nORDER  BY active_assignment_count DESC\nLIMIT  100;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: character varying = bigint\nLINE 3: JOIN   script_assignment sa ON sa.evaluator_id = ea.evaluato...\n                                                       ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

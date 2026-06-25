@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T13:36:14.461278+00:00",
+  "nl_query": "How many deadline extensions were requested versus approved this quarter?",
+  "failed_sql": "SELECT COUNT(CASE WHEN de.approval_status = 'APPROVED' THEN 1 ELSE NULL END) AS approved_extensions, COUNT(CASE WHEN de.approval_status = 'PENDING' THEN 1 ELSE NULL END) AS pending_extensions FROM deadline_extension_request de WHERE de.approved_at >= DATE_TRUNC('quarter', CURRENT_DATE) AND de.approved_at < DATE_TRUNC('quarter', CURRENT_DATE) + INTERVAL '1 quarter'",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: invalid input syntax for type interval: \"1 quarter\"\nLINE 1: ... < DATE_TRUNC('quarter', CURRENT_DATE) + INTERVAL '1 quarter...\n                                                             ^\n",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

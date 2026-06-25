@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T13:20:03.360356+00:00",
+  "nl_query": "Show all configurations updated in the last 7 days.",
+  "failed_sql": "SELECT c.id, c.config_key, c.config_value, c.data_type, c.scope_type, c.scope_id, c.description, c.version, c.updated_by, c.updated_at FROM configuration c JOIN audit_log al ON c.id = al.entity_id WHERE al.action = 'UPDATE' AND al.created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'",
+  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'configuration' and 'audit_log'. Please review the schema for the correct join path.",
+  "retries": 1,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T08:39:17.726446+00:00",
+  "nl_query": "Show the complete moderation audit trail for each script that received moderation: the rule type, parameters, original total, adjusted total, mark difference, and the name of the COE user who applied it, ordered by application date.",
+  "failed_sql": "SELECT ma.rule_type, ma.parameters, ma.original_total, ma.adjusted_total, (ma.adjusted_total - ma.original_total) AS mark_difference, au.display_name AS applied_by\nFROM   moderation_application ma\nJOIN   moderation_rule        mr ON mr.id = ma.moderation_rule_id\nJOIN   app_user            au ON au.id = ma.applied_by\nJOIN   answer_script        a  ON a.id = ma.script_id\nWHERE  a.evaluation_status = 'SUBMITTED'\nORDER  BY ma.applied_at DESC;",
+  "error": "Validation failed (schema): Hallucinated column(s): moderation_application.rule_type, moderation_application.parameters. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

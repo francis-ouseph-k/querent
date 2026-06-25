@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-24T05:56:37.871203+00:00",
+  "nl_query": "For each audit log entry related to a result correction, show the result ID, the old marks, the new marks, the name of the user who made the correction, the reason given, and the time elapsed since the previous correction on the same result.",
+  "failed_sql": "SELECT rh.id AS result_id, rh.old_marks, rh.new_marks, au.display_name AS actor, al.reason, EXTRACT(EPOCH FROM (rh.changed_at - LAG(rh.changed_at) OVER (PARTITION BY rh.result_id ORDER BY rh.changed_at))) / 3600 AS time_elapsed FROM result_history rh LEFT JOIN app_user au ON au.id = rh.changed_by LEFT JOIN audit_log al ON al.id = rh.changed_by WHERE al.entity_type = 'result' AND al.action = 'MARK_MOD' ORDER BY rh.changed_at DESC",
+  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'audit_log' and 'result_history'. Please review the schema for the correct join path.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

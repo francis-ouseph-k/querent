@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-16T02:01:33.014417+00:00",
+  "nl_query": "Count script pages per script.",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

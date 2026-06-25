@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:53:57.882829+00:00",
+  "nl_query": "Show all scripts where the primary evaluator has frozen the attempt, a review evaluator has been assigned, but the review attempt has not yet started, including the primary evaluator name, review evaluator name, and board code.",
+  "failed_sql": "SELECT DISTINCT a.id AS script_id, a.urn, fc1.name AS primary_evaluator_name, fc2.name AS review_evaluator_name, b.code AS board_code\nFROM   answer_script a\nJOIN   evaluation_attempt ea ON ea.script_id = a.id\nJOIN   faculty_cache fc1 ON fc1.employee_id = ea.evaluator_id\nJOIN   faculty_cache fc2 ON fc2.employee_id = ea.assignment_id\nJOIN   script_assignment sa ON sa.script_id = a.id\nJOIN   board b ON b.id = sa.board_id\nWHERE  ea.status = 'FROZEN' AND ea.is_active = TRUE\n  AND  EXISTS (SELECT 1 FROM evaluation_attempt ea2 WHERE ea2.parent_attempt_id = ea.id AND ea2.status = 'ASSIGNED' AND ea2.is_active = TRUE)\n  AND  NOT EXISTS (SELECT 1 FROM evaluation_attempt ea2 WHERE ea2.parent_attempt_id = ea.id AND ea2.status = 'IN_PROGRESS' AND ea2.is_active = TRUE)\nLIMIT  500;",
+  "error": "Validation failed (schema): Hallucinated column(s): script_assignment.board_id, script_assignment.board_id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

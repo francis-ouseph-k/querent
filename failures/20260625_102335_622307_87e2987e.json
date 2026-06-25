@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T10:23:35.622307+00:00",
+  "nl_query": "Which boards have a board coordinator who is also listed as a primary evaluator in the pool, and what is the total number of scripts that coordinator has evaluated versus coordinated?",
+  "failed_sql": "SELECT b.id AS board_id, COUNT(DISTINCT sa.script_id) AS scripts_evaluated, COUNT(DISTINCT sa.id) AS scripts_coordinated FROM board b JOIN board_coordinator bc ON b.id = bc.board_id JOIN faculty_cache fc ON bc.faculty_cache_id = fc.id JOIN script_assignment sa ON sa.faculty_cache_id = fc.id WHERE fc.name = (SELECT name FROM faculty_cache WHERE employee_erp_id = :board_coordinator_erp_id) AND bc.eligible_role = 'PRIMARY' AND sa.is_active = TRUE GROUP BY b.id",
+  "error": "Validation failed (schema): Column 'bc.role' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
+  "retries": 4,
+  "corrected_sql": ""
+}

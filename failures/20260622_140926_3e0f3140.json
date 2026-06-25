@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T14:09:26.121439+00:00",
+  "nl_query": "Count active script assignments per evaluator.",
+  "failed_sql": "SELECT ea.evaluator_user_id, au.display_name, COUNT(*) AS active_assignments\nFROM   script_assignment sa\nJOIN   app_user au ON au.id = sa.faculty_cache_id\nWHERE  sa.is_active = TRUE\nGROUP  BY ea.evaluator_user_id, au.display_name\nORDER  BY active_assignments DESC",
+  "error": "Validation failed (schema): Hallucinated column(s): unaliased.evaluator_user_id, unaliased.evaluator_user_id. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

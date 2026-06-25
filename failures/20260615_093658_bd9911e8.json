@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T09:36:58.781668+00:00",
+  "nl_query": "How many boards use hard deadline enforcement?",
+  "failed_sql": "SELECT COUNT(DISTINCT board_id) FROM board WHERE deadline_enforcement = 'HARD_BLOCK'",
+  "error": "Validation failed (schema): Hallucinated column(s): board.board_id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

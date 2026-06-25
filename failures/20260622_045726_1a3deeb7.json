@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T04:57:26.412224+00:00",
+  "nl_query": "Which configurations at course scope override the global scope setting for the same configuration key, and show the course code, global value, course value, and the data type.",
+  "failed_sql": "SELECT c1.config_key, c1.config_value AS global_value, c2.config_value AS academic_unit_value, c1.data_type FROM configuration c1 JOIN academic_unit_closure ac1 ON ac1.descendant_id = c1.scope_id JOIN configuration c2 ON c2.scope_id = ac1.ancestor_id WHERE c1.scope_type = 'GLOBAL' AND c2.scope_type = 'ACADEMIC_UNIT' AND c1.config_key = c2.config_key AND c1.scope_id IS NULL AND c2.scope_id IS NOT NULL ORDER BY c1.config_key",
+  "error": "Validation failed (schema): Invalid value: configuration.scope_type = 'ACADEMIC_UNIT' is not a valid value for this column. Allowed values: BOARD, COURSE, GLOBAL. Tip — this column is constrained to a fixed set of values by a CHECK constraint; only the listed values can ever exist in the data.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

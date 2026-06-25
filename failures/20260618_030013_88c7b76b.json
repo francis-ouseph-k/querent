@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T03:00:13.216128+00:00",
+  "nl_query": "Show all scripts where the legal hold was approved by the COE Office.",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

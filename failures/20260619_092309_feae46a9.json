@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T09:23:09.842876+00:00",
+  "nl_query": "How many auxiliary roles are granted per scope type?",
+  "failed_sql": "SELECT scope_type, COUNT(*) AS num_roles FROM user_auxiliary_role WHERE is_active = TRUE GROUP BY scope_type",
+  "error": "Validation failed (schema): Hallucinated column(s): user_auxiliary_role.is_active. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

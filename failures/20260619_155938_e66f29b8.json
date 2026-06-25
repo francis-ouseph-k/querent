@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T15:59:38.389975+00:00",
+  "nl_query": "For each board in EVAL_IN_PROGRESS status, show the course code, total scripts, number of scripts in each evaluation status, the board coordinator name and honorarium weight, and the number of calendar days remaining until the deadline.",
+  "failed_sql": "SELECT au.code AS academic_unit_code, COUNT(a.id) AS total_scripts, SUM(CASE WHEN ea.status = 'NOT_ASSIGNED' THEN 1 ELSE 0 END) AS scripts_not_assigned, SUM(CASE WHEN ea.status = 'ASSIGNED' THEN 1 ELSE 0 END) AS scripts_assigned, SUM(CASE WHEN ea.status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS scripts_in_progress, SUM(CASE WHEN ea.status = 'FROZEN' THEN 1 ELSE 0 END) AS scripts_frozen, SUM(CASE WHEN ea.status = 'SUBMITTED' THEN 1 ELSE 0 END) AS scripts_submitted, (SELECT COUNT(*) FROM board_coordinator bc WHERE bc.board_id = b.id) AS board_coordinator_count, (SELECT SUM(hw.honorarium_weight) FROM board_coordinator bc JOIN honorarium_summary hw ON bc.employee_id = hw.employee_id WHERE bc.board_id = b.id) AS total_honorarium_weight, (SELECT COUNT(*) FROM academic_calendar ac WHERE ac.cal_date BETWEEN b.created_at::DATE AND b.deadline AND (ac.is_holiday = FALSE AND ac.is_weekend = FALSE) AND ac.academic_year = (SELECT academic_year FROM exam_schedule_cache WHERE exam_id = b.exam_id)) AS working_days_remaining FROM board b JOIN academic_unit au ON au.id = b.course_id JOIN answer_script a ON a.course_id = b.course_id AND a.exam_id = b.exam_id LEFT JOIN evaluation_attempt ea ON ea.script_id = a.id WHERE b.status = 'EVAL_IN_PROGRESS' GROUP BY au.code, b.id, b.deadline ORDER BY academic_unit_code, total_scripts DESC LIMIT 100;",
+  "error": "Validation failed (schema): Ambiguous column reference: 'academic_year'. It exists in multiple tables (exam_schedule_cache, academic_calendar). You must qualify it with a table alias.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

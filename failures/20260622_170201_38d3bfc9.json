@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T17:02:01.916670+00:00",
+  "nl_query": "Show all question papers with total marks exceeding 100.",
+  "failed_sql": "SELECT qp.id, qp.title, SUM(em.marks_awarded) AS total_evaluation_marks\nFROM   question_paper qp\nJOIN   evaluation_attempt ea ON ea.script_id = s.id AND ea.is_active = TRUE\nJOIN   evaluation_marks em ON em.attempt_id = ea.id\nJOIN   script_assignment sa ON sa.id = ea.assignment_id AND sa.is_active = TRUE\nJOIN   answer_script s ON s.id = sa.script_id\nWHERE  qp.total_marks > 100\nGROUP BY qp.id, qp.title",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table \"ea\"\nLINE 3: JOIN   script_assignment sa ON sa.id = ea.assignment_id AND ...\n                                               ^\n",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T03:43:50.681413+00:00",
+  "nl_query": "Show all scripts where the scan was performed by a scanner device registered at a campus different from the campus where the exam was scheduled, indicating a potential logistics or data entry error.",
+  "failed_sql": "SELECT DISTINCT s.id, s.urn, s.exam_id, s.course_id, s.student_id, s.s3_key, s.dek_id, s.scan_metadata, s.lifecycle_status, s.scan_status, s.evaluation_status, s.block_status, sa.evaluator_id, au1.code AS campus_code1, au2.code AS campus_code2, au1.name AS campus_name1, au2.name AS campus_name2, sd.device_id, sd.device_name, sd.last_seen_at, sd.registered_at, sh.scanned_at, sh.reason, sh.scanned_by, sh.device_id, sh.replaced_previous, sh.scanned_at >= CURRENT_TIMESTAMP - INTERVAL '30 days' AS rescan_within_30_days FROM answer_script s JOIN script_assignment sa ON s.id = sa.script_id JOIN academic_unit au1 ON au1.id = s.course_id JOIN academic_unit au2 ON au2.id = sa.board_id JOIN scanner_device sd ON sd.id = sh.device_id JOIN exam_schedule_cache es ON es.exam_id = s.exam_id JOIN scan_history sh ON sh.script_id = s.id WHERE au1.code != au2.code AND sh.replaced_previous = TRUE AND sh.scanned_at >= CURRENT_TIMESTAMP - INTERVAL '30 days' ORDER BY sh.scanned_at DESC LIMIT 500;",
+  "error": "Validation failed (schema): Hallucinated column(s): script_assignment.board_id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

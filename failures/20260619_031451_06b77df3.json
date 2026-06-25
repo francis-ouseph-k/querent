@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T03:14:51.705187+00:00",
+  "nl_query": "For each active scanner device, show the device name, campus, total scripts scanned this month, number of rescans performed, average OCR confidence of pages scanned, and the timestamp of the last scan, filtering devices with zero scans.",
+  "failed_sql": "SELECT sd.device_name, au.name AS academic_unit, COUNT(DISTINCT sh.script_id) AS total_scripts_scanned, COUNT(CASE WHEN sh.scan_status = 'RESCAN_NEEDED' THEN 1 ELSE NULL END) AS rescans_performed, AVG(sm.extracted_metadata->>'confidence') AS average_ocr_confidence, MAX(sh.scanned_at) AS last_scan_timestamp FROM scanner_device sd JOIN academic_unit au ON au.id = sd.campus_id JOIN scan_history sh ON sh.device_id = sd.id JOIN answer_script as ON as.id = sh.script_id JOIN script_page sm ON sm.script_id = as.id WHERE sh.scanned_at >= CURRENT_TIMESTAMP - INTERVAL '1 month' AND sd.is_active = TRUE AND total_scripts_scanned = 0 GROUP BY sd.device_name, au.name, sd.id, sd.device_id, sd.device_name, sh.scanned_at ORDER BY last_scan_timestamp DESC",
+  "error": "Validation failed (syntax): SQL syntax error: Invalid expression / Unexpected token. Line 1, Col: 449.\n  it au ON au.id = sd.campus_id JOIN scan_history sh ON sh.device_id = sd.id JOIN answer_script as ON \u001b[4mas\u001b[0m.id = sh.script_id JOIN script_page sm ON sm.script_id = as.id WHERE sh.scanned_at >= CURRENT_TIMEST",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

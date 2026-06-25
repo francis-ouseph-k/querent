@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T13:20:58.153226+00:00",
+  "nl_query": "Which scripts have scan metadata indicating a quality score below 0.5, have been rescanned at least once, and are currently assigned to an evaluator but not yet frozen?",
+  "failed_sql": "SELECT a.id AS script_id, a.urn, a.scan_metadata, sa.assigned_at, ea.status AS evaluation_status\nFROM answer_script a\nJOIN script_assignment sa ON sa.script_id = a.id AND sa.is_active = TRUE\nJOIN evaluation_attempt ea ON ea.assignment_id = sa.id AND ea.is_active = TRUE\nWHERE a.scan_metadata->>'quality_score'::NUMERIC < 0.5\n  AND sa.replaced_previous = TRUE\n  AND ea.status = 'ASSIGNED';",
+  "error": "Validation failed (schema): Hallucinated column(s): script_assignment.is_replaced, script_assignment.is_replaced. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

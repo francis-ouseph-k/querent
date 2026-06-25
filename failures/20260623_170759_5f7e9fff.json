@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T17:07:59.389490+00:00",
+  "nl_query": "Show all scanner devices registered at the Main Campus that are active and have scanned at least one script.",
+  "failed_sql": "SELECT sd.id, sd.device_id, sd.device_name, sd.registered_at, sd.last_seen_at FROM scanner_device sd JOIN academic_unit au ON au.id = sd.campus_id WHERE au.unit_type = 'CAMPUS' AND au.name = 'Main' AND sd.is_active = TRUE AND EXISTS (SELECT 1 FROM scan_history sh WHERE sh.device_id = sd.id)",
+  "error": "Validation failed (semantic): The question mentions 'script', but the SQL does not seem to query any related tables or columns. Ensure you are joining the correct tables.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

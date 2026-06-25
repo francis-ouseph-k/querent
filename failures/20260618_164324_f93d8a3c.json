@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T16:43:24.028563+00:00",
+  "nl_query": "Show the attempt rule configuration for question 2 in the Data Structures paper.",
+  "failed_sql": "SELECT ar.id AS rule_id, ar.rule_type, ar.min_select, ar.max_select, ar.config_json\nFROM   answer_script as\nJOIN   evaluation_attempt ea ON ea.script_id = as.id\nJOIN   attempt_rule ar ON ar.question_id = ea.question_id\nWHERE  as.course_id = 1001 -- Assuming course_id 1001 is the Data Structures paper\n  AND  ea.attempt_type = 'PRIMARY'\n  AND  ea.question_id = 2\nLIMIT  1;",
+  "error": "Validation failed (schema): Hallucinated column(s): evaluation_attempt.question_id, evaluation_attempt.question_id, attempt_rule.script_id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T11:00:09.080605+00:00",
+  "nl_query": "For every script currently under legal hold, show the student name, course code, hold reason, case reference, hold start date, hold duration in days, and the display name of the user who approved the hold.",
+  "failed_sql": "SELECT a.urn, au.student_erp_id, au.name AS student_name, au.display_name AS app_user_display_name, au.faculty_cache_id, au.name AS faculty_cache_name, sh.case_id, sh.hold_reason, sh.hold_start_date, (CURRENT_DATE - sh.hold_start_date) AS days_held FROM script_hold sh JOIN answer_script a ON a.id = sh.script_id JOIN academic_unit au ON au.id = a.course_id WHERE sh.is_active = TRUE AND sh.released_at IS NULL ORDER BY sh.hold_start_date DESC;",
+  "error": "Validation failed (semantic): The question asks for a metric 'per' or 'for each' entity. Using an INNER JOIN drops entities that have a count of zero. You MUST use a LEFT JOIN to ensure entities with zero associated records are included in the results.",
+  "retries": 4,
+  "corrected_sql": ""
+}

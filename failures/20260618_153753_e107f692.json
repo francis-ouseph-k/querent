@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:37:53.544079+00:00",
+  "nl_query": "Show the complete question hierarchy for the Data Structures paper, including section names, question codes, ltree paths, max marks, attempt rule types, and group labels, highlighting any questions that lack a rubric in the approved answer key.",
+  "failed_sql": "SELECT qp.id AS paper_id, qp.title AS paper_title, qs.id AS section_id, qs.name AS section_name, q.id AS question_id, q.code AS question_code, q.path AS question_path, q.max_marks AS max_marks, ar.rule_type AS rule_type, arg.group_label AS group_label, CASE WHEN ak.id IS NULL THEN 'Lacks answer_key' ELSE 'Has answer_key' END AS answer_key_status\nFROM   question_paper   qp\nJOIN   question_section  qs ON qs.qp_id = qp.id\nJOIN   question          q  ON q.section_id = qs.id\nLEFT JOIN attempt_rule                ar ON q.id = ar.question_id\nLEFT JOIN attempt_rule_group          arg      ON arg.attempt_rule_id = ar.id\nLEFT JOIN attempt_rule_group_question argq     ON argq.group_id = arg.id\nLEFT JOIN answer_key ak ON ak.qp_id = qp.id\nWHERE  qp.id = :qp_id\nORDER  BY qp.title, qs.display_order, q.path;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: there is no parameter $1\nLINE 1: ...N answer_key ak ON ak.qp_id = qp.id WHERE qp.id = $1 ORDER B...\n                                                             ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

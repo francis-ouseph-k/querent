@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T12:59:35.889782+00:00",
+  "nl_query": "Show all scripts where the scan was performed by a scanner device registered at a campus different from the campus where the exam was scheduled, indicating a potential logistics or data entry error.",
+  "failed_sql": "SELECT a.id, a.urn, a.student_id, a.course_id, sd.device_name, au.code AS campus_code, au.name AS campus_name, esc.exam_erp_id\nFROM   answer_script a\nJOIN   exam_schedule_cache esc ON esc.id = a.exam_id\nJOIN   scanner_device sd ON sd.id = a.bundle_id\nJOIN   academic_unit au ON au.id = sd.campus_id\nWHERE  au.code != esc.academic_year\nORDER  BY a.urn",
+  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'answer_script' and 'scanner_device'. Please review the schema for the correct join path.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

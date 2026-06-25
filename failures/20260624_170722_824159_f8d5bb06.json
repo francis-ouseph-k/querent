@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T17:07:22.824159+00:00",
+  "nl_query": "List results computed using the MIN rule.",
+  "failed_sql": "SELECT r.id AS result_id, r.final_marks, r.computation_rule, r.source_attempt_ids, r.published_at, au.display_name AS published_by FROM result r LEFT JOIN app_user au ON au.id = r.published_by WHERE r.board_id = :board_id AND r.computation_rule = 'MIN' AND r.published_at IS NOT NULL ORDER BY r.published_at DESC LIMIT 500;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: table name \"au\" specified more than once\n",
+  "retries": 4,
+  "corrected_sql": ""
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T16:28:48.104847+00:00",
+  "nl_query": "Count configurations by data type.",
+  "failed_sql": "SELECT COUNT(c.id) AS count, c.data_type FROM configuration c JOIN unit_type_config utc ON c.scope_type = 'BOARD' AND c.scope_id = utc.id WHERE utc.unit_type = 'COURSE' GROUP BY c.data_type ORDER BY count DESC",
+  "error": "Validation failed (schema): Hallucinated column(s): unit_type_config.id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T11:32:26.864335+00:00",
+  "nl_query": "Show the complete question hierarchy for the Data Structures paper, including section names, question codes, ltree paths, max marks, attempt rule types, and group labels, highlighting any questions that lack a rubric in the approved answer key.",
+  "failed_sql": "SELECT qp.id AS qp_id, qp.title AS paper_title, qp.total_marks AS paper_total_marks, q.id AS question_id, q.code AS question_code, q.path AS question_path, q.max_marks AS question_max_marks, qs.name AS section_name, ar.id AS rule_id, ar.rule_type AS rule_type, arg.group_label AS group_label FROM question_paper qp JOIN question_section qs ON qs.qp_id = qp.id JOIN question q ON q.section_id = qs.id JOIN evaluation_attempt ea ON ea.script_id = q.id AND ea.is_active = TRUE JOIN attempt_rule ar ON ar.question_id = q.id JOIN attempt_rule_group arg ON arg.attempt_rule_id = ar.id JOIN attempt_rule_group_question argq ON argq.group_id = arg.id WHERE qp.id = :qp_id AND NOT EXISTS (SELECT 1 FROM answer_key_rubric akr JOIN answer_key ak ON ak.id = akr.answer_key_id AND ak.qp_id = qp.id AND ak.status = 'APPROVED' WHERE akr.question_id = q.id) ORDER BY qp.title, qs.display_order, q.path, q.max_marks, ar.id, arg.group_label, q.display_order;",
+  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'evaluation_attempt' and 'question'. Please review the schema for the correct join path.",
+  "retries": 4,
+  "corrected_sql": ""
+}

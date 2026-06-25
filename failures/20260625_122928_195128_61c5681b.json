@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T12:29:28.195128+00:00",
+  "nl_query": "How many students are marked absent per exam?",
+  "failed_sql": "SELECT COUNT(DISTINCT a.student_id) AS absent_students_count\nFROM   answer_script a\nJOIN   exam_schedule_cache esc ON a.exam_id = esc.id\nWHERE  a.lifecycle_status = 'ABSENT'",
+  "error": "Validation failed (semantic): The question asks 'How many students...', implying you should count the 'student_cache' table. However, your query counts a column from 'answer_script'. Make sure you are counting the correct entity (e.g. COUNT(student_cache.id)).",
+  "retries": 4,
+  "corrected_sql": ""
+}

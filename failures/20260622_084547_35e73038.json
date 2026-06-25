@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T08:45:47.127402+00:00",
+  "nl_query": "Count academic units by whether they have children.",
+  "failed_sql": "SELECT CASE WHEN COUNT(child_id) > 0 THEN 'HAS_CHILDREN' ELSE 'NO_CHILDREN' END AS has_children, COUNT(*) AS total_count\nFROM academic_unit_closure\nGROUP BY CASE WHEN COUNT(child_id) > 0 THEN 'HAS_CHILDREN' ELSE 'NO_CHILDREN' END",
+  "error": "Validation failed (schema): Hallucinated column(s): unaliased.count, unaliased.count. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

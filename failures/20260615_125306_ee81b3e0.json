@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T12:53:06.400169+00:00",
+  "nl_query": "For each board in EVAL_IN_PROGRESS status, show the course code, total scripts, number of scripts in each evaluation status, the board coordinator name and honorarium weight, and the number of calendar days remaining until the deadline.",
+  "failed_sql": "SELECT b.id AS board_id, au.code AS academic_unit_code, COUNT(a.id) AS total_scripts, SUM(CASE WHEN a.evaluation_status = 'NOT_ASSIGNED' THEN 1 ELSE 0 END) AS scripts_not_assigned, SUM(CASE WHEN a.evaluation_status = 'ASSIGNED' THEN 1 ELSE 0 END) AS scripts_assigned, SUM(CASE WHEN a.evaluation_status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS scripts_in_progress, SUM(CASE WHEN a.evaluation_status = 'FROZEN' THEN 1 ELSE 0 END) AS scripts_frozen, SUM(CASE WHEN a.evaluation_status = 'SUBMITTED' THEN 1 ELSE 0 END) AS scripts_submitted, bc.name AS board_coordinator_name, bc.honorarium_weight AS honorarium_weight, (b.deadline::DATE - CURRENT_DATE) AS days_remaining_until_deadline FROM board b JOIN academic_unit au ON au.id = b.course_id JOIN answer_script a ON a.course_id = au.id JOIN script_assignment sa ON sa.script_id = a.id JOIN board_coordinator bc ON bc.board_id = b.id WHERE b.status = 'EVAL_IN_PROGRESS' GROUP BY b.id, au.code, bc.name, bc.honorarium_weight ORDER BY b.id",
+  "error": "Validation failed (schema): Hallucinated column(s): board_coordinator.name, board_coordinator.name. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

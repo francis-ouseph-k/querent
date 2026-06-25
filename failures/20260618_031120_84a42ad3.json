@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T03:11:20.692376+00:00",
+  "nl_query": "What is the average number of sections per question paper?",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

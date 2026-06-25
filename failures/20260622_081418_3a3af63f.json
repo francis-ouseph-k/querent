@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T08:14:18.076707+00:00",
+  "nl_query": "Show all attempt rule groups with their group labels.",
+  "failed_sql": "SELECT ar.id AS rule_id, ar.rule_type, ar.group_label FROM attempt_rule_group ar JOIN attempt_rule_group_question argq ON argq.group_id = ar.id JOIN question q_parent ON q_parent.id = argq.question_id WHERE ar.rule_type = 'PICK_N' GROUP BY ar.id, ar.rule_type, ar.group_label ORDER BY ar.id, ar.group_label",
+  "error": "Validation failed (schema): Hallucinated column(s): attempt_rule_group.rule_type, attempt_rule_group.rule_type, attempt_rule_group.rule_type. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

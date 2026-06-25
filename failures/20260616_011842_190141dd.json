@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-16T01:18:42.286396+00:00",
+  "nl_query": "How many moderation applications adjusted marks by exactly 3?",
+  "failed_sql": "SELECT COUNT(*) AS count\nFROM   moderation_application ma\nJOIN   evaluation_marks em ON em.attempt_id = ma.script_id\nWHERE  em.adjusted_total - em.original_total = 3",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table \"em\"\nLINE 1: ...OM moderation_application ma WHERE ma.script_id = em.attempt...\n                                                             ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

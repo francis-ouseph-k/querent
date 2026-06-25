@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T08:00:45.240118+00:00",
+  "nl_query": "Show all approved revaluation requests where the resulting evaluation attempt was created but the evaluator has not started marking within 3 working days of the attempt assignment.",
+  "failed_sql": "SELECT rr.id AS request_id, rr.script_id, rr.approved_at, ea.id AS attempt_id, ea.evaluator_user_id, ea.started_at, ea.created_at, ea.updated_at, au.display_name AS evaluator_name, b.id AS board_id, au.code AS board_code FROM revaluation_request rr JOIN evaluation_attempt ea ON ea.id = rr.resulting_attempt_id JOIN script_assignment sa ON sa.id = ea.assignment_id JOIN faculty_cache fc ON fc.id = sa.faculty_cache_id JOIN app_user au ON au.id = fc.id JOIN board b ON b.course_id = sa.script_id AND b.exam_id = sa.script_id WHERE rr.approval_status = 'APPROVED' AND ea.status = 'ASSIGNED' AND ea.is_active = TRUE AND ea.created_at < CURRENT_TIMESTAMP - working_day_offset(ea.created_at, 3, b.academic_year) ORDER BY rr.approved_at ASC LIMIT 200;",
+  "error": "Validation failed (schema): Column validation failed: evaluation_attempt does NOT have updated_at. Use created_at, started_at, frozen_at, or submitted_at.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

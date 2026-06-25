@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T17:28:21.645394+00:00",
+  "nl_query": "Count blocked scripts per block reason category.",
+  "failed_sql": "SELECT b.block_status, b.block_reason, COUNT(*) AS script_count\nFROM   script_assignment sa\nJOIN   answer_script a ON a.id = sa.script_id\nJOIN   board b ON b.course_id = a.course_id AND b.exam_id = a.exam_id\nWHERE  a.lifecycle_status  = 'ATTEMPTED'\n  AND  a.scan_status   = 'SCANNED'\n  AND  a.evaluation_status IN ('NOT_ASSIGNED', 'ASSIGNED', 'IN_PROGRESS')\n  AND  sa.block_status  IN ('NONE', 'MALPRACTICE')\nGROUP  BY b.block_status, b.block_reason\nORDER  BY script_count DESC;",
+  "error": "Validation failed (schema): Hallucinated column(s): board.block_status, board.block_reason, board.block_status, board.block_reason, script_assignment.block_status. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

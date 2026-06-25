@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-17T07:09:42.364268+00:00",
+  "nl_query": "How many DEKs were created per KEK?",
+  "failed_sql": "SELECT dek.key_encryption_key_id, COUNT(*) AS dek_count\nFROM   data_encryption_key dek\nGROUP BY dek.key_encryption_key_id\nORDER BY dek_count DESC\nLIMIT  500;",
+  "error": "Validation failed (schema): Hallucinated column(s): data_encryption_key.dek_count. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

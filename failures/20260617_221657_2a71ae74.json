@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-17T22:16:57.960428+00:00",
+  "nl_query": "Identify all scripts where the cached total marks on the answer script row differs from the total marks on the latest active evaluation attempt by more than 0.5 marks, indicating a cache synchronization issue.",
+  "failed_sql": "SELECT a.id, a.urn, sc.student_id, sc.name, sc.synced_at, SUM(em.marks_awarded) AS marks_sum, (SUM(em.marks_awarded) - a.total_marks) AS discrepancy FROM answer_script a JOIN script_assignment sa ON sa.script_id = a.id JOIN evaluation_attempt ea ON ea.assignment_id = sa.id JOIN evaluation_marks em ON em.attempt_id = ea.id WHERE a.evaluation_status = 'ATTEMPTED' AND sa.is_active = TRUE AND ea.is_active = TRUE AND em.is_final = TRUE GROUP BY a.id, a.urn, sc.student_id, sc.name, sc.synced_at, a.total_marks HAVING SUM(em.marks_awarded) <> a.total_marks ORDER BY discrepancy DESC LIMIT 100;",
+  "error": "Validation failed (schema): Invalid value: answer_script.evaluation_status = 'ATTEMPTED' is not a valid value for this column. Allowed values: ASSIGNED, CLOSED, FROZEN, IN_PROGRESS, NOT_ASSIGNED, PARTIALLY_FROZEN, SUBMITTED. Tip — this column is constrained to a fixed set of values by a CHECK constraint; only the listed values can ever exist in the data.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

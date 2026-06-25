@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T13:03:24.048507+00:00",
+  "nl_query": "What is the average time between exam schedule creation and board creation?",
+  "failed_sql": "SELECT AVG(T1.created_at - T2.created_at) AS avg_time_difference\nFROM exam_schedule_cache AS T1\nJOIN board AS T2 ON T2.exam_id = T1.id",
+  "error": "Validation failed (schema): Hallucinated column(s): board.exam_erp_id. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

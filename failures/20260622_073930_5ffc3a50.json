@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T07:39:30.125864+00:00",
+  "nl_query": "For each board in EVAL_IN_PROGRESS status, show the course code, total scripts, number of scripts in each evaluation status, the board coordinator name and honorarium weight, and the number of calendar days remaining until the deadline.",
+  "failed_sql": "SELECT au.code AS academic_unit_code, COUNT(a.id) AS total_scripts, SUM(CASE WHEN ea.evaluation_status = 'NOT_ASSIGNED' THEN 1 ELSE 0 END) AS scripts_not_assigned, SUM(CASE WHEN ea.evaluation_status = 'ASSIGNED' THEN 1 ELSE 0 END) AS scripts_assigned, SUM(CASE WHEN ea.evaluation_status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS scripts_in_progress, SUM(CASE WHEN ea.evaluation_status = 'PARTIALLY_FROZEN' THEN 1 ELSE 0 END) AS scripts_partially_frozen, SUM(CASE WHEN ea.evaluation_status = 'FROZEN' THEN 1 ELSE 0 END) AS scripts_frozen, SUM(CASE WHEN ea.evaluation_status = 'CLOSED' THEN 1 ELSE 0 END) AS scripts_closed, SUM(CASE WHEN ea.evaluation_status = 'SUBMITTED' THEN 1 ELSE 0 END) AS scripts_submitted, COALESCE(b.deadline - CURRENT_DATE, 0) AS days_remaining_until_deadline, bc.name AS board_coordinator_name, bc.honorarium_weight FROM academic_unit au JOIN board b ON au.id = b.course_id JOIN script_assignment sa ON sa.board_id = b.id JOIN evaluation_attempt ea ON ea.assignment_id = sa.id LEFT JOIN faculty_cache fc ON fc.id = sa.faculty_cache_id JOIN board_coordinator bc ON bc.faculty_cache_id = fc.id WHERE b.status = 'EVAL_IN_PROGRESS' GROUP BY au.code, b.deadline, bc.name, bc.honorarium_weight ORDER BY au.code, days_remaining_until_deadline DESC",
+  "error": "Validation failed (schema): Hallucinated column(s): board_coordinator.name, unaliased.deadline, board_coordinator.name, script_assignment.course_id, answer_script.script_id. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

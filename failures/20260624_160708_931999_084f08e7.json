@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T16:07:08.931999+00:00",
+  "nl_query": "For each audit log entry related to a result correction, show the result ID, the old marks, the new marks, the name of the user who made the correction, the reason given, and the time elapsed since the previous correction on the same result.",
+  "failed_sql": "SELECT rh.id AS result_id, rh.old_marks, rh.new_marks, au.display_name AS actor, rh.reason, (rh.changed_at - LAG(rh.changed_at) OVER (PARTITION BY rh.result_id ORDER BY rh.changed_at)) AS time_elapsed FROM result_history rh LEFT JOIN app_user au ON au.id = rh.changed_by ORDER BY rh.changed_at DESC",
+  "error": "Validation failed (schema): Hallucinated table(s): aggregated_changes. These tables do not exist in the schema.",
+  "retries": 4,
+  "corrected_sql": ""
+}

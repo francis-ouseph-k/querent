@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T19:07:49.209693+00:00",
+  "nl_query": "Show all annotations created by Dr. Anand Rao.",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

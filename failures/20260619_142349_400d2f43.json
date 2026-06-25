@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T14:23:49.348976+00:00",
+  "nl_query": "For each student who filed a revaluation request that was approved, show their name, original final marks, revaluation attempt total marks, the absolute difference, and whether the difference exceeds the board's configured deviation threshold.",
+  "failed_sql": "SELECT sc.name AS student_name, ra.final_marks AS original_final_marks, ea_r.total_marks AS revaluation_total_marks, ABS(ra.final_marks - ea_r.total_marks) AS variance, ep.deviation_threshold FROM revaluation_request rr JOIN answer_script ra ON ra.id = rr.script_id JOIN evaluation_attempt ea_r ON ea_r.resulting_attempt_id = ra.id JOIN student_cache sc ON sc.student_id = ra.student_id JOIN board b ON b.id = ra.board_id CROSS JOIN LATERAL (SELECT ep2.deviation_threshold, ep2.review_required, ep2.third_eval_trigger FROM evaluation_policy ep2 WHERE (ep2.board_id = b.board_id) OR (ep2.course_id = b.course_id AND ep2.board_id IS NULL) OR (ep2.course_id IS NULL AND ep2.board_id IS NULL) ORDER BY CASE WHEN ep2.board_id IS NOT NULL THEN 1 WHEN ep2.course_id IS NOT NULL THEN 2 ELSE 3 END LIMIT 1) ep WHERE rr.approval_status = 'APPROVED' AND ra.lifecycle_status = 'ATTEMPTED' AND ra.scan_status = 'SCANNED' AND ra.evaluation_status IN ('NOT_ASSIGNED', 'ASSIGNED', 'IN_PROGRESS') AND b.block_status IN ('NONE', 'MALPRACTICE') ORDER BY variance DESC LIMIT 100;",
+  "error": "Validation failed (schema): Hallucinated column(s): answer_script.final_marks, evaluation_attempt.resulting_attempt_id, answer_script.final_marks, board.block_status, board.board_id. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

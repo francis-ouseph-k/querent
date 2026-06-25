@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T08:06:35.217091+00:00",
+  "nl_query": "Show the complete faculty eligibility and performance chain: faculty name, department, courses they are mapped to, boards they are in the pool for, scripts assigned, scripts submitted, and their average evaluation speed.",
+  "failed_sql": "SELECT fc.name AS faculty_name, au.display_name AS user_display_name, d.name AS department_name, b.id AS board_id, sa.id AS script_assignment_id, sa.script_id AS script_id, sa.assigned_at AS assigned_at, sa.created_at AS created_at, AVG(EXTRACT(EPOCH FROM (sa.created_at - sa.assigned_at)) / 3600) AS average_evaluation_speed FROM faculty_cache fc JOIN academic_unit au ON au.id = fc.department_id JOIN academic_unit_closure ac ON au.id = ac.descendant_id JOIN board b ON b.course_id = au.id AND b.exam_id = au.id JOIN script_assignment sa ON sa.faculty_cache_id = fc.id AND sa.is_active = TRUE LEFT JOIN academic_unit d ON d.id = au.parent_id GROUP BY fc.name, au.display_name, d.name, b.id, sa.id, sa.script_id, sa.assigned_at, sa.created_at ORDER BY fc.name, au.display_name, d.name, b.id, sa.id, sa.script_id, sa.assigned_at, sa.created_at",
+  "error": "Validation failed (schema): Column validation failed: script_assignment does NOT have created_at. Use assigned_at instead.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

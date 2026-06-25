@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T14:16:57.486440+00:00",
+  "nl_query": "Show the complete timeline for each board created last month: creation date, first script assignment date, first evaluation attempt start date, first freeze date, last submission date, and the total number of days the board has been open.",
+  "failed_sql": "SELECT b.id, b.created_at AS board_creation_date, MIN(sa.assigned_at) AS first_script_assignment_date, MIN(ea.started_at) AS first_evaluation_attempt_start_date, MIN(ea.frozen_at) AS first_freeze_date, MAX(ea.submitted_at) AS last_submission_date, (EXTRACT(EPOCH FROM (MAX(ea.submitted_at) - b.created_at)) / 86400)::INT AS days_open FROM board b LEFT JOIN script_assignment sa ON sa.board_id = b.id AND sa.is_active = TRUE LEFT JOIN evaluation_attempt ea ON ea.board_id = b.id AND ea.is_active = TRUE WHERE b.created_at >= CURRENT_DATE - INTERVAL '1 month' GROUP BY b.id ORDER BY b.created_at DESC LIMIT 100;",
+  "error": "Validation failed (schema): Column validation failed: script_assignment does NOT have board_id. Join via answer_script or evaluation_attempt to reach board.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

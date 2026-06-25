@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T16:16:28.857249+00:00",
+  "nl_query": "Which results have an ERP reconciliation ID recorded?",
+  "failed_sql": "SELECT r.id AS result_id, r.script_id, r.final_marks, r.erp_push_status, r.erp_push_at, rh.erp_reconciliation_id FROM result r JOIN result_history rh ON rh.result_id = r.id WHERE rh.erp_reconciliation_id IS NOT NULL LIMIT 200;",
+  "error": "Validation failed (schema): Hallucinated column(s): result_history.erp_reconciliation_id, result_history.erp_reconciliation_id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

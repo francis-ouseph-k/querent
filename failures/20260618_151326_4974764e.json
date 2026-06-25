@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:13:26.297096+00:00",
+  "nl_query": "Which boards have all scripts scanned but less than 80 percent of those scripts have been assigned to evaluators, and show the course code, total scripts, assigned count, and assignment gap.",
+  "failed_sql": "SELECT b.code AS academic_unit_code, COUNT(a.id) AS total_scripts, COUNT(DISTINCT sa.id) AS assigned_count, (COUNT(a.id) - COUNT(DISTINCT sa.id)) AS script_assignment_gap FROM board b JOIN answer_script a ON a.board_id = b.id JOIN script_assignment sa ON sa.script_id = a.id WHERE a.scan_status = 'SCANNED' AND b.status = 'EVAL_IN_PROGRESS' AND (COUNT(a.id) - COUNT(DISTINCT sa.id)) < 80 GROUP BY b.code ORDER BY script_assignment_gap ASC LIMIT 100;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: aggregate functions are not allowed in WHERE\nLINE 1: ... 'SCANNED' AND b.status = 'EVAL_IN_PROGRESS' AND (COUNT(a.id...\n                                                             ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

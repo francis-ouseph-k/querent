@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T03:33:25.940033+00:00",
+  "nl_query": "For each script with an active legal hold, show the hold duration in days, whether the hold overlaps with the board evaluation deadline, whether the script has already been published, and the case reference number.",
+  "failed_sql": "SELECT sh.id, sh.script_id, a.urn, sh.case_id, sh.hold_reason, sh.hold_start_date, sh.hold_end_date, sh.is_active, sh.released_at, (CURRENT_DATE - sh.hold_start_date) AS days_held, au.display_name AS placed_by, b.deadline, b.status AS board_status, r.erp_push_status, r.final_marks, r.published_at, r.published_by FROM script_hold sh JOIN answer_script a ON a.id = sh.script_id JOIN app_user au ON au.id = sh.applied_by JOIN board b ON b.id = a.board_id JOIN result r ON r.script_id = a.id WHERE sh.is_active = TRUE AND sh.released_at IS NULL AND sh.case_id IS NOT NULL AND b.status = 'EVAL_IN_PROGRESS' AND r.erp_push_status = 'PENDING' AND r.final_marks IS NOT NULL AND r.published_at IS NULL ORDER BY sh.hold_start_date ASC LIMIT 100;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: bigint = character varying\nLINE 1: ... au ON au.id = sh.applied_by JOIN board b ON b.id = sh.case_...\n                                                             ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T19:16:57.052129+00:00",
+  "nl_query": "Which revaluation requests were filed manually rather than through the portal?",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:47:09.320423+00:00",
+  "nl_query": "For each published result, show the script URN, student name, final marks, computation rule, the list of source attempt types used, the evaluator names for those attempts, and whether the result has been reconciled with ERP.",
+  "failed_sql": "SELECT a.urn, sc.name AS student_name, r.final_marks, r.computation_rule, ARRAY(SELECT ea.attempt_type FROM evaluation_attempt ea WHERE ea.script_id = a.id AND ea.is_active = TRUE AND ea.status = 'SUBMITTED') AS source_attempt_types, fc.display_name AS evaluator, r.erp_push_status FROM answer_script a JOIN student_cache sc ON sc.student_id = a.student_id JOIN result r ON r.script_id = a.id JOIN evaluation_attempt ea ON ea.script_id = a.id JOIN faculty_cache fc ON fc.employee_id = ea.evaluator_user_id WHERE r.erp_push_status <> 'RECONCILED' GROUP BY a.urn, sc.name, r.final_marks, r.computation_rule, ea.attempt_type, fc.display_name, r.erp_push_status ORDER BY a.urn, sc.name, r.final_marks DESC LIMIT 100;",
+  "error": "Validation failed (schema): Hallucinated column(s): answer_script.attempt_type. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

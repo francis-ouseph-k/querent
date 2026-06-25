@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T03:30:09.889798+00:00",
+  "nl_query": "Show all scripts where the primary evaluator has frozen the attempt, a review evaluator has been assigned, but the review attempt has not yet started, including the primary evaluator name, review evaluator name, and board code.",
+  "failed_sql": "SELECT ea.id AS attempt_id, ea.script_id, ea.attempt_type, ea.total_marks, ea.frozen_at, au.display_name AS primary_evaluator_name, rvau.display_name AS review_evaluator_name, b.code AS board_code\nFROM   evaluation_attempt ea\nJOIN   app_user au ON au.id = ea.evaluator_user_id\nJOIN   script_assignment sa ON sa.evaluator_id = au.employee_id AND sa.script_id = ea.script_id\nJOIN   academic_unit au ON au.id = sa.board_id AND au.unit_type = 'COURSE'\nJOIN   board b ON b.id = sa.board_id\nJOIN   evaluation_attempt rvea ON rvea.parent_attempt_id = ea.id AND rvea.attempt_type = 'REVIEW' AND rvea.is_active = TRUE\nJOIN   app_user rvau ON rvau.id = rvea.evaluator_user_id\nWHERE  ea.attempt_type = 'PRIMARY' AND ea.status = 'FROZEN' AND rvea.status = 'NOT_ASSIGNED' AND rvea.is_active = TRUE\nORDER  BY ea.frozen_at ASC\nLIMIT  500;",
+  "error": "Validation failed (schema): Ambiguous column reference: 'is_active'. It exists in multiple tables (academic_unit, evaluation_attempt, app_user, script_assignment). You must qualify it with a table alias.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

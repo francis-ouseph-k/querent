@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-24T17:09:37.298001+00:00",
+  "nl_query": "List honorarium summaries that have been exported to payroll.",
+  "failed_sql": "SELECT hs.id, hs.board_id, fc.employee_erp_id, hs.role_in_board, hs.scripts_completed, hs.final_amount, hs.approved_at, hs.approval_status FROM honorarium_summary hs JOIN faculty_cache fc ON fc.id = hs.faculty_cache_id WHERE hs.approval_status = 'EXPORTED' LIMIT 500;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column hs.export_status does not exist\nLINE 1: ...ripts_completed, hs.final_amount, hs.approved_at, hs.export_...\n                                                             ^\n",
+  "retries": 4,
+  "corrected_sql": ""
+}

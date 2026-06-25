@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T22:14:10.840272+00:00",
+  "nl_query": "Count workflow transitions by whether they require a reason.",
+  "failed_sql": "SELECT COUNT(*) AS transitions_with_reason, COUNT(*) - COUNT(CASE WHEN requires_reason = TRUE THEN 1 ELSE NULL END) AS transitions_without_reason FROM workflow_state_transition WHERE is_active = TRUE",
+  "error": "Validation failed (schema): Hallucinated column(s): workflow_state_transition.is_active. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T09:11:28.876756+00:00",
+  "nl_query": "Count the number of question papers created per source type this semester.",
+  "failed_sql": "SELECT qp.source_type, COUNT(*) AS count FROM question_paper qp JOIN exam_schedule_cache esc ON qp.exam_id = esc.id WHERE esc.academic_year = '2025-2026' AND esc.exam_date >= DATE_TRUNC('semester', CURRENT_DATE) AND esc.exam_date < DATE_TRUNC('semester', CURRENT_DATE) + INTERVAL '1 semester' GROUP BY qp.source_type ORDER BY count DESC",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: invalid input syntax for type interval: \"1 semester\"\nLINE 1: ...< DATE_TRUNC('semester', CURRENT_DATE) + INTERVAL '1 semeste...\n                                                             ^\n",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T14:52:53.636136+00:00",
+  "nl_query": "Count revaluation extensions approved per board.",
+  "failed_sql": "SELECT b.id AS board_id, COUNT(der.id) AS approved_extensions FROM revaluation_extension_request der JOIN board b ON b.id = der.board_id WHERE der.approval_status = 'APPROVED' GROUP BY b.id ORDER BY approved_extensions DESC",
+  "error": "Validation failed (schema): Hallucinated column(s): revaluation_extension_request.board_id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

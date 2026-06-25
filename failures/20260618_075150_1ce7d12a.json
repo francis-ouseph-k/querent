@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T07:51:50.226564+00:00",
+  "nl_query": "Show all unit types configured for this university and whether they are mandatory.",
+  "failed_sql": "",
+  "error": "LLM produced empty SQL output.",
+  "retries": 0,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T08:57:37.611963+00:00",
+  "nl_query": "Which boards have a board coordinator who is also listed as a primary evaluator in the pool, and what is the total number of scripts that coordinator has evaluated versus coordinated?",
+  "failed_sql": "SELECT b.id AS board_id, b.name AS board_name, COUNT(DISTINCT ea_p.script_id) AS total_scripts_evaluated, COUNT(DISTINCT ea_c.script_id) AS total_scripts_coordinated FROM board b JOIN board_coordinator bc ON bc.board_id = b.id JOIN evaluator_pool ep ON ep.board_id = b.id AND ep.eligible_role = 'PRIMARY' AND ep.is_available = TRUE JOIN evaluation_attempt ea_p ON ea_p.evaluator_id = bc.employee_id AND ea_p.attempt_type = 'PRIMARY' AND ea_p.is_active = TRUE JOIN evaluation_attempt ea_c ON ea_c.evaluator_id = bc.employee_id AND ea_c.attempt_type = 'BOARD_COORDINATOR' AND ea_c.is_active = TRUE GROUP BY b.id, b.name",
+  "error": "Validation failed (schema): Hallucinated column(s): board.name, board.name. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T13:32:56.334046+00:00",
+  "nl_query": "For each course in the current academic year, show the number of students registered, number of scripts attempted, number absent, number barred, and the pass percentage based on published results with final marks at least 40 percent of the paper total.",
+  "failed_sql": "SELECT au.code AS course_code, au.name AS course_name, COUNT(DISTINCT esm.student_id) AS registered_students, COUNT(DISTINCT a.id) AS scripts_attempted, COUNT(DISTINCT a.urn) FILTER (WHERE a.lifecycle_status = 'ABSENT') AS absent_students, COUNT(DISTINCT a.urn) FILTER (WHERE a.lifecycle_status = 'BARRED') AS barred_students, ROUND(100.0 * COUNT(DISTINCT r.script_id) FILTER (WHERE r.final_marks >= 0.4 * qp.total_marks) / NULLIF(COUNT(DISTINCT r.script_id), 0), 2) AS pass_percentage\nFROM   academic_unit au\nJOIN   exam_student_mapping esm ON esm.course_id = au.id\nJOIN   answer_script a ON a.urn = esm.urn AND a.lifecycle_status = 'ATTEMPTED'\nJOIN   question_paper qp ON qp.id = a.qp_id\nJOIN   result r ON r.script_id = a.id\nWHERE  r.published_at IS NOT NULL\nGROUP  BY au.code, au.name\nORDER  BY pass_percentage DESC;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table \"b\"\nLINE 1: ...s = 'ATTEMPTED' JOIN question_paper qp ON qp.id = b.qp_id JO...\n                                                             ^\n",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

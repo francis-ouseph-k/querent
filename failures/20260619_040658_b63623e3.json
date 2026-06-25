@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-19T04:06:58.772012+00:00",
+  "nl_query": "What is the total maximum marks per question paper?",
+  "failed_sql": "SELECT SUM(qp.total_marks) AS total_max_marks\nFROM question_paper qp\nWHERE qp.is_locked = TRUE\n  AND qp.status = 'APPROVED'",
+  "error": "Validation failed (schema): Type mismatch: question_paper.is_locked (BOOLEAN): non-boolean string literal 'APPROVED' on boolean column. Tip — integer/bigint columns need unquoted numeric literals (e.g. board_id = 5, not board_id = '5'). If you are filtering by a human-readable label like a course code or name, use the .code or .name VARCHAR column instead of the numeric .id column.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

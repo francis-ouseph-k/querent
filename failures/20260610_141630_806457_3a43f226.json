@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-10T14:16:30.806457",
+  "nl_query": "Give me Answer Scripts with more than  14% difference in marks between primary evaluation and review for course id CB123 for the academic year 2025 26",
+  "failed_sql": "SELECT ea.script_id, ea.total_marks AS primary_total\\n  FROM   evaluation_attempt ea\\n  WHERE  ea.attempt_type = 'PRIMARY'\\n    AND  ea.status       = 'FROZEN'\\n    AND  ea.is_active    = TRUE\\n    AND  ea.board_id     = 'CB123'\\n    AND  ea.evaluation_cycle = 202526\\n    AND  ea.course_id     = 'CB123'\\n    AND  em.is_final     = TRUE\\n),\\nre",
+  "error": "Validation failed (syntax): SQL syntax error: Invalid expression / Unexpected token. Line 1, Col: 53.\n  SELECT ea.script_id, ea.total_marks AS primary_total\u001b[4m\\\u001b[0mn  FROM   evaluation_attempt ea\\n  WHERE  ea.attempt_type = 'PRIMARY'\\n    AND  ea.status       = 'F",
+  "retries": 2,
+  "corrected_sql": ""
+}

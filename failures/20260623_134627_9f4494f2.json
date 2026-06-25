@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T13:46:27.532872+00:00",
+  "nl_query": "Count critical audit log entries per week.",
+  "failed_sql": "SELECT COUNT(*) AS critical_audit_log_count, EXTRACT(WEEK FROM al.created_at) AS week_number\nFROM   audit_log al\nJOIN   academic_calendar ac ON ac.cal_date = al.created_at\nWHERE  al.is_critical = TRUE\nGROUP BY EXTRACT(WEEK FROM al.created_at)",
+  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'academic_calendar' and 'audit_log'. Please review the schema for the correct join path.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

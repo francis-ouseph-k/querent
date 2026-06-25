@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-15T23:05:02.870458+00:00",
+  "nl_query": "What is the average number of pages per scanned script?",
+  "failed_sql": "SELECT AVG(scan_metadata->>'page_count')::INTEGER AS average_pages FROM answer_script WHERE scan_status = 'SCANNED'",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: function avg(text) does not exist\nLINE 1: EXPLAIN (FORMAT JSON) SELECT AVG(scan_metadata->>'page_count...\n                                     ^\nHINT:  No function matches the given name and argument types. You might need to add explicit type casts.\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

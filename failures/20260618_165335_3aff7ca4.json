@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T16:53:35.867232+00:00",
+  "nl_query": "Show all closure table entries for the CSE department.",
+  "failed_sql": "SELECT ac.ancestor_id, ac.descendant_id, ac.depth FROM academic_unit_closure ac JOIN academic_unit au ON au.id = ac.descendant_id WHERE au.unit_type = 'COURSE' AND au.ancestor_id = (SELECT id FROM academic_unit WHERE unit_type = 'COURSE' AND code = 'CSE') LIMIT 1000;",
+  "error": "Validation failed (schema): Hallucinated column(s): academic_unit.ancestor_id. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-22T07:37:54.413757+00:00",
+  "nl_query": "Identify all students who are marked ELIGIBLE in the exam roster but have no corresponding answer script with lifecycle status ATTEMPTED, indicating a potential scanning gap.",
+  "failed_sql": "SELECT sc.student_erp_id, sc.name, esm.eligibility_status, a.lifecycle_status\nFROM   student_cache sc\nJOIN   exam_student_mapping esm ON esm.student_id = sc.id\n                                AND esm.exam_id    = :exam_id\n                                AND esm.course_id  = sc.program_id\nWHERE  esm.eligibility_status = 'ELIGIBLE'\n  AND  a.lifecycle_status  = 'ATTEMPTED'\n  AND  a.student_id       = sc.id\nLIMIT  100;",
+  "error": "Validation failed (schema): Hallucinated column(s): unaliased.lifecycle_status, unaliased.lifecycle_status. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

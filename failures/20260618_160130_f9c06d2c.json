@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T16:01:30.795274+00:00",
+  "nl_query": "Identify all scripts where the cached total marks on the answer script row differs from the total marks on the latest active evaluation attempt by more than 0.5 marks, indicating a cache synchronization issue.",
+  "failed_sql": "SELECT a.id AS script_id, a.urn, a.student_id, a.student_cache.name AS student_name, a.total_marks AS cached_total, r.final_marks AS final_published_marks, (a.total_marks - r.final_marks) AS discrepancy\nFROM   answer_script a\nJOIN   evaluation_marks em ON em.attempt_id = a.id\nJOIN   result r ON r.script_id = a.id\nWHERE  a.evaluation_status = 'ATTEMPTED'\n  AND  a.is_active = TRUE\n  AND  em.is_final = TRUE\n  AND  (a.total_marks - r.final_marks) > 0.5\nORDER  BY discrepancy DESC\nLIMIT  100;",
+  "error": "Validation failed (schema): Hallucinated column(s): unaliased.name. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

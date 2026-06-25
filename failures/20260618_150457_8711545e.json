@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-18T15:04:57.112515+00:00",
+  "nl_query": "For each published result, show the script URN, student name, final marks, computation rule, the list of source attempt types used, the evaluator names for those attempts, and whether the result has been reconciled with ERP.",
+  "failed_sql": "SELECT a.urn, sc.name AS student_name, r.final_marks, r.computation_rule, ARRAY(SELECT ea.attempt_type FROM evaluation_attempt ea WHERE ea.id = ANY(r.source_attempt_ids)) AS source_attempt_types, fc.display_name AS evaluator, CASE WHEN r.erp_push_status = 'RECONCILED' THEN 'Yes' ELSE 'No' END AS has_erp_reconciled FROM answer_script a JOIN student_cache sc ON sc.student_id = a.student_id JOIN result r ON r.script_id = a.id JOIN faculty_cache fc ON fc.employee_id = ea.evaluator_user_id WHERE a.lifecycle_status = 'ATTEMPTED' AND a.scan_status = 'SCANNED' AND a.evaluation_status IN ('NOT_ASSIGNED', 'ASSIGNED', 'IN_PROGRESS') AND r.erp_push_status IN ('PENDING', 'FAILED', 'RECONCILED') AND ea.is_active = TRUE ORDER BY a.urn LIMIT 100;",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table \"ea\"\nLINE 1: ... = a.id JOIN faculty_cache fc ON fc.employee_id = ea.evaluat...\n                                                             ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

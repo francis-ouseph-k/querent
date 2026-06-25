@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T13:21:54.176415+00:00",
+  "nl_query": "List user auxiliary roles that expired last month.",
+  "failed_sql": "SELECT au.id, au.user_id, au.display_name, uar.auxiliary_role, uar.effective_from, uar.effective_to, au_granted.display_name AS granted_by\nFROM   app_user au\nJOIN   user_auxiliary_role uar ON au.id = uar.user_id\nLEFT   JOIN app_user au_granted ON au_granted.id = uar.granted_by\nWHERE  uar.effective_from <= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')\n  AND (uar.effective_to IS NULL OR uar.effective_to >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month'))\nORDER  BY uar.effective_from DESC;",
+  "error": "Validation failed (schema): Hallucinated column(s): app_user.user_id. Use only columns that exist in the schema.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

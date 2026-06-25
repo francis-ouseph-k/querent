@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-23T09:16:39.494231+00:00",
+  "nl_query": "Count the number of faculty_course_mapping entries per academic year.",
+  "failed_sql": "SELECT au.academic_year, COUNT(fcm.id) AS faculty_course_mapping_count\nFROM   faculty_course_mapping fcm\nJOIN   academic_unit         au  ON au.id = fcm.course_id\nGROUP  BY au.academic_year",
+  "error": "Validation failed (schema): Column validation failed: academic_unit does NOT have academic_year. academic_year is on exam_schedule_cache and faculty_course_mapping.",
+  "retries": 4,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

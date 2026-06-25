@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-16T17:00:23.795363+00:00",
+  "nl_query": "What is the scan completion rate per bundle?",
+  "failed_sql": "SELECT b.bundle_code, b.exam_hall, (b.scanned_count::float / b.expected_count::float) * 100 AS scan_completion_rate\nFROM bundle b\nWHERE b.status = 'SCANNING' AND b.scanned_count < b.expected_count\nORDER BY scan_completion_rate DESC LIMIT 10;",
+  "error": "Validation failed (schema): Hallucinated column(s): bundle.scan_completion_rate. Use only columns that exist in the schema.",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-17T03:44:56.615240+00:00",
+  "nl_query": "What is the average number of preparers per approved answer key?",
+  "failed_sql": "SELECT AVG(COUNT(DISTINCT employee_id)) AS average_preparers_per_answer_key\nFROM answer_key_preparer\nJOIN answer_key ON answer_key.id = answer_key_preparer.answer_key_id\nWHERE answer_key.status = 'APPROVED'",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: aggregate function calls cannot be nested\nLINE 1: EXPLAIN (FORMAT JSON) SELECT AVG(COUNT(DISTINCT employee_id)...\n                                         ^\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}

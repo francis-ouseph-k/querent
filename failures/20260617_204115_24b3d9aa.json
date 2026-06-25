@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-06-17T20:41:15.637835+00:00",
+  "nl_query": "For each question paper, show the paper title, total marks, number of leaf questions, number of answer key rubrics defined, number of preparers, approval status, and the name of the user who approved it.",
+  "failed_sql": "SELECT qp.title, qp.total_marks, COUNT(CASE WHEN q.max_marks IS NOT NULL THEN 1 END) AS num_leaf_questions, COUNT(akr.id) AS num_answer_key_rubrics, COUNT(DISTINCT akp.employee_id) AS num_preparers, ak.status AS approval_status, fc.name AS approved_by_name FROM question_paper qp JOIN board b ON b.qp_id = qp.id JOIN answer_key ak ON ak.qp_id = qp.id AND ak.status = 'APPROVED' JOIN answer_key_rubric akr ON akr.answer_key_id = ak.id JOIN faculty_cache fc ON fc.employee_id = ak.approved_by JOIN question q ON q.qp_id = qp.id AND q.max_marks IS NOT NULL GROUP BY qp.title, qp.total_marks, ak.status, fc.name",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: character varying = bigint\nLINE 1: ...d = ak.id JOIN faculty_cache fc ON fc.employee_id = ak.appro...\n                                                             ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
+  "retries": 2,
+  "corrected_sql": "",
+  "source": "pipeline"
+}
