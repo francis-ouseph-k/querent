@@ -9,3 +9,4 @@ patch_reviewer_feedback.py
 .vscode/
 logs/
 output/
+tmp/
