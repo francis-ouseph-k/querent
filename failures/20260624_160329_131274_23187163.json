@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T16:03:29.131274+00:00",
-  "nl_query": "Which boards have honorarium summaries computed but not yet approved, and what is the total pending honorarium amount per board broken down by evaluator role?",
-  "failed_sql": "SELECT b.id AS board_id, b.name AS board_name, SUM(hs.final_amount) AS total_pending_honorarium, fc.name AS evaluator_name, hs.role_in_board AS role_in_board FROM board b JOIN honorarium_summary hs ON b.id = hs.board_id JOIN faculty_cache fc ON hs.faculty_cache_id = fc.id WHERE hs.approval_status = 'PENDING' GROUP BY b.id, b.name, fc.name, hs.role_in_board ORDER BY total_pending_honorarium DESC;",
-  "error": "Validation failed (schema): Hallucinated table(s): faculty_cache_evaluator. These tables do not exist in the schema.",
-  "retries": 4,
-  "corrected_sql": ""
-}

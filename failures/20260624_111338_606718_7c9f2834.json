@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T11:13:38.606718+00:00",
-  "nl_query": "Count active script assignments per evaluator.",
-  "failed_sql": "SELECT fc.name AS evaluator_name, COUNT(sa.id) AS active_assignments\nFROM faculty_cache fc\nJOIN script_assignment sa ON sa.faculty_cache_id = fc.id\nWHERE sa.is_active = TRUE\nGROUP BY fc.name\nORDER BY active_assignments DESC",
-  "error": "Validation failed (aggregation): GROUP BY uses a descriptive column (like name, title, or code) without including the primary key (id). Names and titles may not be unique. Always include the entity's 'id' column in the GROUP BY clause alongside the descriptive column.",
-  "retries": 4,
-  "corrected_sql": ""
-}

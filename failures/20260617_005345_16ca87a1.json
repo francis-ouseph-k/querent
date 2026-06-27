@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-17T00:53:45.613534+00:00",
-  "nl_query": "Which legal holds have been released in the last 30 days?",
-  "failed_sql": "SELECT sh.id, sh.script_id, a.urn, sh.case_id, sh.hold_reason, sh.hold_start_date, sh.hold_end_date, au.display_name AS placed_by, au.approved_by AS approved_by, sh.released_at, sh.is_active\nFROM   script_hold sh\nJOIN   answer_script a ON a.id = sh.script_id\nJOIN   app_user      au ON au.id = sh.applied_by\nWHERE  sh.is_active   = TRUE\n  AND  sh.released_at IS NOT NULL\n  AND  sh.released_at >= CURRENT_DATE - INTERVAL '30 days'\nORDER  BY sh.released_at DESC",
-  "error": "Validation failed (schema): Hallucinated column(s): app_user.approved_by. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

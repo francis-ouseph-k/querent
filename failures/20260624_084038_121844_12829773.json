@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T08:40:38.121844+00:00",
-  "nl_query": "For each evaluator currently active, show their current workload: number of scripts assigned, number in progress, number frozen, number submitted, and the average time in hours between start and freeze for their attempts.",
-  "failed_sql": "SELECT fc.name AS evaluator_name, COUNT(sa.id) AS scripts_assigned, COUNT(ea.id) AS in_progress, COUNT(CASE WHEN ea.status = 'FROZEN' THEN 1 ELSE NULL END) AS frozen, COUNT(CASE WHEN ea.status = 'SUBMITTED' THEN 1 ELSE NULL END) AS submitted, AVG(EXTRACT(EPOCH FROM (ea.frozen_at - ea.started_at)) / 3600) AS avg_time_in_hours FROM faculty_cache fc JOIN script_assignment sa ON sa.faculty_cache_id = fc.id JOIN evaluation_attempt ea ON ea.assignment_id = sa.id WHERE fc.is_active = TRUE AND ea.is_active = TRUE GROUP BY fc.name ORDER BY scripts_assigned DESC LIMIT 50;",
-  "error": "Validation failed (schema): Hallucinated column(s): faculty_cache.faculty_cache_id. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": ""
-}

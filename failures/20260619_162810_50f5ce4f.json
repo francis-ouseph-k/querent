@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T16:28:10.205179+00:00",
-  "nl_query": "Show all scripts where the scan was performed by a scanner device registered at a campus different from the campus where the exam was scheduled, indicating a potential logistics or data entry error.",
-  "failed_sql": "SELECT s.id, s.urn, s.exam_id, s.course_id, s.student_id, s.s3_key, s.dek_id, s.scan_metadata->>'quality_score' AS quality_score, s.lifecycle_status, s.scan_status, s.evaluation_status, s.block_status, sd.device_name, au.code AS campus_code, au.name AS campus_name FROM answer_script s JOIN scan_history sh ON sh.script_id = s.id JOIN scanner_device sd ON sd.id = sh.device_id JOIN academic_unit au ON au.id = sd.campus_id LEFT JOIN academic_unit exam_au ON exam_au.id = CAST(s.exam_id AS numeric) WHERE au.code <> exam_au.code AND s.scan_status = 'SCANNED' AND s.evaluation_status = 'NOT_ASSIGNED' AND s.block_status IN ('NONE', 'MALPRACTICE') GROUP BY s.id, s.urn, s.exam_id, s.course_id, s.student_id, s.s3_key, s.dek_id, s.scan_metadata->>'quality_score', s.lifecycle_status, s.scan_status, s.evaluation_status, s.block_status, sd.device_name, au.code, au.name",
-  "error": "Execution error: invalid input syntax for type numeric: \"EX2025_CS101_END\"\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

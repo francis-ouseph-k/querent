@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T17:13:17.558080+00:00",
-  "nl_query": "Which parent questions have exactly three sub-questions?",
-  "failed_sql": "SELECT q.id, q.code, q.path, q.max_marks\nFROM   question q\nJOIN   question_section qs ON q.id = qs.parent_question_id\nGROUP BY q.id\nHAVING COUNT(qs.id) = 3;",
-  "error": "Validation failed (schema): Column 'qs.parent_question_id' does not exist. The Postgres planner suggests 'q.parent_question_id' — use that, or verify the column belongs to the qualifying table in your FROM/JOIN clauses.",
-  "retries": 4,
-  "corrected_sql": ""
-}

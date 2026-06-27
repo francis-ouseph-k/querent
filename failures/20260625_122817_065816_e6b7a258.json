@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T12:28:17.065816+00:00",
-  "nl_query": "Count blocked scripts per block reason category.",
-  "failed_sql": "SELECT a.block_status, COUNT(*) AS script_count\nFROM   answer_script      a\nJOIN   exam_schedule_cache esc ON esc.id = a.exam_id\nWHERE  esc.academic_year = '2025-2026'\nGROUP  BY a.block_status\nORDER  BY script_count DESC;",
-  "error": "Validation failed (schema): Column 'esc.block_status' does not exist. The Postgres planner suggests 'a.block_status' — use that, or verify the column belongs to the qualifying table in your FROM/JOIN clauses.",
-  "retries": 4,
-  "corrected_sql": ""
-}

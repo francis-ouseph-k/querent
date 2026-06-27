@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T14:21:52.991077+00:00",
-  "nl_query": "Which boards have a board coordinator who is also listed as a primary evaluator in the pool, and what is the total number of scripts that coordinator has evaluated versus coordinated?",
-  "failed_sql": "SELECT b.id, b.name, COUNT(CASE WHEN ea.attempt_type = 'PRIMARY' THEN 1 ELSE NULL END) AS num_primary_evaluations, COUNT(CASE WHEN ea.attempt_type = 'BOARD_COORDINATOR' THEN 1 ELSE NULL END) AS num_board_coordinations, COUNT(CASE WHEN ea.attempt_type = 'PRIMARY' THEN 1 ELSE NULL END) * 100.0 / COUNT(CASE WHEN ea.attempt_type IN ('PRIMARY', 'BOARD_COORDINATOR') THEN 1 ELSE NULL END) AS primary_evaluations_percentage, COUNT(CASE WHEN ea.attempt_type = 'BOARD_COORDINATOR' THEN 1 ELSE NULL END) * 100.0 / COUNT(CASE WHEN ea.attempt_type IN ('PRIMARY', 'BOARD_COORDINATOR') THEN 1 ELSE NULL END) AS board_coordinations_percentage\nFROM   board b\nJOIN   board_coordinator bc ON bc.board_id = b.id\nJOIN   faculty_cache fc ON fc.employee_id = bc.employee_id\nJOIN   evaluator_pool ep ON ep.board_id = b.id AND ep.eligible_role = 'PRIMARY' AND ep.is_available = TRUE\nLEFT JOIN evaluation_attempt ea ON ea.board_id = b.id AND ea.evaluator_user_id = fc.employee_id\nGROUP BY b.id, b.name",
-  "error": "Validation failed (schema): Hallucinated column(s): board.academic_unit_id. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

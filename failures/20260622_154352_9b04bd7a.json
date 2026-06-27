@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T15:43:52.965640+00:00",
-  "nl_query": "Count revaluation extensions approved per board.",
-  "failed_sql": "SELECT b.id AS board_id, COUNT(reva.id) AS approved_extensions\nFROM board b\nJOIN revaluation_extension_request reva ON reva.board_id = b.id\nJOIN evaluation_attempt ea ON ea.id = reva.resulting_attempt_id\nWHERE reva.approval_status = 'APPROVED'\nGROUP BY b.id",
-  "error": "Validation failed (schema): Column validation failed: revaluation_request does NOT have board_id. Join via answer_script and board.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

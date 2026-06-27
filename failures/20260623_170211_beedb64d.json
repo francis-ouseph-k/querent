@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T17:02:11.824398+00:00",
-  "nl_query": "List all faculty members who prepared the answer key for the Algorithms exam and whether they are also in the evaluator pool for that course.",
-  "failed_sql": "SELECT fc.name AS faculty_name, ep.is_available AS is_in_evaluator_pool\nFROM   evaluator_pool ep\nJOIN   board b ON b.id           = ep.board_id\nJOIN   answer_key          ak  ON ak.qp_id       = b.qp_id AND ak.status = 'APPROVED'\nJOIN   answer_key_preparer akp ON akp.answer_key_id = ak.id\nJOIN   faculty_cache       fc  ON fc.id          = akp.faculty_cache_id\nJOIN   academic_unit au ON au.id          = b.course_id\nWHERE  ak.title ILIKE '%Algorithms%' AND ep.is_available = TRUE\nORDER  BY fc.name;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table \"ak\"\nLINE 5: JOIN   answer_key_preparer akp ON akp.answer_key_id = ak.id\n                                                              ^\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

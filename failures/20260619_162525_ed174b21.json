@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T16:25:25.421445+00:00",
-  "nl_query": "Which scripts have been through more than one evaluation cycle and have at least one result history correction, showing the script URN, number of cycles, number of corrections, and the latest final marks.",
-  "failed_sql": "SELECT DISTINCT s.urn, COUNT(DISTINCT b.id) AS num_cycles, COUNT(DISTINCT rh.id) AS num_corrections, MAX(r.final_marks) AS latest_final_marks\nFROM   answer_script s\nJOIN   script_assignment sa ON sa.script_id = s.id AND sa.is_active = TRUE\nJOIN   board b ON b.id = sa.board_id\nJOIN   evaluation_attempt ea ON ea.assignment_id = sa.id AND ea.is_active = TRUE\nJOIN   result r ON r.script_id = s.id\nJOIN   result_history rh ON rh.result_id = r.id\nWHERE  s.lifecycle_status = 'ATTEMPTED'\n  AND s.scan_status = 'SCANNED'\n  AND ea.evaluation_status IN ('NOT_ASSIGNED', 'ASSIGNED', 'IN_PROGRESS')\n  AND b.status = 'EVAL_IN_PROGRESS'\nGROUP BY s.urn\nHAVING COUNT(DISTINCT rh.id) > 1;",
-  "error": "Validation failed (schema): Column validation failed: script_assignment does NOT have board_id. Join via answer_script or evaluation_attempt to reach board.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

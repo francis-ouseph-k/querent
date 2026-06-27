@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-27T08:25:38.670715+00:00",
-  "nl_query": "For each board in EVAL_IN_PROGRESS status, show the course code, total scripts, number of scripts in each evaluation status, the board coordinator name and honorarium weight, and the number of calendar days remaining until the deadline.",
-  "failed_sql": "SELECT au.code AS academic_unit_code, COUNT(a.id) AS total_scripts, SUM(CASE WHEN ea.status = 'NOT_ASSIGNED' THEN 1 ELSE 0 END) AS scripts_not_assigned, SUM(CASE WHEN ea.status = 'ASSIGNED' THEN 1 ELSE 0 END) AS scripts_assigned, SUM(CASE WHEN ea.status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS scripts_in_progress, SUM(CASE WHEN ea.status = 'FROZEN' THEN 1 ELSE 0 END) AS scripts_frozen, SUM(CASE WHEN ea.status = 'SUBMITTED' THEN 1 ELSE 0 END) AS scripts_submitted, bc.name AS board_coordinator_name, bc.honorarium_weight AS honorarium_weight, (b.deadline - CURRENT_DATE) AS days_remaining_until_deadline FROM academic_unit au JOIN board b ON au.id = b.course_id JOIN answer_script a ON a.course_id = b.course_id AND a.exam_id = b.exam_id LEFT JOIN evaluation_attempt ea ON ea.script_id = a.id LEFT JOIN faculty_cache fc ON ea.faculty_cache_id = fc.id LEFT JOIN board_coordinator bc ON bc.board_id = b.id WHERE b.status = 'EVAL_IN_PROGRESS' GROUP BY au.code, bc.name, bc.honorarium_weight, b.deadline ORDER BY au.code, days_remaining_until_deadline ASC",
-  "error": "Validation failed (schema): Column 'bc.name' does not exist. The Postgres planner suggests 'fc.name' — use that, or verify the column belongs to the qualifying table in your FROM/JOIN clauses.",
-  "retries": 4,
-  "corrected_sql": ""
-}

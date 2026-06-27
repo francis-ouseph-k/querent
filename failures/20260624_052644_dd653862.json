@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-24T05:26:44.844104+00:00",
-  "nl_query": "Which faculty members have prepared answer keys for papers where they are also assigned as the board coordinator, creating a potential conflict of interest?",
-  "failed_sql": "SELECT fc.name AS evaluator_name, fc.employee_erp_id, akp.faculty_cache_id AS preparer_employee_id FROM faculty_cache fc JOIN answer_key_preparer akp ON akp.faculty_cache_id = fc.id JOIN board_coordinator bc ON bc.faculty_cache_id = fc.id JOIN answer_key ak ON ak.qp_id = bc.qp_id WHERE akp.faculty_cache_id = bc.faculty_cache_id AND bc.board_id = 10 AND fc.is_active = TRUE",
-  "error": "Validation failed (schema): Column validation failed: board table has id, NOT board_id.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

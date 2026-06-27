@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T12:06:20.678547+00:00",
-  "nl_query": "Count evaluation policies defined at global scope.",
-  "failed_sql": "SELECT COUNT(*) FROM evaluation_policy WHERE scope_type = 'GLOBAL'",
-  "error": "Validation failed (schema): Hallucinated column(s): evaluation_policy.scope. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": ""
-}

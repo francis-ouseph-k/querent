@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-15T22:19:02.772477+00:00",
-  "nl_query": "What is the average retention days configured for entities that use S3_GLACIER?",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

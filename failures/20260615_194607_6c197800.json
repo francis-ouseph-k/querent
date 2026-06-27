@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-15T19:46:07.570841+00:00",
-  "nl_query": "Show all bulk operations initiated by the COE Office.",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T13:26:05.135572+00:00",
-  "nl_query": "Show all scripts where the legal hold was approved by the COE Office.",
-  "failed_sql": "SELECT sh.id, sh.case_id, sh.hold_reason, au_applied.display_name AS placed_by, au_approved.display_name AS approved_by FROM script_hold sh JOIN app_user au_applied ON au_applied.id = sh.applied_by LEFT JOIN app_user au_approved ON au_approved.id = sh.approved_by WHERE sh.script_id = :script_id AND au_approved.display_name = 'COE Office'",
-  "error": "Validation failed (semantic): SQL contains a tautology: 'sh.script_id = sh.script_id'. This indicates a logic error where a column is compared to itself instead of to a literal or a joined column. Please review the JOIN or WHERE conditions.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

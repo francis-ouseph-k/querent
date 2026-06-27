@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T12:22:56.073973+00:00",
-  "nl_query": "How many bulk operations had partial failures?",
-  "failed_sql": "SELECT COUNT(*) AS partial_failures FROM bulk_operation_log WHERE status = 'PARTIAL'",
-  "error": "Validation failed (semantic): SQL filters on 'status' but the question does not mention it. Do not apply defensive filters like 'status' unless explicitly justified by the question (e.g., asking for 'final', 'approved', etc.).",
-  "retries": 4,
-  "corrected_sql": ""
-}

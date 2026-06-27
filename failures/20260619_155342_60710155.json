@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T15:53:42.032188+00:00",
-  "nl_query": "What is the average number of active grants per faculty user?",
-  "failed_sql": "SELECT fc.employee_id, COUNT(DISTINCT uar.id) AS active_grants_count\nFROM   faculty_cache fc\nJOIN   user_auxiliary_role uar ON uar.user_id = fc.employee_id\nWHERE  uar.scope_type = 'BOARD'\nGROUP  BY fc.employee_id\nORDER  BY active_grants_count DESC\nLIMIT  100;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: bigint = character varying\nLINE 3: JOIN   user_auxiliary_role uar ON uar.user_id = fc.employee_...\n                                                      ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

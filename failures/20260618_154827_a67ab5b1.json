@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T15:48:27.201377+00:00",
-  "nl_query": "Show all approved revaluation requests where the resulting evaluation attempt was created but the evaluator has not started marking within 3 working days of the attempt assignment.",
-  "failed_sql": "SELECT rr.id AS request_id, rr.script_id, rr.approved_at, ea.id AS attempt_id, ea.status, ea.started_at, sa.start_date AS script_assignment_start_date\nFROM revaluation_request rr\nJOIN evaluation_attempt ea ON ea.id = rr.resulting_attempt_id\nJOIN script_assignment sa ON sa.id = ea.assignment_id\nWHERE rr.approval_status = 'APPROVED'\n  AND ea.status = 'ASSIGNED'\n  AND ea.is_active = TRUE\n  AND sa.start_date < working_day_offset(rr.approved_at, 3, '2025-2026')",
-  "error": "Validation failed (schema): Hallucinated column(s): script_assignment.start_date, script_assignment.start_date. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

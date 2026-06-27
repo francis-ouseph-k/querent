@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T16:42:58.768622+00:00",
-  "nl_query": "Identify all scripts where the cached total marks on the answer script row differs from the total marks on the latest active evaluation attempt by more than 0.5 marks, indicating a cache synchronization issue.",
-  "failed_sql": "SELECT a.id, a.urn, a.student_id, sc.student_erp_id, sc.name, sc.synced_at, ea.total_marks AS attempt_total, em.marks_awarded AS marks_sum, (ea.total_marks - em.marks_awarded) AS discrepancy\nFROM   answer_script a\nJOIN   student_cache sc ON sc.id = a.student_id\nJOIN   evaluation_attempt ea ON ea.script_id = a.id AND ea.is_active = TRUE\nJOIN   evaluation_marks em ON em.attempt_id = ea.id\nWHERE  a.evaluation_status NOT IN ('SUBMITTED')\n  AND  ea.status IN ('FROZEN', 'SUBMITTED')\n  AND  em.is_final = TRUE\nGROUP  BY a.id, a.urn, a.student_id, sc.student_erp_id, sc.name, sc.synced_at, ea.total_marks, em.marks_awarded\nHAVING ea.total_marks <> em.marks_awarded\nORDER  BY discrepancy DESC\nLIMIT  100;",
-  "error": "Validation failed (semantic): The question asks for an aggregation 'per' or 'by' something, but the SQL lacks a GROUP BY clause. You MUST include a GROUP BY clause when grouping data.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

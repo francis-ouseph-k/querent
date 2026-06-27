@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-16T18:32:53.969212+00:00",
-  "nl_query": "For each active scanner device, show the device name, campus, total scripts scanned this month, number of rescans performed, average OCR confidence of pages scanned, and the timestamp of the last scan, filtering devices with zero scans.",
-  "failed_sql": "SELECT sd.device_name, au.name AS academic_unit, COUNT(DISTINCT sh.script_id) AS scripts_scanned, COUNT(CASE WHEN sh.replaced_previous THEN 1 ELSE NULL END) AS rescans, AVG(sp.extracted_metadata->>'confidence') AS average_confidence, MAX(sh.scanned_at) AS last_scan_at\nFROM   scanner_device sd\nJOIN   academic_unit au ON au.id = sd.campus_id\nJOIN   scan_history sh ON sh.device_id = sd.id\nJOIN   answer_script asp ON asp.id = sh.script_id\nJOIN   script_page sp ON sp.script_id = asp.id\nWHERE  sd.is_active = TRUE\n  AND sh.scanned_at >= CURRENT_TIMESTAMP - INTERVAL '1 month'\nGROUP  BY sd.device_id, sd.device_name, au.id\nHAVING scripts_scanned = 0\nORDER  BY last_scan_at DESC;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: function avg(text) does not exist\nLINE 1: ...placed_previous THEN 1 ELSE NULL END) AS rescans, AVG(sp.ext...\n                                                             ^\nHINT:  No function matches the given name and argument types. You might need to add explicit type casts.\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

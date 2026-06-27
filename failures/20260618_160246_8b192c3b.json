@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T16:02:46.934948+00:00",
-  "nl_query": "Which boards have a board coordinator who is also listed as a primary evaluator in the pool, and what is the total number of scripts that coordinator has evaluated versus coordinated?",
-  "failed_sql": "SELECT b.id AS board_id, b.status AS board_status, COUNT(hs.employee_id) AS total_scripts_evaluated, COUNT(hs.employee_id) AS total_scripts_coordinated FROM board b JOIN board_coordinator bc ON b.id = bc.board_id JOIN honorarium_summary hs ON bc.employee_id = hs.employee_id WHERE hs.role_in_board = 'PRIMARY' AND bc.employee_id IN (SELECT employee_id FROM evaluator_pool WHERE eligible_role = 'PRIMARY' AND is_available = TRUE) GROUP BY b.id, b.status",
-  "error": "Validation failed (schema): Ambiguous column reference: 'employee_id'. It exists in multiple tables (evaluator_pool, board_coordinator, honorarium_summary). You must qualify it with a table alias.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

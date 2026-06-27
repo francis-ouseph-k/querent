@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T16:34:28.431067+00:00",
-  "nl_query": "Count moderation applications that increased marks versus decreased marks.",
-  "failed_sql": "SELECT COUNT(*) AS total_moderation_applications\nFROM   moderation_application ma\nJOIN   evaluation_marks em ON em.script_id = ma.script_id\nWHERE  (ma.adjusted_total - ma.original_total) > 0\nUNION ALL\nSELECT COUNT(*) AS total_moderation_applications\nFROM   moderation_application ma\nJOIN   evaluation_marks em ON em.script_id = ma.script_id\nWHERE  (ma.adjusted_total - ma.original_total) < 0;",
-  "error": "Validation failed (safety): Non-SELECT statement detected by AST: Union. Only SELECT queries are permitted.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

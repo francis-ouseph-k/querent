@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-27T08:37:48.394609+00:00",
-  "nl_query": "For each published result, show the script URN, student name, final marks, computation rule, the list of source attempt types used, the evaluator names for those attempts, and whether the result has been reconciled with ERP.",
-  "failed_sql": "SELECT r.urn, sc.name AS student_name, r.final_marks, r.computation_rule, ARRAY(SELECT ea.attempt_type FROM evaluation_attempt ea WHERE ea.resulting_attempt_id = r.id) AS source_attempt_types, fc.name AS evaluator_name, r.erp_push_status = 'RECONCILED' AS has_erp_reconciliation FROM result r JOIN answer_script a ON a.id = r.script_id JOIN student_cache sc ON sc.id = a.student_id JOIN faculty_cache fc ON fc.id = ea.evaluator_user_id JOIN evaluation_attempt ea ON ea.resulting_attempt_id = r.id WHERE r.erp_push_status <> 'RECONCILED' ORDER BY r.final_marks DESC LIMIT 100;",
-  "error": "Validation failed (schema): Table or alias 'ea' is referenced (e.g. in an ON clause or SELECT list) but is not declared in the FROM/JOIN clauses. Add the missing table to the FROM list, or check JOIN ordering — a JOIN's ON clause cannot reference a table that appears later in the JOIN chain.",
-  "retries": 4,
-  "corrected_sql": ""
-}

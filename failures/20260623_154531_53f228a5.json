@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T15:45:31.154326+00:00",
-  "nl_query": "What is the average final honorarium amount per board coordinator?",
-  "failed_sql": "SELECT AVG(hs.final_amount) AS avg_final_honorarium_amount\nFROM   honorarium_summary hs\nJOIN   board_coordinator bc ON bc.faculty_cache_id = hs.faculty_cache_id\nWHERE  hs.approval_status IN ('APPROVED', 'EXPORTED')\nGROUP  BY bc.board_id\nORDER  BY avg_final_honorarium_amount DESC;",
-  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'board_coordinator' and 'honorarium_summary'. Please review the schema for the correct join path.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

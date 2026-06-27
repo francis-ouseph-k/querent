@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T15:59:09.716502+00:00",
-  "nl_query": "Show the complete timeline for each board created last month: creation date, first script assignment date, first evaluation attempt start date, first freeze date, last submission date, and the total number of days the board has been open.",
-  "failed_sql": "SELECT b.id, b.created_at AS board_creation_date, sa.assigned_at AS first_script_assignment_date, ea.started_at AS first_evaluation_attempt_start_date, ea.frozen_at AS first_freeze_date, MAX(ea.submitted_at) AS last_submission_date, (MAX(ea.submitted_at) - b.created_at) / INTERVAL '1 day' AS days_open FROM board b JOIN script_assignment sa ON sa.board_id = b.id JOIN evaluation_attempt ea ON ea.board_id = b.id WHERE b.created_at >= CURRENT_DATE - INTERVAL '1 month' GROUP BY b.id ORDER BY b.created_at ASC LIMIT 200;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: cannot cast type timestamp with time zone to numeric\nLINE 1: ...e, MAX(ea.submitted_at) AS last_submission_date, (CAST(MAX(e...\n                                                             ^\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

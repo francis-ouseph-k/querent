@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T16:48:15.469168+00:00",
-  "nl_query": "List all BOOLEAN-type configurations at global scope.",
-  "failed_sql": "SELECT c.config_key, c.config_value, c.data_type, c.description, c.updated_at\nFROM   configuration c\nJOIN   unit_type_config utc ON utc.unit_type = c.unit_type\nJOIN   app_user au ON au.id = c.updated_by\nWHERE  utc.unit_type = 'COURSE'\n  AND  c.data_type = 'BOOLEAN'\n  AND  c.scope_type = 'GLOBAL'\n  AND  c.scope_id IS NULL\nORDER  BY c.config_key;",
-  "error": "Validation failed (schema): Hallucinated column(s): configuration.unit_type. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

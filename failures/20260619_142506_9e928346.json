@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T14:25:06.359008+00:00",
-  "nl_query": "Which scripts have been through more than one evaluation cycle and have at least one result history correction, showing the script URN, number of cycles, number of corrections, and the latest final marks.",
-  "failed_sql": "SELECT DISTINCT s.urn, COUNT(DISTINCT b.id) AS num_boards, COUNT(DISTINCT rh.id) AS num_corrections, MAX(r.final_marks) AS latest_final_marks\nFROM   answer_script s\nJOIN   script_assignment sa ON sa.script_id = s.id AND sa.is_active = TRUE\nJOIN   evaluation_attempt ea ON ea.assignment_id = sa.id AND ea.is_active = TRUE\nJOIN   result r ON r.script_id = s.id\nJOIN   result_history rh ON rh.result_id = r.id\nWHERE  s.lifecycle_status = 'ATTEMPTED'\n  AND s.scan_status = 'SCANNED'\n  AND s.evaluation_status IN ('NOT_ASSIGNED', 'ASSIGNED', 'IN_PROGRESS')\n  AND s.block_status IN ('NONE', 'MALPRACTICE')\nGROUP BY s.urn\nHAVING COUNT(DISTINCT b.id) > 1\n  AND COUNT(DISTINCT rh.id) > 0\nORDER BY num_boards DESC, latest_final_marks DESC\nLIMIT 200;",
-  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (script_assignment, evaluation_attempt, answer_script, result_history, result). You must qualify it with a table alias.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

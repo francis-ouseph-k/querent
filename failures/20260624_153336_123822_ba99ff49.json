@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T15:33:36.123822+00:00",
-  "nl_query": "What is the average time between exam schedule creation and board creation?",
-  "failed_sql": "SELECT AVG(EXTRACT(EPOCH FROM (b.created_at - esc.created_at)) / 86400) AS avg_time_between_creation\nFROM   board b\nJOIN   exam_schedule_cache esc ON esc.id = b.exam_id;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column esc.exam_id does not exist\nLINE 3: JOIN   board b1 ON esc.exam_id = b1.exam_id LIMIT 1000\n                           ^\nHINT:  Perhaps you meant to reference the column \"b1.exam_id\".\n",
-  "retries": 4,
-  "corrected_sql": ""
-}

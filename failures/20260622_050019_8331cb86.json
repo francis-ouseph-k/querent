@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T05:00:19.060019+00:00",
-  "nl_query": "List all revaluation extension requests that are still pending.",
-  "failed_sql": "SELECT reval_extension_request.id AS reval_extension_request_id, reval_extension_request.requested_by, reval_extension_request.approved_by, reval_extension_request.approval_status FROM revaluation_extension_request WHERE reval_extension_request.approval_status = 'PENDING'",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table \"reval_extension_request\"\nLINE 1: EXPLAIN (FORMAT JSON) SELECT reval_extension_request.id AS r...\n                                     ^\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

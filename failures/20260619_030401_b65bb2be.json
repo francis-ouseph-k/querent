@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T03:04:01.634736+00:00",
-  "nl_query": "What is the average number of annotations per frozen attempt?",
-  "failed_sql": "SELECT AVG(COUNT(*)) AS avg_annotations_per_freeze FROM evaluation_attempt ea JOIN evaluation_annotation ea_a ON ea_a.attempt_id = ea.id WHERE ea.status = 'FROZEN' AND ea.is_active = TRUE GROUP BY ea.id",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: invalid reference to FROM-clause entry for table \"ea\"\nLINE 1: ...valuation_annotation ea_a WHERE ea_a.attempt_id = ea.id GROU...\n                                                             ^\nDETAIL:  There is an entry for table \"ea\", but it cannot be referenced from this part of the query.\nHINT:  To reference that table, you must mark this subquery with LATERAL.\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

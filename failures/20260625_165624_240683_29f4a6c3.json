@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T16:56:24.240683+00:00",
-  "nl_query": "For each student who filed a revaluation request that was approved, show their name, original final marks, revaluation attempt total marks, the absolute difference, and whether the difference exceeds the board's configured deviation threshold.",
-  "failed_sql": "SELECT sc.name AS student_name, r.original_final_marks, ea.total_marks, ABS(ea.total_marks - r.original_final_marks) AS difference, ep.deviation_threshold, CASE WHEN ABS(ea.total_marks - r.original_final_marks) > ep.deviation_threshold THEN 'YES' ELSE 'NO' END AS exceeds_threshold\nFROM   revaluation_request rr\nJOIN   answer_script       a  ON a.id  = rr.script_id\nJOIN   student_cache       sc ON sc.id = a.student_id\nJOIN   evaluation_attempt ea ON ea.resulting_attempt_id = a.id\nJOIN   evaluation_policy ep ON ep.board_id = a.course_id\nJOIN   result r ON r.script_id = a.id\nWHERE  rr.approval_status = 'APPROVED'\nORDER  BY sc.name ASC;",
-  "error": "Validation failed (schema): Column 'ea.resulting_attempt_id' does not exist. The Postgres planner suggests 'rr.resulting_attempt_id' — use that, or verify the column belongs to the qualifying table in your FROM/JOIN clauses.",
-  "retries": 4,
-  "corrected_sql": ""
-}

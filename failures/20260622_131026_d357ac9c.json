@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T13:10:26.888362+00:00",
-  "nl_query": "For each active scanner device, show the device name, campus, total scripts scanned this month, number of rescans performed, average OCR confidence of pages scanned, and the timestamp of the last scan, filtering devices with zero scans.",
-  "failed_sql": "SELECT sd.device_name, au.name AS academic_unit, COUNT(DISTINCT sh.script_id) AS total_scripts_scanned, COUNT(CASE WHEN sh.reason = 'RESCAN_NEEDED' THEN 1 END) AS rescans_performed, AVG((sh.extracted_metadata->>'confidence')::NUMERIC) AS avg_ocr_confidence, MAX(sh.scanned_at) AS last_scan_timestamp\nFROM   scanner_device sd\nJOIN   academic_unit au ON au.id = sd.campus_id\nJOIN   scan_history sh ON sh.device_id = sd.id\nWHERE  sh.scanned_at >= CURRENT_TIMESTAMP - INTERVAL '1 month'\n  AND  sd.is_active = TRUE\nGROUP  BY sd.device_name, au.name\nHAVING COUNT(DISTINCT sh.script_id) = 0\nORDER  BY avg_ocr_confidence DESC;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: text ->> unknown\nLINE 1: ...ND) AS rescans_performed, AVG((sh.scanned_at::TEXT->>'confid...\n                                                             ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

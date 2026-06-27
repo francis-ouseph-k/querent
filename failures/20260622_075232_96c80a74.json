@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T07:52:32.965442+00:00",
-  "nl_query": "Show all scripts where the primary evaluator has frozen the attempt, a review evaluator has been assigned, but the review attempt has not yet started, including the primary evaluator name, review evaluator name, and board code.",
-  "failed_sql": "SELECT a.id AS script_id, a.urn, b.id AS board_id, au.code AS board_code, fc1.name AS primary_evaluator_name, fc2.name AS review_evaluator_name FROM answer_script a JOIN board b ON b.course_id = a.course_id AND b.exam_id = a.exam_id JOIN evaluation_attempt ea_pri ON ea_pri.script_id = a.id AND ea_pri.attempt_type = 'PRIMARY' AND ea_pri.status = 'FROZEN' AND ea_pri.is_active = TRUE JOIN script_assignment sa_pri ON sa_pri.id = ea_pri.assignment_id JOIN faculty_cache fc1 ON fc1.employee_id = sa_pri.faculty_cache_id JOIN script_assignment sa_rev ON sa_rev.script_id = a.id AND sa_rev.attempt_type = 'REVIEW' AND sa_rev.is_active = TRUE JOIN faculty_cache fc2 ON fc2.employee_id = sa_rev.faculty_cache_id LEFT JOIN evaluation_attempt ea_rev ON ea_rev.script_id = a.id AND ea_rev.attempt_type = 'REVIEW' AND ea_rev.is_active = TRUE WHERE a.lifecycle_status = 'ATTEMPTED' AND a.scan_status = 'SCANNED' AND a.block_status IN ('NONE', 'MALPRACTICE') AND ea_rev.id IS NULL;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: character varying = bigint\nLINE 1: ..._id JOIN faculty_cache fc1 ON fc1.employee_erp_id = sa_pri.f...\n                                                             ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

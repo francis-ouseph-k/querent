@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T18:14:57.528730+00:00",
-  "nl_query": "Which questions are grouped under the Choice group for attempt rule 1?",
-  "failed_sql": "SELECT ar.id AS rule_id, arg.group_label, COUNT(argq.question_id) AS questions_in_group\nFROM   attempt_rule                ar\nJOIN   attempt_rule_group          arg  ON arg.attempt_rule_id = ar.id\nJOIN   attempt_rule_group_question argq ON argq.group_id       = arg.id\nWHERE  ar.rule_type = 'PICK_N'\n  AND  ar.question_id = :parent_question_id\nGROUP  BY ar.id, arg.group_label, ar.min_select, ar.max_select\nORDER  BY arg.group_label;",
-  "error": "Validation failed (placeholder): SQL contains parameter placeholder ':rule_id'. Never use :param or $N placeholders. Use literal values instead. When the question mentions a specific entity by name, filter by that name: WHERE table.column = 'value'.",
-  "retries": 4,
-  "corrected_sql": ""
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T10:09:53.917569+00:00",
-  "nl_query": "List data retention policies with a retention period of exactly 90 days.",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

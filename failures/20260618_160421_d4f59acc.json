@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T16:04:21.024880+00:00",
-  "nl_query": "For each student who filed a revaluation request that was approved, show their name, original final marks, revaluation attempt total marks, the absolute difference, and whether the difference exceeds the board's configured deviation threshold.",
-  "failed_sql": "SELECT a.urn, er.final_marks AS original_final_marks, ea.total_marks AS revaluation_total_marks, ABS(er.final_marks - ea.total_marks) AS difference, ep.deviation_threshold FROM revaluation_request rr JOIN answer_script a ON a.id = rr.script_id JOIN evaluation_attempt ea ON ea.id = rr.resulting_attempt_id JOIN evaluation_policy ep ON (ep.board_id = ea.board_id OR ep.course_id = a.course_id AND ep.board_id IS NULL OR ep.course_id IS NULL AND ep.board_id IS NULL) WHERE rr.approval_status = 'APPROVED' ORDER BY difference DESC LIMIT 100;",
-  "error": "Validation failed (schema): Hallucinated column(s): unaliased.final_marks, unaliased.final_marks. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

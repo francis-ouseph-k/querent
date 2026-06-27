@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-24T06:53:42.790930+00:00",
-  "nl_query": "What is the average time between exam schedule creation and board creation?",
-  "failed_sql": "SELECT avg(ea.created_at - esc.created_at) AS avg_time_between_creation AS avg_time_between_creation FROM exam_schedule_cache esc JOIN evaluation_attempt ea ON ea.board_id = esc.id WHERE ea.created_at IS NOT NULL AND ea.is_active = TRUE",
-  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'evaluation_attempt' and 'exam_schedule_cache'. Please review the schema for the correct join path.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

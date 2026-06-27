@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T11:47:52.211333+00:00",
-  "nl_query": "Show the complete faculty eligibility and performance chain: faculty name, department, courses they are mapped to, boards they are in the pool for, scripts assigned, scripts submitted, and their average evaluation speed.",
-  "failed_sql": "SELECT fc.name AS faculty_name, au.display_name AS user_display_name, d.name AS department_name, b.id AS board_id, sa.script_id AS script_id, sa.submitted_at AS submitted_at, AVG(ea.total_marks) OVER (PARTITION BY sa.script_id) AS avg_evaluation_speed FROM faculty_course_mapping fcm JOIN faculty_cache fc ON fc.id = fcm.faculty_cache_id JOIN academic_unit au ON au.id = fc.department_id JOIN board b ON b.course_id = fcm.course_id JOIN script_assignment sa ON sa.faculty_cache_id = fc.id JOIN evaluation_attempt ea ON ea.assignment_id = sa.id WHERE fcm.is_active = TRUE AND b.status NOT IN ('CLOSED', 'SUBMITTED') GROUP BY fc.name, au.display_name, d.name, b.id, sa.script_id, sa.submitted_at ORDER BY fc.name, b.id",
-  "error": "Validation failed (schema): Column 'au.department_id' does not exist. The Postgres planner suggests 'fc.department_id' — use that, or verify the column belongs to the qualifying table in your FROM/JOIN clauses.",
-  "retries": 4,
-  "corrected_sql": ""
-}

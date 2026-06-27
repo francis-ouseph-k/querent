@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T03:51:11.672438+00:00",
-  "nl_query": "Show all annotations created by Dr. Anand Rao.",
-  "failed_sql": "SELECT ea_ann.id AS annotation_id, ea_ann.annotation_type, ea_ann.payload, ea_ann.created_at, au.display_name AS created_by_name\nFROM   evaluation_annotation ea_ann\nJOIN   evaluation_attempt    ea ON ea.id = ea_ann.attempt_id\nJOIN   app_user              au ON au.id = ea.created_by\nWHERE  au.name = 'Dr. Anand Rao';",
-  "error": "Validation failed (schema): Hallucinated column(s): evaluation_attempt.created_by. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

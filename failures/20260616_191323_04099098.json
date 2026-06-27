@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-16T19:13:23.012026+00:00",
-  "nl_query": "Which evaluators are currently in the pool for active boards but have no active script assignments, and show their faculty name, department, and the boards they are eligible for.",
-  "failed_sql": "SELECT ep.employee_id, fc.name, ep.eligible_role, ep.is_available, au.display_name, au.employee_id, au.faculty_unit_id, au.faculty_unit_name, b.name AS board_name FROM evaluator_pool ep JOIN faculty_cache fc ON fc.employee_id = ep.employee_id JOIN app_user au ON au.employee_id = ep.employee_id JOIN board b ON b.id = ep.board_id WHERE ep.is_available = TRUE AND ep.board_id IN (SELECT board_id FROM board WHERE status = 'EVAL_IN_PROGRESS') AND NOT EXISTS (SELECT 1 FROM script_assignment sa WHERE sa.evaluator_id = ep.employee_id AND sa.is_active = TRUE)",
-  "error": "Validation failed (schema): Hallucinated column(s): app_user.faculty_unit_id, app_user.faculty_unit_name, board.name. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

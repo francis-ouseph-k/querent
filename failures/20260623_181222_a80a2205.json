@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T18:12:22.635342+00:00",
-  "nl_query": "Which programs have prerequisite relationships defined in the system?",
-  "failed_sql": "SELECT DISTINCT au_from.code AS program_code FROM academic_unit_relationship aur JOIN relationship_type_config rtc ON rtc.relationship_type = aur.relationship_type WHERE rtc.relationship_type = 'PREREQUISITE' AND rtc.from_unit_type = 'COURSE' AND rtc.to_unit_type = 'COURSE' AND aur.is_active = TRUE;",
-  "error": "Validation failed (schema): Hallucinated column(s): unaliased.code. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

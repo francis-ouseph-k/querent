@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T08:50:51.013982+00:00",
-  "nl_query": "List all students with WITHHELD eligibility for the Data Structures end-semester exam.",
-  "failed_sql": "SELECT sc.id, sc.student_erp_id, sc.name, esm.eligibility_status\nFROM   student_cache sc\nJOIN   exam_student_mapping  esm ON esm.student_id = sc.id\n                                 AND esm.exam_id    = (SELECT id FROM exam_schedule_cache WHERE exam_erp_id = 'END_SEM-2025-DEC' AND academic_year = '2025-2026')\nWHERE  esm.eligibility_status = 'WITHHELD';",
-  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (exam_student_mapping, exam_schedule_cache, student_cache). You must qualify it with a table alias.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

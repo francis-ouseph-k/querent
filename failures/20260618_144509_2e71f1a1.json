@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T14:45:09.391612+00:00",
-  "nl_query": "What is the average time between a revaluation request and its extension request?",
-  "failed_sql": "SELECT AVG(DATEDIFF(reval_extension_request.requested_deadline, revaluation_request.original_deadline)) AS average_days_between_requests\nFROM revaluation_request\nJOIN revaluation_extension_request ON revaluation_extension_request.revaluation_request_id = revaluation_request.id\nWHERE revaluation_request.approval_status = 'PENDING';",
-  "error": "Validation failed (schema): Hallucinated table(s): reval_extension_request. These tables do not exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

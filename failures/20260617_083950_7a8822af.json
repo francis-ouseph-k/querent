@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-17T08:39:50.138093+00:00",
-  "nl_query": "Count academic units by whether they have children.",
-  "failed_sql": "SELECT unit_type, COUNT(*) AS unit_count\nFROM academic_unit\nWHERE parent_id IS NOT NULL\nGROUP BY unit_type\nORDER BY unit_count DESC;",
-  "error": "Validation failed (schema): Hallucinated column(s): academic_unit.unit_count. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

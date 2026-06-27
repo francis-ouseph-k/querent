@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T17:12:56.884181+00:00",
-  "nl_query": "Count the number of moderation rules per rule type.",
-  "failed_sql": "SELECT rt.relationship_type::BIGINT, COUNT(*) AS rule_count FROM relationship_type_config rt JOIN moderation_rule mr ON rt.relationship_type::BIGINT = mr.board_id GROUP BY rt.relationship_type",
-  "error": "Execution error: invalid input syntax for type bigint: \"PROGRAM_COURSE\"\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

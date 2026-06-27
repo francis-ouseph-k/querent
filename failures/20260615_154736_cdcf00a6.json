@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-15T15:47:36.958187+00:00",
-  "nl_query": "Show the complete timeline for each board created last month: creation date, first script assignment date, first evaluation attempt start date, first freeze date, last submission date, and the total number of days the board has been open.",
-  "failed_sql": "SELECT ...",
-  "error": "Validation failed (schema): Hallucinated column(s): script_assignment.script_assignment_date, evaluation_attempt.evaluation_attempt_start_date, script_assignment.board_id. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

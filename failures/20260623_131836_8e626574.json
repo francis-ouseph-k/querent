@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T13:18:36.960009+00:00",
-  "nl_query": "Show all normal audit log entries from last week.",
-  "failed_sql": "SELECT * FROM audit_log_normal WHERE is_critical = FALSE AND created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days' ORDER BY created_at DESC",
-  "error": "Validation failed (schema): Hallucinated column(s): audit_log_normal.created_at, audit_log_normal.is_critical, audit_log_normal.created_at. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

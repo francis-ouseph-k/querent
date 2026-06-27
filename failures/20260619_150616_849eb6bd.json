@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T15:06:16.971447+00:00",
-  "nl_query": "Which faculty members are mapped to course CS102 this academic year?",
-  "failed_sql": "SELECT fc.name FROM faculty_course_mapping fcm JOIN academic_unit au ON au.id = fcm.course_id WHERE au.code = 'CS102' AND fcm.academic_year = '2025-2026'",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: bigint = character varying\nLINE 1: ...course_id JOIN faculty_course_mapping fc ON fc.id = fcm.empl...\n                                                             ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

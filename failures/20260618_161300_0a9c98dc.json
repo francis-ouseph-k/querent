@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T16:13:00.161579+00:00",
-  "nl_query": "Show all attempt rule groups with their group labels.",
-  "failed_sql": "SELECT arg.id AS group_id, arg.group_label, ar.rule_type FROM attempt_rule_group arg JOIN attempt_rule_group_question argq ON argq.group_id = arg.id JOIN attempt_rule ar ON ar.id = arg.attempt_rule_id WHERE arg.is_active = TRUE ORDER BY arg.id, arg.group_label",
-  "error": "Validation failed (schema): Hallucinated column(s): attempt_rule_group.is_active. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

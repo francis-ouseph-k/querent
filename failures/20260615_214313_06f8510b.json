@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-15T21:43:13.287995+00:00",
-  "nl_query": "Count the number of active legal holds per month.",
-  "failed_sql": "SELECT EXTRACT(MONTH FROM sh.hold_start_date) AS month, COUNT(DISTINCT sh.script_id) AS active_hold_count\nFROM   script_hold sh\nWHERE  sh.is_active   = TRUE\n  AND  sh.released_at IS NULL\nGROUP  BY EXTRACT(MONTH FROM sh.hold_start_date)\nORDER  BY month ASC;",
-  "error": "Validation failed (schema): Hallucinated column(s): script_hold.month. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

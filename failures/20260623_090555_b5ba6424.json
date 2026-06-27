@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T09:05:55.353165+00:00",
-  "nl_query": "Which purge jobs successfully deleted notification records?",
-  "failed_sql": "SELECT pjl.id FROM purge_job_log pjl JOIN notification n ON pjl.entity_type = n.entity_type AND pjl.entity_id = n.id WHERE pjl.status = 'SUCCESS'",
-  "error": "Validation failed (schema): Hallucinated column(s): notification.entity_type, purge_job_log.entity_id. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

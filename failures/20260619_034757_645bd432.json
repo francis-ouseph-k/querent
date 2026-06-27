@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T03:47:57.811507+00:00",
-  "nl_query": "Show all scanner devices registered at the Main Campus that are active and have scanned at least one script.",
-  "failed_sql": "SELECT sd.id, sd.device_id, sd.device_name, sd.registered_at, sd.last_seen_at FROM scanner_device sd JOIN academic_unit au ON au.id = sd.campus_id WHERE au.unit_type = 'COURSE' AND au.code = 'MAIN' AND sd.is_active = TRUE AND sd.id IN (SELECT device_id FROM scan_history WHERE is_active = TRUE)",
-  "error": "Validation failed (schema): Hallucinated column(s): scan_history.is_active. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

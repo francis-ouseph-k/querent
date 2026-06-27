@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T14:32:54.155467+00:00",
-  "nl_query": "How many script pages have OCR confidence scores below 0.8?",
-  "failed_sql": "SELECT COUNT(*) FROM script_page sp JOIN extracted_metadata em ON sp.id = em.script_id WHERE em.confidence < 0.8",
-  "error": "Validation failed (schema): Hallucinated table(s): extracted_metadata. These tables do not exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

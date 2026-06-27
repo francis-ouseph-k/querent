@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T15:14:39.055904+00:00",
-  "nl_query": "For each question paper, show the paper title, the number of sections, the number of leaf questions, the number of attempt rules configured, the number of approved answer keys, and the number of boards using it, ordered by boards using it descending",
-  "failed_sql": "SELECT qp.title AS paper_title, COUNT(DISTINCT qs.id) AS number_of_sections, COUNT(DISTINCT q.id) AS number_of_leaf_questions, COUNT(DISTINCT ar.id) AS number_of_evaluation_attempt_rules, COUNT(DISTINCT ak.id) AS number_of_approved_answer_keys, COUNT(DISTINCT b.id) AS number_of_boards USING_paper FROM question_paper qp JOIN question_section qs ON qs.qp_id = qp.id JOIN question q ON q.section_id = qs.id JOIN evaluation_rule ar ON ar.question_id = q.id JOIN answer_key ak ON ak.qp_id = qp.id JOIN board b ON b.qp_id = qp.id GROUP BY qp.title ORDER BY number_of_boards USING_paper DESC",
-  "error": "Validation failed (schema): Hallucinated table(s): evaluation_rule. These tables do not exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T13:25:34.544814+00:00",
-  "nl_query": "Show the complete moderation audit trail for each script that received moderation: the rule type, parameters, original total, adjusted total, mark difference, and the name of the COE user who applied it, ordered by application date.",
-  "failed_sql": "SELECT mr.rule_type, mr.parameters, ma.original_total, ma.adjusted_total, (ma.adjusted_total - ma.original_total) AS mark_difference, au.display_name AS coe_app_user_name, ma.applied_at\nFROM   moderation_application ma\nJOIN   moderation_rule        mr ON mr.id = ma.moderation_rule_id\nJOIN   app_user            au ON au.id = ma.applied_by\nWHERE  ma.script_id IN (\n  SELECT script_id\n  FROM   evaluation_attempt\n  WHERE  is_active = TRUE\n)\nORDER  BY ma.applied_at;",
-  "error": "Validation failed (schema): Column validation failed: moderation_application does NOT have rule_type. rule_type is on moderation_rule. Join: moderation_rule mr ON mr.id = ma.moderation_rule_id.",
-  "retries": 4,
-  "corrected_sql": ""
-}

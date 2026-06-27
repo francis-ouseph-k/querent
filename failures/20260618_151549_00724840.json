@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T15:15:49.341783+00:00",
-  "nl_query": "Which scripts have a mismatch between the number of pages recorded in scan metadata and the number of script_page rows stored in the database?",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

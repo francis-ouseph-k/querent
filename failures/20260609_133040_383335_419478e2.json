@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-09T13:30:40.383335",
-  "nl_query": "What is workload of evaluator for pending evaluation?",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": ""
-}

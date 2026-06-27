@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T07:36:46.419134+00:00",
-  "nl_query": "For every script currently under legal hold, show the student name, course code, hold reason, case reference, hold start date, hold duration in days, and the display name of the user who approved the hold.",
-  "failed_sql": "SELECT a.urn, au.name AS student_name, auu.code AS academic_unit_code, sh.hold_reason, sh.case_id, sh.hold_start_date, (CURRENT_DATE - sh.hold_start_date) AS days_held, au_approved.display_name AS approved_by FROM answer_script a JOIN academic_unit au ON au.id = a.course_id JOIN academic_unit_closure auu ON auu.descendant_id = au.id JOIN script_hold sh ON sh.script_id = a.id JOIN app_user au_approved ON au_approved.id = sh.approved_by WHERE sh.is_active = TRUE AND sh.released_at IS NULL",
-  "error": "Validation failed (schema): Hallucinated column(s): academic_unit_closure.code. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

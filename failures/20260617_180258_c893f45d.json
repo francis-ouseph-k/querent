@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-17T18:02:58.430221+00:00",
-  "nl_query": "How many configurations have been updated more than once?",
-  "failed_sql": "SELECT COUNT(*) FROM configuration WHERE updated_at > (SELECT MAX(updated_at) FROM configuration WHERE id = :config_id)",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: syntax error at or near \":\"\nLINE 1: ...ECT MAX(updated_at) FROM configuration WHERE id = :config_id...\n                                                             ^\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

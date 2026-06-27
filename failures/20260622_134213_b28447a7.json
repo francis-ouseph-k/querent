@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T13:42:13.070253+00:00",
-  "nl_query": "List all faculty members who prepared the answer key for the Algorithms exam and whether they are also in the evaluator pool for that course.",
-  "failed_sql": "SELECT fc.name AS faculty_name, akp.employee_id AS preparer_employee_id, ep.is_available AS is_in_evaluator_pool\nFROM   faculty_cache fc\nJOIN   answer_key_preparer akp ON akp.faculty_cache_id = fc.id\nJOIN   answer_key ak ON ak.id = akp.answer_key_id AND ak.status = 'APPROVED'\nJOIN   board b ON b.qp_id = ak.qp_id\nJOIN   academic_unit au ON au.id = b.course_id\nJOIN   evaluator_pool ep ON ep.faculty_cache_id = fc.id AND ep.board_id = b.id\nWHERE  au.name = 'Algorithms' AND akp.employee_id IS NOT NULL\nORDER  BY fc.name, ep.is_available;",
-  "error": "Validation failed (schema): Hallucinated column(s): answer_key_preparer.employee_id, answer_key_preparer.employee_id. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

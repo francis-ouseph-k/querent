@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T13:41:07.046957+00:00",
-  "nl_query": "Show all scripts where the scan was performed by a scanner device registered at a campus different from the campus where the exam was scheduled, indicating a potential logistics or data entry error.",
-  "failed_sql": "SELECT s.id, s.urn, s.exam_id, s.course_id, s.student_id, s.bundle_id, s.s3_key, s.dek_id, s.lifecycle_status, s.scan_status, s.evaluation_status, s.block_status, sd.device_name, au.code AS campus_code, au.name AS campus_name\nFROM   answer_script s\nJOIN   script_assignment sa ON sa.script_id = s.id AND sa.is_active = TRUE\nJOIN   faculty_cache fc ON fc.id = sa.faculty_cache_id\nJOIN   academic_unit au ON au.id = fc.department_id\nJOIN   scanner_device sd ON sd.id = sa.assigned_by\nWHERE  au.code <> (SELECT esc.campus_id FROM exam_schedule_cache esc WHERE esc.id = s.exam_id)\nORDER  BY s.exam_date DESC",
-  "error": "Validation failed (schema): Hallucinated column(s): answer_script.exam_date. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

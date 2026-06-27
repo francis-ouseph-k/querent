@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-10T11:59:19.827664",
-  "nl_query": "Show me pending evaluations for course code C121 for AY 25-26 for BCA sem-2 exam",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": ""
-}

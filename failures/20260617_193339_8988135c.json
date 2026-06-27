@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-17T19:33:39.815916+00:00",
-  "nl_query": "Show the complete moderation audit trail for each script that received moderation: the rule type, parameters, original total, adjusted total, mark difference, and the name of the COE user who applied it, ordered by application date.",
-  "failed_sql": "SELECT ...",
-  "error": "Validation failed (syntax): SQL syntax error: Invalid expression / Unexpected token. Line 1, Col: 8.\n  SELECT \u001b[4m.\u001b[0m..",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

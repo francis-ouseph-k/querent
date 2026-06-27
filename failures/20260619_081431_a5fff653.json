@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T08:14:31.111126+00:00",
-  "nl_query": "Show the name of the board for answer script with URN '123'",
-  "failed_sql": "SELECT b.name FROM board b JOIN answer_script a ON a.board_id = b.id WHERE a.urn = '123'",
-  "error": "Validation failed (schema): Hallucinated column(s): board.name, answer_script.board_id. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

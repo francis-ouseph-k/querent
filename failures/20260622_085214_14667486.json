@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T08:52:14.569840+00:00",
-  "nl_query": "List all board coordinators with a honorarium weight different from 1.0.",
-  "failed_sql": "SELECT bc.id, bc.board_id, bc.employee_id, bc.honorarium_weight, bc.effective_from, bc.effective_to, fc.name AS coordinator_name FROM board_coordinator bc JOIN faculty_cache fc ON fc.employee_erp_id = bc.employee_id WHERE bc.honorarium_weight <> 1.0 ORDER BY bc.effective_from DESC;",
-  "error": "Validation failed (schema): Hallucinated column(s): board_coordinator.employee_id, board_coordinator.employee_id. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T13:35:58.935834+00:00",
-  "nl_query": "Which boards have a board coordinator who is also listed as a primary evaluator in the pool, and what is the total number of scripts that coordinator has evaluated versus coordinated?",
-  "failed_sql": "SELECT b.id AS board_id, b.name AS board_name, COUNT(DISTINCT ea_p.script_id) AS scripts_evaluated, COUNT(DISTINCT ea_c.script_id) AS scripts_coordinated FROM board b JOIN board_coordinator bc ON bc.board_id = b.id JOIN faculty_cache fc ON fc.id = bc.faculty_cache_id JOIN evaluator_pool ep ON ep.board_id = b.id AND ep.eligible_role = 'PRIMARY' AND ep.is_available = TRUE JOIN evaluation_attempt ea_p ON ea_p.board_id = b.id AND ea_p.evaluator_user_id = fc.employee_erp_id AND ea_p.attempt_type = 'PRIMARY' AND ea_p.is_active = TRUE JOIN evaluation_attempt ea_c ON ea_c.board_id = b.id AND ea_c.evaluator_user_id = fc.employee_erp_id AND ea_c.attempt_type = 'BOARD_COORDINATOR' AND ea_c.is_active = TRUE GROUP BY b.id, b.name",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: bigint = character varying\nLINE 1: ...N ea_p.board_id = b.id AND ea_p.evaluator_user_id = CAST(fc....\n                                                             ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

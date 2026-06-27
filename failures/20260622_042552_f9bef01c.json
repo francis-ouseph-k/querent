@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T04:25:52.845721+00:00",
-  "nl_query": "For every script currently under legal hold, show the student name, course code, hold reason, case reference, hold start date, hold duration in days, and the display name of the user who approved the hold.",
-  "failed_sql": "SELECT a.urn, au.name AS student_name, auu.code AS academic_unit_code, sh.hold_reason, sh.case_id, sh.hold_start_date, (CURRENT_DATE - sh.hold_start_date) AS days_held, au_approved.display_name AS approved_by FROM script_hold sh JOIN answer_script a ON a.id = sh.script_id JOIN academic_unit au ON au.id = a.course_id JOIN user_auxiliary_role uau ON uau.user_id = a.student_id JOIN academic_unit_closure auu ON auu.descendant_id = au.id JOIN app_user au_approved ON au_approved.id = sh.approved_by WHERE sh.is_active = TRUE AND sh.released_at IS NULL",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: bigint = character varying\nLINE 1: ...se_id JOIN user_auxiliary_role uau ON uau.user_id = a.studen...\n                                                             ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T12:11:30.418902+00:00",
-  "nl_query": "How many students have a WITHHELD eligibility status across all current exams?",
-  "failed_sql": "SELECT COUNT(DISTINCT esm.student_id) AS num_students_withheld\nFROM   exam_student_mapping esm\nJOIN   exam_schedule_cache  esc ON esc.id = esm.exam_id\nWHERE  esm.eligibility_status = 'WITHHELD'\n  AND  esc.status = 'EVAL_IN_PROGRESS'",
-  "error": "Validation failed (semantic): The question asks for a metric 'per' or 'for each' entity. Using an INNER JOIN drops entities that have a count of zero. You MUST use a LEFT JOIN to ensure entities with zero associated records are included in the results.",
-  "retries": 4,
-  "corrected_sql": ""
-}

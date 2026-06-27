@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-15T14:33:26.472670+00:00",
-  "nl_query": "Show the complete encryption and scanning chain for each script created in the last 7 days: script URN, DEK ID, KEK external ID, KEK scope, KEK status, scanner device name, and whether the DEK was re-wrapped after a Direct Connect outage.",
-  "failed_sql": "SELECT a.urn, dek.id AS dek_id, kek.external_id, kek.scope, kek.status, sd.device_name, CASE WHEN dek.id IN (SELECT dek_id FROM data_encryption_key WHERE key_encryption_key_id IN (SELECT kek_id FROM key_encryption_key WHERE scope = 'WORKSTATION')) THEN 'YES' ELSE 'NO' END AS was_rewrapped_after_dc_outage FROM answer_script a JOIN data_encryption_key dek ON dek.id = a.dek_id JOIN key_encryption_key kek ON kek.id = dek.key_encryption_key_id LEFT JOIN scanner_device sd ON sd.id = kek.workstation_id WHERE a.created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days' ORDER BY a.created_at DESC LIMIT 1000;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column \"kek_id\" does not exist\nLINE 1: ...yption_key WHERE key_encryption_key_id IN (SELECT kek_id FRO...\n                                                             ^\nHINT:  Perhaps you meant to reference the column \"a.dek_id\".\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

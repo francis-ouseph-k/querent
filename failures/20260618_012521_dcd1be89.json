@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T01:25:21.397173+00:00",
-  "nl_query": "List results computed using the MIN rule.",
-  "failed_sql": "SELECT r.id, r.script_id, r.final_marks, r.computation_rule, r.source_attempt_ids, r.published_at, au.display_name FROM result r LEFT JOIN app_user au ON au.id = r.published_by WHERE r.board_id = :board_id AND r.published_at IS NOT NULL AND r.computation_rule = 'MIN' ORDER BY r.published_at DESC LIMIT 500;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: syntax error at or near \":\"\nLINE 1: ...r au ON au.id = r.published_by WHERE r.board_id = :board_id ...\n                                                             ^\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T15:25:18.649377+00:00",
-  "nl_query": "Show all leaf questions in the Algorithms paper that have no rubric defined in the approved answer key.",
-  "failed_sql": "SELECT q.id, q.code, q.path, q.max_marks, q.display_order\nFROM   question q\nJOIN   question_paper qp ON qp.id = q.qp_id\nJOIN   answer_key ak ON ak.qp_id = qp.id\nWHERE  q.qp_id = :qp_id\n  AND  NOT EXISTS (\n         SELECT 1 FROM answer_key ak2\n         WHERE  ak2.qp_id = qp.id\n           AND ak2.status = 'APPROVED'\n           AND ak2.id = q.answer_key_id\n       )\n  AND  NOT EXISTS (\n         SELECT 1 FROM question q2\n         WHERE  q2.parent_question_id = q.id\n       )\nORDER  BY q.path;",
-  "error": "Validation failed (schema): Hallucinated column(s): question.answer_key_id. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

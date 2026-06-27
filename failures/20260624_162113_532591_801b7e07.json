@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T16:21:13.532591+00:00",
-  "nl_query": "For each faculty member, show their name, department, total scripts assigned as primary evaluator, total scripts submitted, total honorarium approved, and the average marks they awarded per script.",
-  "failed_sql": "SELECT fc.name AS faculty_name, au.academic_unit_name, COUNT(CASE WHEN sa.attempt_type = 'PRIMARY' THEN 1 END) AS total_primary_evaluations, COUNT(CASE WHEN ea.status = 'SUBMITTED' THEN 1 END) AS total_submitted_scripts, SUM(hs.final_amount) AS total_honorarium_approved, AVG(em.marks_awarded) AS average_marks_per_script FROM faculty_cache fc JOIN app_user au ON au.faculty_cache_id = fc.id JOIN script_assignment sa ON sa.faculty_cache_id = fc.id JOIN evaluation_attempt ea ON ea.assignment_id = sa.id JOIN honorarium_summary hs ON hs.faculty_cache_id = fc.id JOIN evaluation_marks em ON em.attempt_id = ea.id WHERE ea.status = 'SUBMITTED' GROUP BY fc.name, au.academic_unit_name ORDER BY total_primary_evaluations DESC, total_submitted_scripts DESC, total_honorarium_approved DESC, average_marks_per_script DESC LIMIT 100;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column au.academic_unit_id does not exist\nLINE 1: ...RMAT JSON) SELECT fc.id, fc.name AS faculty_name, au.academi...\n                                                             ^\n",
-  "retries": 4,
-  "corrected_sql": ""
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T17:29:46.194970+00:00",
-  "nl_query": "How many students are marked absent per exam?",
-  "failed_sql": "SELECT COUNT(*) AS absent_students_count, exam_id FROM exam_student_mapping JOIN student_cache sc ON sc.id = exam_student_mapping.student_id WHERE sc.lifecycle_status = 'ABSENT' GROUP BY exam_id",
-  "error": "Validation failed (schema): Hallucinated column(s): student_cache.lifecycle_status. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

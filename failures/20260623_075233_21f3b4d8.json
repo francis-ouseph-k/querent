@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T07:52:33.948523+00:00",
-  "nl_query": "For each active evaluation attempt, show the script URN, student name, evaluator name, assignment type, attempt type, section name if split, current status, total marks, and the number of marks entries.",
-  "failed_sql": "SELECT a.urn, sc.name AS student_name, fc.name AS evaluator_name, sa.assignment_type, ea.attempt_type, sa.section_name, ea.status, ea.total_marks, COUNT(em.id) AS num_evaluation_marks\nFROM   answer_script a\nJOIN   student_cache sc ON sc.id = a.student_id\nJOIN   faculty_cache fc ON fc.id = ea.evaluator_user_id\nJOIN   script_assignment sa ON sa.script_id = a.id AND sa.is_active = TRUE\nJOIN   evaluation_attempt ea ON ea.script_id = a.id AND ea.is_active = TRUE\nLEFT JOIN evaluation_marks em ON em.attempt_id = ea.id\nWHERE  ea.status IN ('ASSIGNED', 'IN_PROGRESS', 'FROZEN', 'SUBMITTED')\nGROUP BY a.urn, sc.name, fc.name, sa.assignment_type, ea.attempt_type, sa.section_name, ea.status, ea.total_marks\nORDER BY a.urn, sc.name, fc.name, sa.assignment_type, ea.attempt_type, sa.section_name, ea.status, ea.total_marks",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table \"ea\"\nLINE 4: JOIN   faculty_cache fc ON fc.id = ea.evaluator_user_id\n                                           ^\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

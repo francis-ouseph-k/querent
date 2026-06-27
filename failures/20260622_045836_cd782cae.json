@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T04:58:36.178325+00:00",
-  "nl_query": "Show all scripts where the scan was performed by a scanner device registered at a campus different from the campus where the exam was scheduled, indicating a potential logistics or data entry error.",
-  "failed_sql": "SELECT s.id, s.urn, s.exam_id, s.course_id, s.student_id, s.bundle_id, s.s3_key, s.dek_id, s.scan_metadata, s.lifecycle_status, s.scan_status, s.evaluation_status, s.block_status, sd.device_name, au.code AS campus_code, au.name AS campus_name\nFROM   answer_script AS s\nJOIN   script_assignment AS sa ON sa.script_id = s.id AND sa.is_active = TRUE\nJOIN   faculty_cache AS fc ON fc.employee_id = sa.evaluator_id\nJOIN   academic_unit_closure AS ac ON ac.descendant_id = au.id\nJOIN   scanner_device AS sd ON sd.id = sa.device_id\nJOIN   exam_schedule_cache AS esc ON esc.exam_id = s.exam_id\nWHERE  sd.campus_id != esc.campus_id\nORDER  BY s.exam_date DESC",
-  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (script_assignment, scanner_device, answer_script). You must qualify it with a table alias.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T15:03:02.730486+00:00",
-  "nl_query": "What is the average time between exam schedule creation and board creation?",
-  "failed_sql": "SELECT avg(exs.created_at - b.created_at) AS avg_time_between_creation FROM exam_schedule_cache AS esc JOIN board AS b ON esc.id = b.exam_id JOIN exam_schedule_cache AS exs ON exs.academic_year = esc.academic_year WHERE exs.created_at > b.created_at",
-  "error": "Validation failed (schema): Column validation failed: exam_schedule_cache does NOT have exam_id. Its PK is id (BIGINT) and its ERP identifier is exam_erp_id (VARCHAR).",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

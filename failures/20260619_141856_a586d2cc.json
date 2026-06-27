@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T14:18:56.149505+00:00",
-  "nl_query": "Which KEKs have already expired but still have DEKs wrapped under them that were created more than 6 months ago, and what is the scanner device name for any WORKSTATION-scope KEKs among them?",
-  "failed_sql": "SELECT kek.id, kek.external_id, kek.algorithm, kek.status, sd.device_name FROM key_encryption_key kek JOIN scanner_device sd ON sd.id = kek.workstation_id WHERE kek.scope = 'WORKSTATION' AND kek.status = 'EXPIRED' AND dek.created_at < (CURRENT_TIMESTAMP - INTERVAL '6 months')",
-  "error": "Validation failed (schema): SQL references unknown table(s): dek. Use only tables that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

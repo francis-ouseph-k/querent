@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T08:17:29.364870+00:00",
-  "nl_query": "Which evaluation policies are currently effective for boards that have at least one script with a pending revaluation request, and show the policy scope, deviation threshold, and review requirement.",
-  "failed_sql": "SELECT ep.id, ep.board_id, ep.course_id, ep.deviation_threshold, ep.review_required, ep.third_eval_trigger, b.status AS board_status, b.course_id AS course_id, b.exam_id AS exam_id, b.qp_id AS qp_id FROM evaluation_policy ep JOIN board b ON ep.board_id = b.id JOIN revaluation_request rr ON rr.board_id = b.id WHERE rr.approval_status = 'PENDING' GROUP BY ep.id, ep.board_id, ep.course_id, ep.deviation_threshold, ep.review_required, ep.third_eval_trigger, b.status, b.course_id, b.exam_id, b.qp_id",
-  "error": "Validation failed (syntax): SQL syntax error: Invalid expression / Unexpected token. Line 1, Col: 287.\n  p_id AS qp_id FROM evaluation_policy ep JOIN board b ON ep.board_id = b.id JOIN answer_script as ON \u001b[4mas\u001b[0m.course_id = b.course_id AND as.exam_id = b.exam_id JOIN revaluation_request rr ON rr.script_id = as",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

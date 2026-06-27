@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T16:09:43.392227+00:00",
-  "nl_query": "Which scripts have scan metadata indicating a quality score below 0.5, have been rescanned at least once, and are currently assigned to an evaluator but not yet frozen?",
-  "failed_sql": "SELECT a.id, a.urn, a.scan_metadata->>'scanner_id' AS scanner, a.scan_metadata->>'quality_score' AS quality, ea.faculty_cache_id AS evaluator_id\nFROM answer_script a\nJOIN script_assignment sa ON sa.script_id = a.id AND sa.is_active = TRUE\nJOIN evaluation_attempt ea ON ea.assignment_id = sa.id AND ea.is_active = TRUE\nWHERE (a.scan_metadata->>'quality_score')::NUMERIC < 0.5\n  AND a.block_status IN ('NONE', 'MALPRACTICE')\n  AND ea.status = 'ASSIGNED'\n  AND a.lifecycle_status = 'ATTEMPTED'\n  AND a.scan_status = 'SCANNED'\n  AND EXISTS (SELECT 1 FROM scan_history sh WHERE sh.script_id = a.id AND sh.replaced_previous = TRUE);",
-  "error": "Validation failed (semantic): SQL filters on 'lifecycle_status' but the question does not mention it. Do not apply defensive filters like 'lifecycle_status' unless explicitly justified by the question (e.g., asking for 'final', 'approved', etc.).",
-  "retries": 4,
-  "corrected_sql": ""
-}

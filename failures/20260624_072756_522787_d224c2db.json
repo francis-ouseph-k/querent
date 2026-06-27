@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T07:27:56.522787+00:00",
-  "nl_query": "Show all leaf questions in the Algorithms paper that have no rubric defined in the approved answer key.",
-  "failed_sql": "SELECT q.id, q.code, q.path, q.max_marks FROM question q JOIN question_paper qp ON q.qp_id = qp.id WHERE qp.title ILIKE '%Algorithms%' AND NOT EXISTS (SELECT 1 FROM answer_key_rubric akr JOIN answer_key ak ON ak.id = akr.answer_key_id AND ak.qp_id = q.qp_id AND ak.status = 'APPROVED' WHERE akr.question_id = q.id) ORDER BY q.path;",
-  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'answer_key_rubric' and 'question_paper'. Please review the schema for the correct join path.",
-  "retries": 4,
-  "corrected_sql": ""
-}

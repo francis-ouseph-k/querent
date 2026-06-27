@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-10T15:11:35.200700",
-  "nl_query": "how many courses are ready for marks to be pushed?",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": ""
-}

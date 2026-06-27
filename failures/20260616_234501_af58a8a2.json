@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-16T23:45:01.662717+00:00",
-  "nl_query": "Show all scripts where the scan was performed by a scanner device registered at a campus different from the campus where the exam was scheduled, indicating a potential logistics or data entry error.",
-  "failed_sql": "SELECT asa.script_id, asa.evaluator_id, asa.assigned_by, asa.assigned_at, asa.assignment_type, asa.attempt_type, asa.section_id, asa.status, asa.total_marks, asa.frozen_at, asa.submitted_at, asa.archived_at, asa.is_active, asa.version, asa.created_at, asa.updated_at, sd.device_id, sd.device_name, sd.registered_at, au.code AS campus_code, au.name AS campus_name, esc.exam_id, esc.exam_date, esc.exam_type, esc.campus_id, esc.academic_year, esc.synced_at, au2.code AS campus_code2, au2.name AS campus_name2\nFROM   script_assignment asa\nJOIN   scanner_device sd ON sd.id = asa.device_id\nJOIN   academic_unit au ON au.id = sd.campus_id\nJOIN   exam_schedule_cache esc ON esc.exam_id = asa.exam_id\nJOIN   academic_unit au2 ON au2.id = esc.campus_id\nWHERE  sd.registered_at <> esc.campus_id\n  AND  asa.assignment_type = 'AUTO'\n  AND  asa.status = 'SCANNED'\n  AND  asa.is_active = TRUE\nORDER  BY asa.assigned_at DESC\nLIMIT  1000;",
-  "error": "Validation failed (schema): Hallucinated column(s): script_assignment.status, script_assignment.total_marks, script_assignment.frozen_at, script_assignment.submitted_at, script_assignment.archived_at. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -8,3 +8,4 @@ patch_reviewer_feedback.py
 *.pyc
 .vscode/
 logs/
+output/

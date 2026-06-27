@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-27T06:43:33.694647+00:00",
-  "nl_query": "For each student who filed a revaluation request that was approved, show their name, original final marks, revaluation attempt total marks, the absolute difference, and whether the difference exceeds the board's configured deviation threshold.",
-  "failed_sql": "SELECT sc.name AS student_name, rm.final_marks AS original_final_marks, ea.total_marks AS revaluation_total_marks, ABS(ea.total_marks - rm.final_marks) AS difference, CASE WHEN ea.total_marks - rm.final_marks > ep.deviation_threshold THEN 'YES' ELSE 'NO' END AS exceeds_deviation_threshold\nFROM   revaluation_request rr\nJOIN   answer_script       a  ON a.id  = rr.script_id\nJOIN   student_cache       sc ON sc.id = a.student_id\nJOIN   evaluation_attempt ea ON ea.resulting_attempt_id = rr.resulting_attempt_id\nJOIN   evaluation_marks rm ON rm.attempt_id = ea.id\nJOIN   board b ON b.course_id = a.course_id AND b.exam_id = a.exam_id\nJOIN   evaluation_policy ep ON ep.board_id = b.id\nWHERE  rr.approval_status = 'APPROVED'\nORDER  BY sc.name ASC;",
-  "error": "Validation failed (schema): Column validation failed: evaluation_attempt does NOT have resulting_attempt_id. resulting_attempt_id is on revaluation_request.",
-  "retries": 4,
-  "corrected_sql": ""
-}

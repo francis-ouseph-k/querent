@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T16:09:58.701954+00:00",
-  "nl_query": "For each department, show the department name, number of courses, number of faculty members, number of active boards, number of scripts currently in evaluation, and the average marks awarded per script.",
-  "failed_sql": "SELECT au.name AS academic_unit_name, COUNT(DISTINCT au.id) AS num_courses, COUNT(DISTINCT fc.employee_id) AS num_faculty_members, COUNT(DISTINCT b.id) AS num_active_boards, COUNT(DISTINCT a.id) AS num_scripts_in_evaluation, AVG(COUNT(em.marks_awarded)) * 100.0 / COUNT(DISTINCT a.id) AS avg_evaluation_marks_per_script\nFROM   academic_unit au\nJOIN   academic_unit_closure c      ON c.ancestor_id = au.id\nJOIN   academic_unit         course ON course.id     = c.descendant_id\nJOIN   faculty_cache         fc ON fc.department_id = au.id\nJOIN   board                b ON b.course_id = au.id AND b.status = 'EVAL_IN_PROGRESS'\nJOIN   answer_script        a ON a.course_id = au.id\nLEFT JOIN evaluation_marks em ON em.attempt_id = a.id\nWHERE  au.unit_type = 'COURSE'\nGROUP  BY au.name\nORDER  BY avg_evaluation_marks_per_script DESC;",
-  "error": "Validation failed (schema): Hallucinated column(s): unaliased.avg_evaluation_marks_per_script, unaliased.avg_evaluation_marks_per_script. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

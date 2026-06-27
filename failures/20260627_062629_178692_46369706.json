@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-27T06:26:29.178692+00:00",
-  "nl_query": "Show the complete timeline for each board created last month: creation date, first script assignment date, first evaluation attempt start date, first freeze date, last submission date, and the total number of days the board has been open.",
-  "failed_sql": "SELECT b.id, b.created_at, MIN(sa.assigned_at) AS first_script_assignment_date, MIN(ea.started_at) AS first_evaluation_attempt_start_date, MIN(ea.frozen_at) AS first_freeze_date, MAX(ea.submitted_at) AS last_submission_date, (MAX(ea.submitted_at) - b.created_at) / 86400 AS days_open FROM board b JOIN script_assignment sa ON sa.board_id = b.id JOIN evaluation_attempt ea ON ea.board_id = b.id WHERE b.created_at >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') AND b.created_at < DATE_TRUNC('month', CURRENT_DATE) GROUP BY b.id ORDER BY b.created_at ASC LIMIT 100;",
-  "error": "Validation failed (schema): Ambiguous column reference: 'script_id'. It exists in multiple tables (script_assignment, evaluation_attempt). You must qualify it with a table alias.",
-  "retries": 4,
-  "corrected_sql": ""
-}

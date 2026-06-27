@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T03:42:54.531962+00:00",
-  "nl_query": "Which configurations at course scope override the global scope setting for the same configuration key, and show the course code, global value, course value, and the data type.",
-  "failed_sql": "SELECT au.code AS academic_unit_code, c.global_value, au_value, c.data_type FROM academic_unit au JOIN configuration c ON au.id = c.scope_id AND c.scope_type = 'ACADEMIC_UNIT' JOIN configuration c_global ON c_global.config_key = c.config_key AND c_global.scope_type = 'GLOBAL' WHERE au.unit_type = 'COURSE' AND c_global.scope_id IS NULL AND c_global.is_active = TRUE AND au.is_active = TRUE AND c.is_active = TRUE",
-  "error": "Validation failed (schema): Hallucinated column(s): configuration.global_value, unaliased.au_value, configuration.is_active, configuration.is_active. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

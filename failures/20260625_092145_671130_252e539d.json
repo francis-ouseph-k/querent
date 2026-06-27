@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T09:21:45.671130+00:00",
-  "nl_query": "For each department, show the department name, number of courses, number of faculty members, number of active boards, number of scripts currently in evaluation, and the average marks awarded per script.",
-  "failed_sql": "SELECT au.name AS academic_unit_name, COUNT(DISTINCT au.id) AS num_courses, COUNT(DISTINCT fc.id) AS num_faculty, COUNT(DISTINCT b.id) AS num_active_boards, COUNT(DISTINCT CASE WHEN ea.status = 'NOT_ASSIGNED' THEN a.id END) AS num_scripts_in_eval, AVG(CASE WHEN ea.status = 'NOT_ASSIGNED' THEN em.marks_awarded ELSE NULL END) AS avg_eval_marks_per_script\nFROM   academic_unit au\nJOIN   academic_unit_closure c ON c.ancestor_id = au.id\nJOIN   academic_unit course ON course.id = c.descendant_id\nJOIN   faculty_cache fc ON fc.department_id = au.id\nJOIN   board b ON b.course_id = au.id\nJOIN   script_assignment sa ON sa.board_id = b.id\nJOIN   evaluation_attempt ea ON ea.assignment_id = sa.id\nJOIN   evaluation_marks em ON em.attempt_id = ea.id\nWHERE  au.unit_type = 'COURSE'\nGROUP  BY au.name\nORDER  BY num_courses DESC;",
-  "error": "Validation failed (schema): Table or alias 'a' is referenced (e.g. in an ON clause or SELECT list) but is not declared in the FROM/JOIN clauses. Add the missing table to the FROM list, or check JOIN ordering — a JOIN's ON clause cannot reference a table that appears later in the JOIN chain.",
-  "retries": 4,
-  "corrected_sql": ""
-}

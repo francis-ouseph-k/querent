@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-10T14:09:41.573579",
-  "nl_query": "find faculty assigned fewer than 10 answer script",
-  "failed_sql": "SELECT fc.employee_id, fc.name, COUNT(DISTINCT a.id) AS script_count\nFROM   faculty_cache fc\nJOIN   script_assignment sa ON sa.evaluator_id = fc.employee_id\nJOIN   answer_script a ON a.id = sa.script_id\nWHERE  a.is_active = TRUE\nGROUP  BY fc.employee_id, fc.name\nHAVING COUNT(DISTINCT a.id) < 10\nORDER  BY script_count DESC;",
-  "error": "Execution error: column a.is_active does not exist\nLINE 5: WHERE  a.is_active = TRUE\n               ^\nHINT:  Perhaps you meant to reference the column \"sa.is_active\".\n",
-  "retries": 0,
-  "corrected_sql": ""
-}

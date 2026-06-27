@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T15:29:59.126557+00:00",
-  "nl_query": "What is the average time between answer key creation and approval?",
-  "failed_sql": "SELECT AVG(TIMESTAMPDIFF(DAY, ak.created_at, au.approved_at)) AS avg_days_between_creation_and_approval\nFROM   answer_key ak\nJOIN   app_user au ON au.id = ak.approved_by\nWHERE  ak.status = 'APPROVED'",
-  "error": "Validation failed (schema): Hallucinated column(s): unaliased.day, app_user.approved_at. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

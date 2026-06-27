@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T16:32:41.974675+00:00",
-  "nl_query": "Show the complete timeline for each board created last month: creation date, first script assignment date, first evaluation attempt start date, first freeze date, last submission date, and the total number of days the board has been open.",
-  "failed_sql": "SELECT b.id, b.created_at, sa.assigned_at AS first_script_assignment_date, ea.started_at AS first_evaluation_attempt_start_date, ea.frozen_at AS first_freeze_date, r.submitted_at AS last_submission_date, EXTRACT(EPOCH FROM (b.closed_at - b.created_at)) / 86400 AS days_open FROM board b JOIN script_assignment sa ON sa.board_id = b.id JOIN evaluation_attempt ea ON ea.board_id = b.id JOIN result r ON r.board_id = b.id WHERE b.created_at >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') AND b.status = 'EVAL_IN_PROGRESS' GROUP BY b.id ORDER BY b.created_at DESC LIMIT 200;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column r.submitted_at does not exist\nLINE 1: ...pt_start_date, ea.frozen_at AS first_freeze_date, r.submitte...\n                                                             ^\nHINT:  Perhaps you meant to reference the column \"ea.submitted_at\".\n",
-  "retries": 4,
-  "corrected_sql": ""
-}

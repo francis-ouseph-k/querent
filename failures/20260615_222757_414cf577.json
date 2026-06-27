@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-15T22:27:57.109892+00:00",
-  "nl_query": "Count configurations by data type.",
-  "failed_sql": "SELECT config_type, COUNT(*) AS config_count FROM configuration GROUP BY config_type ORDER BY config_count DESC",
-  "error": "Validation failed (schema): Hallucinated column(s): configuration.config_type, configuration.config_type, configuration.config_count. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T12:44:11.286755+00:00",
-  "nl_query": "Show all leaf questions in the Algorithms paper that have no rubric defined in the approved answer key.",
-  "failed_sql": "SELECT q.id, q.code, q.path, q.max_marks, q.display_order\nFROM   question q\nJOIN   question_paper qp ON qp.id = q.qp_id\nJOIN   answer_key ak ON ak.qp_id = qp.id\nWHERE  q.qp_id = :qp_id\n  AND  NOT EXISTS (\n         SELECT 1 FROM answer_key ak2\n         WHERE  ak2.qp_id = qp.id\n           AND ak2.status = 'APPROVED'\n       )\n  AND  q.max_marks IS NOT NULL\nORDER  BY q.path;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: there is no parameter $1\nLINE 1: ...uestion_paper qp ON qp.id = q.qp_id WHERE qp.id = $1 AND NOT...\n                                                             ^\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T17:52:48.735944+00:00",
-  "nl_query": "What is the faculty-to-course ratio per department?",
-  "failed_sql": "SELECT au.id, au.code, au.name, COUNT(DISTINCT fc.id) AS faculty_count, COUNT(DISTINCT au.id) AS academic_unit_count, ROUND(COUNT(DISTINCT fc.id)::NUMERIC / NULLIF(COUNT(DISTINCT au.id), 0), 2) AS ratio FROM academic_unit au JOIN academic_unit_closure c ON c.ancestor_id = au.id AND c.depth > 0 JOIN faculty_cache fc ON fc.department_id = au.id WHERE au.unit_type = 'DEPARTMENT' GROUP BY au.id, au.code, au.name ORDER BY ratio DESC;",
-  "error": "Validation failed (semantic): SQL applies COUNT(au.code) but 'au.code' is also a GROUP BY key. COUNT over a GROUP BY key is tautological: SUM returns the value itself, COUNT(DISTINCT) always returns 1. Use a different column for the aggregation, or restructure the query.",
-  "retries": 4,
-  "corrected_sql": ""
-}

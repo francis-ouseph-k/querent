@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T16:41:35.751035+00:00",
-  "nl_query": "How many relationships have expired?",
-  "failed_sql": "SELECT COUNT(*) AS expired_relationship_count FROM academic_unit_relationship AS aur JOIN relationship_type_config AS rtc ON aur.relationship_type = rtc.relationship_type WHERE rtc.status = 'EXPIRED'",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: invalid input syntax for type boolean: \"EXPIRED\"\nLINE 1: ....relationship_type WHERE rtc.is_active::BOOLEAN = 'EXPIRED' ...\n                                                             ^\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

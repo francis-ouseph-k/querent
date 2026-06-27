@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T09:47:15.332440+00:00",
-  "nl_query": "Count revaluation extensions approved per board.",
-  "failed_sql": "SELECT b.id AS board_id, b.name, COUNT(rer.id) AS approved_extensions\nFROM   board b\nJOIN   revaluation_request rr ON rr.board_id = b.id\nJOIN   revaluation_extension_request rer ON rer.revaluation_request_id = rr.id\nWHERE  rer.approval_status = 'APPROVED'\nGROUP  BY b.id, b.name\nORDER  BY approved_extensions DESC;",
-  "error": "Validation failed (schema): Column 'b.name' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
-  "retries": 4,
-  "corrected_sql": ""
-}

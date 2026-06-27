@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T17:40:24.011797+00:00",
-  "nl_query": "Count blocked scripts per block reason category.",
-  "failed_sql": "SELECT a.block_status, COUNT(*) AS script_count\nFROM   answer_script      a\nJOIN   script_hold        sh ON sh.script_id = a.id\nWHERE  sh.is_active = TRUE\nGROUP  BY a.block_status, sh.block_reason\nORDER  BY script_count DESC;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column sh.block_reason does not exist\nLINE 5: GROUP  BY a.block_status, sh.block_reason\n                                  ^\nHINT:  Perhaps you meant to reference the column \"a.block_reason\".\n",
-  "retries": 4,
-  "corrected_sql": ""
-}

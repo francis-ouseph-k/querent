@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T15:45:40.642152+00:00",
-  "nl_query": "For each active evaluation attempt, show the script URN, student name, evaluator name, assignment type, attempt type, section name if split, current status, total marks, and the number of marks entries.",
-  "failed_sql": "SELECT a.urn, sc.name AS student_name, fc.name AS evaluator_name, sa.attempt_type AS script_assignment_type, ea.attempt_type AS evaluation_attempt_type, qs.name AS section_name, ea.status, ea.total_marks, COUNT(em.id) AS num_evaluation_marks\nFROM   evaluation_attempt ea\nJOIN   answer_script      a  ON a.id  = ea.script_id\nJOIN   faculty_cache           fc ON fc.employee_id = ea.evaluator_id\nJOIN   script_assignment      sa ON sa.script_id = a.id\nJOIN   question_section      qs ON qs.id = sa.section_id\nJOIN   evaluation_marks   em ON em.attempt_id = ea.id\nWHERE  ea.is_active = TRUE\nGROUP BY a.urn, sc.name, fc.name, sa.attempt_type, ea.attempt_type, qs.name, ea.status, ea.total_marks\nORDER BY a.urn, ea.attempt_type, ea.status",
-  "error": "Validation failed (schema): Ambiguous column reference: 'name'. It exists in multiple tables (faculty_cache, question_section). You must qualify it with a table alias.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

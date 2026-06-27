@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T16:38:01.279617+00:00",
-  "nl_query": "Count blocked scripts per block reason category.",
-  "failed_sql": "SELECT sh.block_reason, COUNT(*) AS script_count\nFROM script_hold sh\nJOIN answer_script a ON sh.script_id = a.id\nWHERE sh.is_active = TRUE\nGROUP BY sh.block_reason\nORDER BY script_count DESC;",
-  "error": "Validation failed (schema): Hallucinated column(s): script_hold.block_status, script_hold.block_status. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T16:24:44.966802+00:00",
-  "nl_query": "What is the average number of preparers per approved answer key?",
-  "failed_sql": "SELECT AVG(COUNT(DISTINCT employee_id)) AS average_preparers_per_ak\nFROM   answer_key_preparer\nJOIN   answer_key ON answer_key.id = answer_key_preparer.answer_key_id\nWHERE  ak.status = 'APPROVED';",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table \"ak\"\nLINE 1: ..._key.id = answer_key_preparer.answer_key_id WHERE ak.status ...\n                                                             ^\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

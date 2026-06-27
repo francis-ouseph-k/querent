@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T16:30:17.370155+00:00",
-  "nl_query": "What percentage of questions are leaf questions?",
-  "failed_sql": "SELECT (COUNT(CASE WHEN q.parent_question_id IS NULL THEN 1 ELSE NULL END) * 100.0 / SUM(CASE WHEN q.qp_id = :qp_id THEN 1 ELSE NULL END)) AS percentage_leaf_questions FROM question q",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: syntax error at or near \"THEN\"\nLINE 1: ...LSE NULL END) * 100.0 / SUM(CASE WHEN q.qp_id = ? THEN 1 ELS...\n                                                             ^\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

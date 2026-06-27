@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T04:49:17.256878+00:00",
-  "nl_query": "What is the total maximum marks per question paper?",
-  "failed_sql": "SELECT qp.id, qp.title, SUM(em.marks_awarded) AS total_max_marks\nFROM question_paper qp\nJOIN evaluation_marks em ON em.qp_id = qp.id\nWHERE qp.is_active = TRUE\nGROUP BY qp.id, qp.title\nORDER BY total_max_marks DESC",
-  "error": "Validation failed (schema): Hallucinated column(s): evaluation_marks.qp_id. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T11:16:00.753528+00:00",
-  "nl_query": "For each audit log entry related to a result correction, show the result ID, the old marks, the new marks, the name of the user who made the correction, the reason given, and the time elapsed since the previous correction on the same result.",
-  "failed_sql": "SELECT rh.id AS result_id, rh.old_marks, rh.new_marks, au.display_name AS actor, rh.reason, EXTRACT(EPOCH FROM (rh.changed_at - lag(rh.changed_at) OVER (PARTITION BY rh.result_id ORDER BY rh.changed_at))) / 3600 AS time_elapsed FROM result_history rh LEFT JOIN app_user au ON au.id = rh.changed_by ORDER BY rh.changed_at DESC LIMIT 200;",
-  "error": "Validation failed (aggregation): GROUP BY uses a descriptive column (like name, title, or code) without including the primary key (id). Names and titles may not be unique. Always include the entity's 'id' column in the GROUP BY clause alongside the descriptive column.",
-  "retries": 4,
-  "corrected_sql": ""
-}

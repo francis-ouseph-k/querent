@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T05:42:09.937333+00:00",
-  "nl_query": "Count marks entries per question for all PRIMARY attempts.",
-  "failed_sql": "SELECT question_id, COUNT(*) AS mark_count FROM evaluation_marks WHERE attempt_type = 'PRIMARY' AND is_final = TRUE GROUP BY question_id",
-  "error": "Validation failed (schema): Hallucinated column(s): evaluation_marks.attempt_type. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-16T00:24:48.912342+00:00",
-  "nl_query": "Count scripts per encryption algorithm.",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

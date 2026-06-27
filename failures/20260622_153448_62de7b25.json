@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T15:34:48.303568+00:00",
-  "nl_query": "What is the average number of annotations per frozen attempt?",
-  "failed_sql": "SELECT AVG(sub.count) FROM (SELECT ea.id AS attempt_id, COUNT(*) AS count FROM evaluation_attempt ea WHERE ea.status = 'FROZEN' AND ea.is_active = TRUE GROUP BY ea.id) sub",
-  "error": "Validation failed (schema): Hallucinated column(s): unaliased.count. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

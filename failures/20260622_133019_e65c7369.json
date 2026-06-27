@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T13:30:19.408209+00:00",
-  "nl_query": "For each script with an active legal hold, show the hold duration in days, whether the hold overlaps with the board evaluation deadline, whether the script has already been published, and the case reference number.",
-  "failed_sql": "SELECT sh.id, sh.script_id, a.urn, sh.case_id, sh.hold_reason, sh.hold_start_date, sh.hold_end_date, sh.is_active, sh.released_at, sh.block_status, sh.block_reason, sh.block_comments, a.lifecycle_status, a.scan_status, a.evaluation_status, a.block_status, a.block_reason, a.block_comments, a.total_marks, a.is_held, a.created_at, a.updated_at, b.status, b.deadline, b.rate_card_snapshot, r.erp_push_status, r.published_at, r.erp_push_at, r.erp_reconciliation_id FROM script_hold sh JOIN answer_script a ON a.id = sh.script_id JOIN board b ON b.course_id = a.course_id AND b.exam_id = a.exam_id LEFT JOIN result r ON r.script_id = a.id WHERE sh.is_active = TRUE AND sh.released_at IS NULL AND sh.case_id IS NOT NULL GROUP BY sh.id, sh.script_id, a.urn, sh.case_id, sh.hold_reason, sh.hold_start_date, sh.hold_end_date, sh.is_active, sh.released_at, sh.block_status, sh.block_reason, sh.block_comments, a.lifecycle_status, a.scan_status, a.evaluation_status, a.block_status, a.block_reason, a.block_comments, a.total_marks, a.is_held, a.created_at, a.updated_at, b.status, b.deadline, b.rate_card_snapshot, r.erp_push_status, r.published_at, r.erp_push_at, r.erp_reconciliation_id ORDER BY sh.hold_start_date ASC",
-  "error": "Validation failed (syntax): SQL syntax error: Invalid expression / Unexpected token. Line 1, Col: 890.\n  sh.hold_reason, sh.hold_start_date, sh.hold_end_date, sh.is_active, sh.released_at, sh.block_status \u001b[4mAS\u001b[0m script_hold_block_status, sh.block_reason, sh.block_comments, a.lifecycle_status, a.scan_status, a.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

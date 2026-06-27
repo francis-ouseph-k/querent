@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-16T00:53:06.384915+00:00",
-  "nl_query": "Count blocked scripts per block reason category.",
-  "failed_sql": "SELECT block_status, block_reason, COUNT(*) AS script_count\nFROM   answer_script\nWHERE  block_status  = 'MALPRACTICE'\nGROUP  BY block_status, block_reason\nORDER  BY script_count DESC;",
-  "error": "Validation failed (schema): Hallucinated column(s): answer_script.script_count. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

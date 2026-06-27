@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T17:13:17.494679+00:00",
-  "nl_query": "List deadline extension requests where the original deadline was January 2026.",
-  "failed_sql": "SELECT de.id, de.original_deadline, de.requested_deadline, de.approval_status, de.approved_at, au.display_name AS approved_by\nFROM   deadline_extension_request de\nJOIN   exam_schedule_cache esc ON esc.id = de.board_id\nJOIN   academic_unit au ON au.id = esc.course_id\nWHERE  esc.academic_year = '2026-2027' AND de.original_deadline = '2026-01-01'\nORDER  BY de.approved_at DESC",
-  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'exam_schedule_cache' and 'deadline_extension_request'. Please review the schema for the correct join path.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

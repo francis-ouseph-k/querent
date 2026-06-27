@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T12:18:24.217738+00:00",
-  "nl_query": "Count scripts per lifecycle status for exams scheduled in December 2025.",
-  "failed_sql": "SELECT a.lifecycle_status, COUNT(*) AS script_count\nFROM   answer_script      a\nJOIN   exam_schedule_cache esc ON esc.id = a.exam_id\nWHERE  esc.academic_year = '2025-12'\nGROUP  BY a.lifecycle_status\nORDER  BY script_count DESC;",
-  "error": "Validation failed (semantic): The question asks for a metric 'per' or 'for each' entity. Using an INNER JOIN drops entities that have a count of zero. You MUST use a LEFT JOIN to ensure entities with zero associated records are included in the results.",
-  "retries": 4,
-  "corrected_sql": ""
-}

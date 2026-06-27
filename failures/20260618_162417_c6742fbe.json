@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T16:24:17.397296+00:00",
-  "nl_query": "How many attempt rules are configured as PICK_N versus GROUP?",
-  "failed_sql": "SELECT COUNT(DISTINCT CASE WHEN ar.rule_type = 'PICK_N' THEN ar.id ELSE NULL END) AS pick_n_count, COUNT(DISTINCT CASE WHEN ar.rule_type = 'GROUP' THEN ar.id ELSE NULL END) AS group_count FROM evaluation_attempt_rule ar JOIN attempt_rule_group arg ON ar.id = arg.attempt_rule_id WHERE ar.rule_type IN ('PICK_N', 'GROUP')",
-  "error": "Validation failed (schema): Hallucinated table(s): evaluation_attempt_rule. These tables do not exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T03:29:16.590853+00:00",
-  "nl_query": "Which evaluation policies are currently effective for boards that have at least one script with a pending revaluation request, and show the policy scope, deviation threshold, and review requirement.",
-  "failed_sql": "SELECT ep.id AS policy_id, ep.course_id, ep.board_id, ep.deviation_threshold, ep.review_required FROM evaluation_policy ep JOIN revaluation_request rr ON ep.id = rr.evaluation_policy_id WHERE rr.approval_status = 'PENDING' GROUP BY ep.id, ep.course_id, ep.board_id, ep.deviation_threshold, ep.review_required",
-  "error": "Validation failed (schema): Hallucinated column(s): revaluation_request.evaluation_policy_id. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T11:23:32.702851+00:00",
-  "nl_query": "For each question paper, show the paper title, total marks, number of leaf questions, number of answer key rubrics defined, number of preparers, approval status, and the name of the user who approved it.",
-  "failed_sql": "SELECT qp.title, qp.total_marks, COUNT(DISTINCT q.id) AS num_leaf_questions, COUNT(DISTINCT akr.question_id) AS num_answer_key_rubrics, COUNT(DISTINCT ak.preparer_id) AS num_preparers, ak.approval_status, app_user.display_name AS approver_name\nFROM   question_paper qp\nJOIN   board b ON b.qp_id = qp.id\nJOIN   evaluation_attempt ea ON ea.board_id = b.id AND ea.is_active = TRUE\nJOIN   answer_key ak ON ak.qp_id = qp.id AND ak.status = 'APPROVED'\nJOIN   answer_key_rubric akr ON akr.answer_key_id = ak.id\nJOIN   app_user ON app_user.id = ak.approved_by\nJOIN   question q ON q.qp_id = qp.id AND NOT EXISTS (SELECT 1 FROM question q2 WHERE q2.parent_question_id = q.id)\nGROUP BY qp.title, qp.total_marks, ak.approval_status, app_user.display_name",
-  "error": "Validation failed (schema): Column 'akp.preparer_id' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
-  "retries": 4,
-  "corrected_sql": ""
-}

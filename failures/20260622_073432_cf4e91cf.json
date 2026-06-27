@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T07:34:32.792157+00:00",
-  "nl_query": "For each active scanner device, show the device name, campus, total scripts scanned this month, number of rescans performed, average OCR confidence of pages scanned, and the timestamp of the last scan, filtering devices with zero scans.",
-  "failed_sql": "SELECT sd.device_name, au.name AS academic_unit, COUNT(DISTINCT sh.script_id) AS total_scripts_scanned, COUNT(CASE WHEN sh.replaced_previous THEN 1 END) AS rescans_performed, AVG((sh.extracted_metadata->>'confidence')::NUMERIC) AS avg_ocr_confidence, MAX(sh.scanned_at) AS last_scan_timestamp FROM scanner_device sd JOIN academic_unit au ON au.id = sd.campus_id JOIN scan_history sh ON sh.device_id = sd.id WHERE sh.scanned_at >= CURRENT_TIMESTAMP - INTERVAL '1 month' AND sd.is_active = TRUE GROUP BY sd.device_name, au.name ORDER BY total_scripts_scanned DESC, avg_ocr_confidence DESC, last_scan_timestamp DESC",
-  "error": "Validation failed (schema): Hallucinated column(s): scan_history.extracted_metadata. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

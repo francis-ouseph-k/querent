@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T03:37:19.907774+00:00",
-  "nl_query": "What is the average expected bundle size across all exam halls?",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

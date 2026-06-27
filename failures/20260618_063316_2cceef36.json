@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T06:33:16.287131+00:00",
-  "nl_query": "How many questions belong to exactly one attempt rule group?",
-  "failed_sql": "SELECT COUNT(DISTINCT question_id) FROM attempt_rule_group_question WHERE group_id IN (SELECT group_id FROM attempt_rule_group GROUP BY group_id HAVING COUNT(question_id) = 1)",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: aggregate functions are not allowed in WHERE\nLINE 1: ... FROM attempt_rule_group GROUP BY group_id HAVING COUNT(ques...\n                                                             ^\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

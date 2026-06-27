@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T03:19:48.945120+00:00",
-  "nl_query": "For each active evaluation attempt, show the script URN, student name, evaluator name, assignment type, attempt type, section name if split, current status, total marks, and the number of marks entries.",
-  "failed_sql": "SELECT a.urn, sc.name AS student_name, fc.name AS evaluator_name, sa.attempt_type AS script_assignment_type, ea.attempt_type AS evaluation_attempt_type, qs.name AS section_name, ea.status, ea.total_marks, COUNT(em.id) AS num_boards FROM answer_script a JOIN script_assignment sa ON sa.script_id = a.id JOIN faculty_cache fc ON fc.employee_id = sa.evaluator_id JOIN evaluation_attempt ea ON ea.script_id = a.id JOIN question_section qs ON qs.id = sa.section_id JOIN evaluation_marks em ON em.attempt_id = ea.id WHERE a.lifecycle_status = 'ATTEMPTED' AND a.scan_status = 'SCANNED' AND a.evaluation_status IN ('NOT_ASSIGNED', 'ASSIGNED', 'IN_PROGRESS') AND a.block_status IN ('NONE', 'MALPRACTICE') GROUP BY a.urn, sc.name, fc.name, sa.attempt_type, ea.attempt_type, qs.name, ea.status, ea.total_marks ORDER BY ea.attempt_type, a.urn LIMIT 500;",
-  "error": "Validation failed (schema): Ambiguous column reference: 'name'. It exists in multiple tables (faculty_cache, question_section). You must qualify it with a table alias.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T11:49:52.198862+00:00",
-  "nl_query": "Which configurations at course scope override the global scope setting for the same configuration key, and show the course code, global value, course value, and the data type.",
-  "failed_sql": "SELECT au.code, c.global_value, auv.value, c.data_type FROM academic_unit au JOIN configuration c ON au.id = c.scope_id AND c.scope_type = 'COURSE' JOIN user_auxiliary_role uar ON au.id = uar.scope_id AND uar.scope_type = 'COURSE' JOIN user_auxiliary_role_value auv ON uar.id = auv.user_auxiliary_role_id WHERE auv.value IS NOT NULL AND c.scope_type = 'GLOBAL' AND c.config_key = auv.config_key",
-  "error": "Validation failed (schema): Hallucinated table(s): user_auxiliary_role_value. These tables do not exist in the schema.",
-  "retries": 4,
-  "corrected_sql": ""
-}

@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T17:33:11.194453+00:00",
-  "nl_query": "Count active script assignments per evaluator.",
-  "failed_sql": "SELECT fc.name AS evaluator_name, COUNT(sa.id) AS active_assignments\nFROM faculty_cache fc\nJOIN script_assignment sa ON sa.faculty_cache_id = fc.id\nWHERE sa.is_active = TRUE\nGROUP BY fc.name\nORDER BY active_assignments DESC",
-  "error": "Validation failed (semantic): SQL applies COUNT(sa.id) but 'sa.id' is also a GROUP BY key. COUNT over a GROUP BY key is tautological: SUM returns the value itself, COUNT(DISTINCT) always returns 1. Use a different column for the aggregation, or restructure the query.",
-  "retries": 4,
-  "corrected_sql": ""
-}

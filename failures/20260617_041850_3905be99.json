@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-17T04:18:50.278967+00:00",
-  "nl_query": "Count the number of faculty_course_mapping entries per academic year.",
-  "failed_sql": "SELECT academic_year, COUNT(*) AS faculty_course_mapping_count\nFROM faculty_course_mapping\nWHERE is_active = TRUE\nGROUP BY academic_year\nORDER BY faculty_course_mapping_count DESC;",
-  "error": "Validation failed (schema): Hallucinated column(s): faculty_course_mapping.faculty_course_mapping_count. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

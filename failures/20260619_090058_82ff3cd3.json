@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T09:00:58.956138+00:00",
-  "nl_query": "Show the complete faculty eligibility and performance chain: faculty name, department, courses they are mapped to, boards they are in the pool for, scripts assigned, scripts submitted, and their average evaluation speed.",
-  "failed_sql": "SELECT fc.name AS faculty_name, au.code AS course_code, au.name AS course_name, b.id AS board_id, sa.id AS script_assignment_id, sa.script_id AS script_id, sa.evaluator_id AS evaluator_id, sa.assignment_type AS assignment_type, sa.evaluation_status AS evaluation_status, sa.frozen_at AS frozen_at, sa.submitted_at AS submitted_at, AVG(sa.frozen_at - sa.started_at) AS average_evaluation_speed FROM faculty_cache fc JOIN academic_unit au ON au.id = fc.department_id JOIN faculty_course_mapping fcm ON fcm.employee_id = fc.employee_id AND fcm.course_id = au.id JOIN board b ON b.course_id = au.id JOIN script_assignment sa ON sa.evaluator_id = fc.employee_id AND sa.board_id = b.id WHERE sa.evaluation_status = 'SUBMITTED' GROUP BY fc.name, au.code, au.name, b.id, sa.id, sa.script_id, sa.evaluator_id, sa.assignment_type, sa.evaluation_status, sa.frozen_at, sa.submitted_at ORDER BY average_evaluation_speed DESC LIMIT 10;",
-  "error": "Validation failed (schema): Hallucinated column(s): script_assignment.evaluation_status, script_assignment.frozen_at, script_assignment.submitted_at, script_assignment.evaluation_status, script_assignment.frozen_at. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

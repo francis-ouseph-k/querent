@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-17T23:31:04.934415+00:00",
-  "nl_query": "Show all scripts where the scan was performed by a scanner device registered at a campus different from the campus where the exam was scheduled, indicating a potential logistics or data entry error.",
-  "failed_sql": "SELECT DISTINCT asa.script_id, au1.code AS campus_code, au1.name AS campus_name, au2.code AS exam_campus_code, au2.name AS exam_campus_name\nFROM   script_assignment asa\nJOIN   answer_script asa_script ON asa_script.id = asa.script_id\nJOIN   academic_unit au1 ON au1.id = asa_script.course_id\nJOIN   exam_schedule_cache esc ON esc.exam_id = asa_script.exam_id\nJOIN   academic_unit au2 ON au2.id = esc.campus_id\nWHERE  au1.id <> au2.id\nORDER  BY au1.code ASC, au2.code ASC, asa_script.exam_id ASC\nLIMIT  1000;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: for SELECT DISTINCT, ORDER BY expressions must appear in select list\nLINE 1: ...id <> au2.id ORDER BY au1.code ASC, au2.code ASC, asa_script...\n                                                             ^\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

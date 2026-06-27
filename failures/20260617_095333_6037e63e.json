@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-17T09:53:33.280243+00:00",
-  "nl_query": "Which faculty members are mapped to course CS102 this academic year?",
-  "failed_sql": "SELECT ...",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: missing FROM-clause entry for table \"academic_unit\"\nLINE 1: ...ure auc ON fc.course_id = auc.descendant_id WHERE academic_u...\n                                                             ^\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T12:43:43.810413+00:00",
-  "nl_query": "Which programs have prerequisite relationships defined in the system?",
-  "failed_sql": "SELECT au.id, au.name, au.code, acu.code AS course_code, acu.is_active, acu.academic_year\nFROM   academic_unit_relationship aur\nJOIN   academic_unit au ON au.id = aur.from_unit_id\nJOIN   academic_unit_closure acu ON acu.descendant_id = au.id\nJOIN   relationship_type_config rtc ON aur.relationship_type = rtc.relationship_type\nWHERE  rtc.relationship_type = 'PREREQUISITE'\n  AND  au.unit_type = 'PROGRAM'\n  AND  acu.is_active = TRUE\nGROUP BY au.id, au.name, au.code, acu.code, acu.is_active, acu.academic_year",
-  "error": "Validation failed (schema): Column 'au.relationship_type' does not exist. The Postgres planner suggests 'rtc.relationship_type' — use that, or verify the column belongs to the qualifying table in your FROM/JOIN clauses.",
-  "retries": 4,
-  "corrected_sql": ""
-}

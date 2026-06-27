@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-16T11:38:37.774670+00:00",
-  "nl_query": "Count result history entries per result.",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

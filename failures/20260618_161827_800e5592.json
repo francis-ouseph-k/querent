@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T16:18:27.748773+00:00",
-  "nl_query": "List workflow transitions allowed for the CUSTODIAN role on answer scripts.",
-  "failed_sql": "SELECT wst.id, wst.entity_type, wst.from_state, wst.to_state, wst.requires_reason, wst.created_at\nFROM   workflow_state_transition wst\nJOIN   app_user au ON au.id = wst.created_by\nWHERE  au.role = 'CUSTODIAN'",
-  "error": "Validation failed (schema): Hallucinated column(s): workflow_state_transition.created_by, app_user.role. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

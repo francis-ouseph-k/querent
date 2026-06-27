@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T15:55:21.843658+00:00",
-  "nl_query": "For each active scanner device, show the device name, campus, total scripts scanned this month, number of rescans performed, average OCR confidence of pages scanned, and the timestamp of the last scan, filtering devices with zero scans.",
-  "failed_sql": "SELECT sd.device_name, au.name AS academic_unit, COUNT(DISTINCT sh.script_id) AS scripts_scanned, SUM(CASE WHEN sh.replaced_previous THEN 1 ELSE 0 END) AS rescans, AVG(sp.extracted_metadata->>'confidence') AS avg_scan_confidence, MAX(sh.scanned_at) AS last_scan_timestamp FROM scanner_device sd JOIN academic_unit au ON au.id = sd.campus_id JOIN scan_history sh ON sh.device_id = sd.id JOIN script_page sp ON sp.script_id = sh.script_id WHERE sh.scanned_at >= DATE_TRUNC('month', CURRENT_DATE) AND sh.scanned_at < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' AND sd.is_active = TRUE GROUP BY sd.device_name, au.name ORDER BY scripts_scanned DESC;",
-  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'script_page' and 'scan_history'. Please review the schema for the correct join path.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

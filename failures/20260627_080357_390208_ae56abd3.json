@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-27T08:03:57.390208+00:00",
-  "nl_query": "How many boards have a board-level policy overriding the course-level policy?",
-  "failed_sql": "SELECT COUNT(DISTINCT ep.board_id) AS board_policy_override_count\nFROM   evaluation_policy ep\nWHERE  ep.scope_type = 'BOARD'\n  AND  ep.is_active = TRUE;",
-  "error": "Validation failed (schema): Column 'ep.scope' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
-  "retries": 4,
-  "corrected_sql": ""
-}

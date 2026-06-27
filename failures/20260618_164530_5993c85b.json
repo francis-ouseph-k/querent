@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T16:45:30.542950+00:00",
-  "nl_query": "List all students with WITHHELD eligibility for the Data Structures end-semester exam.",
-  "failed_sql": "SELECT DISTINCT sc.student_id, sc.name, esm.eligibility_status FROM student_cache sc JOIN exam_student_mapping esm ON esm.student_id = sc.student_id JOIN academic_unit_closure c ON c.descendant_id = esm.course_id JOIN exam_schedule_cache esc ON esc.exam_id = esm.exam_id WHERE esm.eligibility_status = 'WITHHELD' AND esc.exam_type = 'END_SEM' AND c.ancestor_id = :department_id AND c.depth > 0 ORDER BY sc.name LIMIT 200;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: syntax error at or near \"AND\"\nLINE 1: ...esc.exam_id = esm.exam_id WHERE c.ancestor_id = ? AND c.dept...\n                                                             ^\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

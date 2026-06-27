@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T01:53:08.562326+00:00",
-  "nl_query": "List workflow transitions allowed for the CUSTODIAN role on answer scripts.",
-  "failed_sql": "SELECT t.id, t.entity_type, t.from_state, t.to_state, t.allowed_roles, t.requires_reason FROM workflow_state_transition t WHERE t.entity_type = 'answer_script' AND t.allowed_roles @> ARRAY['COE']",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: character varying[] @> text[]\nLINE 1: ...entity_type = 'answer_script' AND t.allowed_roles @> ARRAY['...\n                                                             ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

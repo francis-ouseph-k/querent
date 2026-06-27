@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-17T05:15:42.432605+00:00",
-  "nl_query": "How many courses are cross-listed in more than one department?",
-  "failed_sql": "SELECT COUNT(DISTINCT c1.id) FROM academic_unit_closure c1 JOIN academic_unit_closure c2 ON c1.descendant_id = c2.ancestor_id WHERE c1.depth = 1 AND c2.depth = 1 AND c1.id != c2.id",
-  "error": "Validation failed (schema): Hallucinated column(s): academic_unit_closure.id, academic_unit_closure.id, academic_unit_closure.id. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

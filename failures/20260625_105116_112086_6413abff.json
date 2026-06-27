@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T10:51:16.112086+00:00",
-  "nl_query": "Count revaluation extensions approved per board.",
-  "failed_sql": "SELECT b.id AS board_id, b.name, COUNT(rer.id) AS approved_extensions\nFROM   board b\nJOIN   revaluation_request rr ON rr.board_id = b.id\nJOIN   revaluation_extension_request rer ON rer.revaluation_request_id = rr.id\nWHERE  rer.approval_status = 'APPROVED'\nGROUP  BY b.id, b.name\nORDER  BY approved_extensions DESC;",
-  "error": "Validation failed (schema): Table or alias 'rr' is referenced (e.g. in an ON clause or SELECT list) but is not declared in the FROM/JOIN clauses. Add the missing table to the FROM list, or check JOIN ordering — a JOIN's ON clause cannot reference a table that appears later in the JOIN chain.",
-  "retries": 4,
-  "corrected_sql": ""
-}

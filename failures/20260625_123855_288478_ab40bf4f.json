@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T12:38:55.288478+00:00",
-  "nl_query": "List all bundles created for exam hall Hall A.",
-  "failed_sql": "SELECT b.id, b.bundle_code, b.exam_id, b.expected_count, b.scanned_count FROM bundle b JOIN exam_schedule_cache esc ON b.exam_id = esc.id WHERE esc.campus_id = (SELECT id FROM academic_unit WHERE campus_id = 1) AND b.status = 'OPEN'",
-  "error": "Validation failed (hardcoded): SQL contains hardcoded integer literal(s) ['1'] used against an ID column. Do NOT invent numeric IDs. When the question references an entity by name, filter by the name/title/code column instead: WHERE table.name ILIKE '%value%'.",
-  "retries": 4,
-  "corrected_sql": ""
-}

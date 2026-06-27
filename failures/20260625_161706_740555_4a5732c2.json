@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T16:17:06.740555+00:00",
-  "nl_query": "Which scripts have scan metadata indicating a quality score below 0.5, have been rescanned at least once, and are currently assigned to an evaluator but not yet frozen?",
-  "failed_sql": "SELECT a.id, a.urn, a.scan_metadata->>'scanner_id' AS scanner, a.scan_metadata->>'quality_score' AS quality, sa.faculty_cache_id AS evaluator_id\nFROM answer_script a\nJOIN script_assignment sa ON sa.script_id = a.id AND sa.is_active = TRUE\nJOIN faculty_cache fc ON fc.id = sa.faculty_cache_id\nWHERE (a.scan_metadata->>'quality_score')::NUMERIC < 0.5\n  AND sa.reassigned_from IS NOT NULL\n  AND a.block_status IN ('NONE', 'MALPRACTICE')\n  AND a.lifecycle_status = 'ATTEMPTED'\n  AND a.scan_status = 'SCANNED'\n  AND a.evaluation_status = 'NOT_ASSIGNED'",
-  "error": "Validation failed (semantic): The SQL filters for evaluation_status = 'NOT_ASSIGNED' but also JOINs script_assignment or evaluation_attempt. When a script is NOT_ASSIGNED, no assignment or evaluation_attempt row exists — an INNER JOIN will return zero rows. Remove those JOINs and filter only on answer_script.evaluation_status = 'NOT_ASSIGNED', or use NOT EXISTS to verify the absence of assignments.",
-  "retries": 4,
-  "corrected_sql": ""
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T16:46:44.197180+00:00",
-  "nl_query": "Which boards have a board coordinator who is also listed as a primary evaluator in the pool, and what is the total number of scripts that coordinator has evaluated versus coordinated?",
-  "failed_sql": "SELECT b.id AS board_id, COUNT(s.id) AS total_scripts_evaluated, COUNT(h.id) AS total_scripts_coordinated FROM board b JOIN board_coordinator bc ON b.id = bc.board_id JOIN faculty_cache fc ON bc.faculty_cache_id = fc.id JOIN script_assignment sa ON fc.id = sa.faculty_cache_id JOIN evaluation_attempt ea ON sa.id = ea.assignment_id JOIN honorarium_summary h ON ea.faculty_cache_id = h.faculty_cache_id WHERE fc.name = bc.name AND h.role_in_board = 'PRIMARY' GROUP BY b.id",
-  "error": "Validation failed (schema): Column validation failed: board_coordinator does NOT have name. Join to faculty_cache: faculty_cache fc ON fc.id = bc.faculty_cache_id, then use fc.name.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

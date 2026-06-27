@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-27T08:34:45.527593+00:00",
-  "nl_query": "Show the complete moderation audit trail for each script that received moderation: the rule type, parameters, original total, adjusted total, mark difference, and the name of the COE user who applied it, ordered by application date.",
-  "failed_sql": "SELECT mr.rule_type, mr.parameters, ma.original_total, ma.adjusted_total, (ma.adjusted_total - ma.original_total) AS mark_difference, au.display_name AS coe_app_user_name, ma.applied_at FROM moderation_application ma JOIN moderation_rule mr ON mr.id = ma.moderation_rule_id JOIN app_user au ON au.id = ma.applied_by WHERE ma.script_id IN (SELECT script_id FROM answer_script WHERE evaluation_status = 'FROZEN' AND block_status = 'NONE') ORDER BY ma.applied_at",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column \"ma.adjusted_total\" must appear in the GROUP BY clause or be used in an aggregate function\nLINE 1: ...T mr.rule_type, mr.parameters, ma.original_total, ma.adjuste...\n                                                             ^\n",
-  "retries": 4,
-  "corrected_sql": ""
-}

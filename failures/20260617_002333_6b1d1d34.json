@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-17T00:23:33.099880+00:00",
-  "nl_query": "Show the page count and DPI reported in the scan metadata for each script.",
-  "failed_sql": "SELECT a.id, a.urn, a.scan_metadata->>'page_count'::INTEGER AS page_count, a.scan_metadata->>'dpi'::INTEGER AS dpi FROM answer_script a WHERE a.scan_metadata IS NOT NULL LIMIT 200;",
-  "error": "Execution error: invalid input syntax for type integer: \"page_count\"\nLINE 1: SELECT a.id, a.urn, a.scan_metadata->>'page_count'::INTEGER ...\n                                              ^\n",
-  "retries": 0,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

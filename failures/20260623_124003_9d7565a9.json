@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T12:40:03.278745+00:00",
-  "nl_query": "Show the complete timeline for each board created last month: creation date, first script assignment date, first evaluation attempt start date, first freeze date, last submission date, and the total number of days the board has been open.",
-  "failed_sql": "SELECT b.id, b.created_at AS board_creation_date, sa.assigned_at AS first_script_assignment_date, ea.started_at AS first_evaluation_attempt_start_date, ea.frozen_at AS first_freeze_date, r.submitted_at AS last_submission_date, (r.submitted_at - b.created_at) AS total_days_open FROM board b JOIN script_assignment sa ON sa.board_id = b.id JOIN evaluation_attempt ea ON ea.script_id = sa.script_id JOIN result r ON r.script_id = sa.script_id WHERE b.created_at >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') AND b.created_at < DATE_TRUNC('month', CURRENT_DATE) GROUP BY b.id ORDER BY b.created_at ASC",
-  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'result' and 'script_assignment'. Please review the schema for the correct join path.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

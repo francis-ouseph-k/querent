@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-16T03:57:51.593998+00:00",
-  "nl_query": "Which users have never been granted an auxiliary role?",
-  "failed_sql": "SELECT user_id FROM app_user WHERE id NOT IN (SELECT user_id FROM user_auxiliary_role)",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column \"user_id\" does not exist\nLINE 1: EXPLAIN (FORMAT JSON) SELECT user_id FROM app_user WHERE id ...\n                                     ^\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

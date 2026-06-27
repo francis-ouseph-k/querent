@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T16:54:06.862519+00:00",
-  "nl_query": "Count moderation applications that increased marks versus decreased marks.",
-  "failed_sql": "SELECT COUNT(CASE WHEN ma.adjusted_total > ma.original_total THEN 1 ELSE NULL END) AS increased_count, COUNT(CASE WHEN ma.adjusted_total < ma.original_total THEN 1 ELSE NULL END) AS decreased_count FROM moderation_application ma JOIN evaluation_marks em ON ma.script_id = em.script_id WHERE em.is_final = TRUE",
-  "error": "Validation failed (syntax): SQL syntax error: Invalid expression / Unexpected token. Line 1, Col: 256.\n  al THEN 1 ELSE NULL END) AS decreased_count FROM moderation_application ma JOIN answer_script as ON \u001b[4mma\u001b[0m.script_id = as.id JOIN evaluation_marks em ON as.id = em.attempt_id WHERE em.is_final = TRUE",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

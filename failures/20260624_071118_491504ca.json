@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-24T07:11:18.334263+00:00",
-  "nl_query": "For each active scanner device, show the device name, campus, total scripts scanned this month, number of rescans performed, average OCR confidence of pages scanned, and the timestamp of the last scan, filtering devices with zero scans.",
-  "failed_sql": "SELECT sd.device_name, au.name AS academic_unit, COUNT(DISTINCT sh.script_id) AS total_scripts_scanned, COUNT(CASE WHEN sh.replaced_previous THEN 1 END) AS rescans_performed, AVG(sp.extracted_metadata->>'confidence') AS avg_scan_confidence, MAX(sh.scanned_at) AS last_scan_timestamp FROM scanner_device sd JOIN academic_unit au ON au.id = sd.campus_id JOIN scan_history sh ON sh.device_id = sd.id JOIN answer_script as ON as.id = sh.script_id JOIN script_page sp ON sp.script_id = as.id WHERE sd.is_active = TRUE AND sh.scanned_at >= DATE_TRUNC('month', CURRENT_DATE) GROUP BY sd.device_name, au.name ORDER BY total_scripts_scanned DESC",
-  "error": "Validation failed (syntax): SQL uses 'as' as a table alias. 'as' is a SQL reserved keyword and is likely causing parsing or validation failures. Please rename the alias to a non-keyword identifier (e.g., if you aliased answer_script to 'as', change it to 'a' or 'ans_scr').",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

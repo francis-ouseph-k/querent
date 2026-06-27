@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T16:36:17.581271+00:00",
-  "nl_query": "For each course in the current academic year, show the number of students registered, number of scripts attempted, number absent, number barred, and the pass percentage based on published results with final marks at least 40 percent of the paper total.",
-  "failed_sql": "SELECT au.code AS course_code, au.name AS course_name, COUNT(DISTINCT sc.id) AS registered_students, COUNT(DISTINCT a.id) AS scripts_attempted, COUNT(DISTINCT CASE WHEN a.lifecycle_status = 'ABSENT' THEN a.id END) AS absent_students, COUNT(DISTINCT CASE WHEN a.lifecycle_status = 'BARRED' THEN a.id END) AS barred_students, ROUND(100.0 * COUNT(DISTINCT CASE WHEN r.final_marks >= 0.4 * qp.total_marks THEN a.id END) / NULLIF(COUNT(DISTINCT a.id), 0), 2) AS pass_percentage FROM academic_unit au JOIN student_cache sc ON au.id = sc.course_id JOIN answer_script a ON sc.id = a.student_id JOIN exam_schedule_cache esc ON a.exam_id = esc.id JOIN board b ON b.id = a.board_id JOIN question_paper qp ON qp.id = b.qp_id JOIN result r ON r.script_id = a.id WHERE esc.academic_year = (SELECT academic_year FROM exam_schedule_cache ORDER BY academic_year DESC LIMIT 1) GROUP BY au.code, au.name ORDER BY pass_percentage DESC;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column sc.course_id does not exist\nLINE 1: ...d = au.parent_id JOIN student_cache sc ON au.id = sc.course_...\n                                                             ^\nHINT:  Perhaps you meant to reference the column \"esc.course_id\".\n",
-  "retries": 4,
-  "corrected_sql": ""
-}

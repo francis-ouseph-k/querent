@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T03:18:47.909273+00:00",
-  "nl_query": "Which evaluators are currently in the pool for active boards but have no active script assignments, and show their faculty name, department, and the boards they are eligible for.",
-  "failed_sql": "SELECT fc.name AS faculty_name, au.id AS faculty_cache_id, au.department_id AS department_id, au.unit_type AS unit_type, au.code AS unit_code, au.name AS unit_name, au.display_order AS display_order, au.is_active AS is_active, au.created_at AS created_at, au.updated_at AS updated_at, au.designation AS designation, au.is_temporary AS is_temporary, au.email AS email, au.synced_at AS synced_at, ep.employee_id, ep.eligible_role, ep.is_available FROM faculty_cache au JOIN evaluator_pool ep ON au.employee_id = ep.employee_id JOIN academic_unit au ON au.id = ep.board_id WHERE au.unit_type = 'COURSE' AND ep.is_active = TRUE AND au.is_active = TRUE AND au.lifecycle_status = 'ATTEMPTED' AND au.scan_status = 'SCANNED' AND au.evaluation_status IN ('NOT_ASSIGNED', 'ASSIGNED', 'IN_PROGRESS') AND au.block_status IN ('NONE', 'MALPRACTICE') AND NOT EXISTS (SELECT 1 FROM script_assignment sa WHERE sa.evaluator_id = au.employee_id AND sa.is_active = TRUE)",
-  "error": "Validation failed (schema): Ambiguous column reference: 'name'. It exists in multiple tables (faculty_cache, academic_unit). You must qualify it with a table alias.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

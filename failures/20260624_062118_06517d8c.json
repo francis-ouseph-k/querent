@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-24T06:21:18.308517+00:00",
-  "nl_query": "Which scripts have a mismatch between the number of pages recorded in scan metadata and the number of script_page rows stored in the database?",
-  "failed_sql": "SELECT a.id, a.urn, a.scan_metadata->>'page_count' AS recorded_pages, COUNT(sp.id) AS script_page_count FROM answer_script a JOIN script_page sp ON a.id = sp.script_id GROUP BY a.id, a.urn HAVING recorded_pages != script_page_count ORDER BY recorded_pages - script_page_count DESC LIMIT 100;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column \"recorded_pages\" does not exist\nLINE 1: ...N a.id = sp.script_id GROUP BY a.id, a.urn HAVING recorded_p...\n                                                             ^\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

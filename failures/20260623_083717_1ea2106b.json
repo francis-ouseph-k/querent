@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T08:37:17.080931+00:00",
-  "nl_query": "Identify all scripts where the cached total marks on the answer script row differs from the total marks on the latest active evaluation attempt by more than 0.5 marks, indicating a cache synchronization issue.",
-  "failed_sql": "SELECT a.id, a.urn, sc.student_erp_id, sc.name, sc.synced_at, ea.total_marks AS attempt_total, em.total_marks AS cached_total, (ea.total_marks - em.total_marks) AS discrepancy\nFROM   answer_script a\nJOIN   student_cache sc ON sc.id = a.student_id\nJOIN   evaluation_attempt ea ON ea.script_id = a.id AND ea.is_active = TRUE\nJOIN   evaluation_marks em ON em.attempt_id = ea.id AND em.is_final = TRUE\nWHERE  ea.status IN ('FROZEN', 'SUBMITTED')\n  AND  a.evaluation_status NOT IN ('SUBMITTED')\nGROUP  BY a.id, a.urn, sc.student_erp_id, sc.name, sc.synced_at, ea.total_marks, em.total_marks\nHAVING ea.total_marks <> em.total_marks\nORDER  BY discrepancy DESC\nLIMIT  100;",
-  "error": "Validation failed (schema): Column validation failed: evaluation_marks does NOT have total_marks. Attempt total marks are evaluation_attempt.total_marks. Question marks are evaluation_marks.marks_awarded.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

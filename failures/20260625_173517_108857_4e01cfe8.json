@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T17:35:17.108857+00:00",
-  "nl_query": "What is the average number of sections per question paper?",
-  "failed_sql": "SELECT COUNT(DISTINCT qp.id) / COUNT(DISTINCT qs.qp_id) AS avg_sections_per_qp FROM question_paper qp JOIN question_section qs ON qs.qp_id = qp.id",
-  "error": "Validation failed (semantic): SQL applies COUNT(qp.id) but 'qp.id' is also a GROUP BY key. COUNT over a GROUP BY key is tautological: SUM returns the value itself, COUNT(DISTINCT) always returns 1. Use a different column for the aggregation, or restructure the query.",
-  "retries": 4,
-  "corrected_sql": ""
-}

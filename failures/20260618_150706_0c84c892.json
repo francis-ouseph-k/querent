@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T15:07:06.158631+00:00",
-  "nl_query": "For each audit log entry related to a result correction, show the result ID, the old marks, the new marks, the name of the user who made the correction, the reason given, and the time elapsed since the previous correction on the same result.",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

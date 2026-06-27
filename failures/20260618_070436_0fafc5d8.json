@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T07:04:36.575512+00:00",
-  "nl_query": "How many moderation applications adjusted marks by exactly 3?",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

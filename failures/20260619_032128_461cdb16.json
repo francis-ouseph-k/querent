@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T03:21:28.950203+00:00",
-  "nl_query": "For each published result, show the script URN, student name, final marks, computation rule, the list of source attempt types used, the evaluator names for those attempts, and whether the result has been reconciled with ERP.",
-  "failed_sql": "SELECT r.id, a.urn, sc.name AS student_name, r.final_marks, r.computation_rule, ARRAY(SELECT ea.attempt_type FROM evaluation_attempt ea WHERE ea.script_id = a.id AND ea.is_active = TRUE), ARRAY(SELECT au.display_name FROM app_user au JOIN script_assignment sa ON au.id = sa.evaluator_user_id JOIN evaluation_attempt ea ON sa.script_id = ea.script_id WHERE ea.script_id = a.id AND ea.is_active = TRUE), r.erp_push_status AS erp_reconciliation_status FROM result r JOIN answer_script a ON r.script_id = a.id JOIN student_cache sc ON a.student_id = sc.student_id WHERE r.erp_push_status = 'RECONCILED' ORDER BY r.final_marks DESC LIMIT 100;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: operator does not exist: bigint = character varying\nLINE 1: ...OM app_user au JOIN script_assignment sa ON au.id = sa.evalu...\n                                                             ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

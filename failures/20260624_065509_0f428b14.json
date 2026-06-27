@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-24T06:55:09.723359+00:00",
-  "nl_query": "How many boards have a board-level policy overriding the course-level policy?",
-  "failed_sql": "SELECT COUNT(DISTINCT bp.id) FROM board_policy bp JOIN evaluation_policy ep ON bp.board_id = ep.board_id WHERE bp.course_id IS NULL AND ep.course_id IS NOT NULL",
-  "error": "Validation failed (schema): Hallucinated table(s): board_policy. These tables do not exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

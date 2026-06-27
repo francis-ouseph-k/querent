@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T09:12:00.621550+00:00",
-  "nl_query": "What is the average number of annotations per frozen attempt?",
-  "failed_sql": "SELECT AVG(ann_count) AS avg_annotations\nFROM   (\n         SELECT ea.id, COUNT(ea_ann.id) AS ann_count\n         FROM   evaluation_attempt ea\n         LEFT   JOIN evaluation_annotation ea_ann ON ea_ann.attempt_id = ea.id\n         WHERE  ea.status = 'FROZEN'\n           AND  ea.is_active = TRUE\n         GROUP  BY ea.id\n       ) sub;",
-  "error": "Validation failed (semantic): The question asks for a metric 'per' or 'for each' entity. Using an INNER JOIN drops entities that have a count of zero. You MUST use a LEFT JOIN to ensure entities with zero associated records are included in the results.",
-  "retries": 4,
-  "corrected_sql": ""
-}

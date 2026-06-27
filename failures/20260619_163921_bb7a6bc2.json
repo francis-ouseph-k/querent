@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T16:39:21.946583+00:00",
-  "nl_query": "List workflow transitions allowed for the CUSTODIAN role on answer scripts.",
-  "failed_sql": "SELECT wst.id, wst.entity_type, wst.from_state, wst.to_state, wst.allowed_roles, wst.requires_reason FROM workflow_state_transition wst JOIN faculty_cache fc ON wst.allowed_roles @> ARRAY[fc.employee_id] WHERE fc.role = 'CUSTODIAN' AND wst.entity_type = 'answer_script'",
-  "error": "Validation failed (schema): Hallucinated column(s): academic_unit.role, academic_unit.role. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

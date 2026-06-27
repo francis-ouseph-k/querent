@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T15:30:10.678324+00:00",
-  "nl_query": "What is the average number of history corrections per published result?",
-  "failed_sql": "SELECT COUNT(*) / COUNT(DISTINCT r.id) AS avg_corrections_per_result FROM result_history rh JOIN result r ON rh.result_id = r.id",
-  "error": "Validation failed (semantic): The question asks for a metric 'per' or 'for each' entity. Using an INNER JOIN drops entities that have a count of zero. You MUST use a LEFT JOIN to ensure entities with zero associated records are included in the results.",
-  "retries": 4,
-  "corrected_sql": ""
-}

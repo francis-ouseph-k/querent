@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-15T21:14:05.197161+00:00",
-  "nl_query": "How many attempt rules are configured as PICK_N versus GROUP?",
-  "failed_sql": "SELECT COUNT(CASE WHEN rule_type = 'PICK_N' THEN 1 ELSE NULL END) AS pick_n_count, COUNT(CASE WHEN rule_type = 'GROUP' THEN 1 ELSE NULL END) AS group_count FROM attempt_rule WHERE is_active = TRUE",
-  "error": "Validation failed (schema): Hallucinated column(s): attempt_rule.is_active. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

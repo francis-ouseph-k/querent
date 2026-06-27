@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-09T13:29:58.639609",
-  "nl_query": "what is load of faculty?",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": ""
-}

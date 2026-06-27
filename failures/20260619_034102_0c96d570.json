@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T03:41:02.508023+00:00",
-  "nl_query": "Which scripts have been through more than one evaluation cycle and have at least one result history correction, showing the script URN, number of cycles, number of corrections, and the latest final marks.",
-  "failed_sql": "SELECT s.urn, COUNT(DISTINCT b.id) AS num_cycles, COUNT(DISTINCT rh.id) AS num_corrections, MAX(r.final_marks) AS latest_final_marks\nFROM   answer_script AS s\nJOIN   script_assignment AS sa ON sa.script_id = s.id\nJOIN   board AS b ON b.id = sa.board_id\nJOIN   result_history AS rh ON rh.result_id = s.id\nWHERE  s.lifecycle_status = 'ATTEMPTED'\n  AND s.scan_status = 'SCANNED'\n  AND s.evaluation_status IN ('NOT_ASSIGNED', 'ASSIGNED', 'IN_PROGRESS')\n  AND b.status = 'EVAL_IN_PROGRESS'\nGROUP BY s.urn\nHAVING COUNT(DISTINCT b.id) > 1\n  AND COUNT(DISTINCT rh.id) > 0\nORDER BY latest_final_marks DESC\nLIMIT  200;",
-  "error": "Validation failed (schema): Hallucinated column(s): unaliased.final_marks, script_assignment.board_id. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

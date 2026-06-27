@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T15:09:42.884932+00:00",
-  "nl_query": "What is the average number of annotations per frozen attempt?",
-  "failed_sql": "SELECT ea.id AS attempt_id, AVG(COUNT(*) FILTER (WHERE ea_annotation.attempt_id = ea.id)) AS avg_annotations_per_freeze\nFROM   evaluation_attempt ea\nJOIN   evaluation_annotation ea_annotation ON ea_annotation.attempt_id = ea.id\nWHERE  ea.status = 'FROZEN' AND ea.is_active = TRUE\nGROUP  BY ea.id",
-  "error": "Validation failed (safety): Non-SELECT statement detected by AST: Union. Only SELECT queries are permitted.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

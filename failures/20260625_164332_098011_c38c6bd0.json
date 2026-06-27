@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T16:43:32.098011+00:00",
-  "nl_query": "For each course in the current academic year, show the number of students registered, number of scripts attempted, number absent, number barred, and the pass percentage based on published results with final marks at least 40 percent of the paper total.",
-  "failed_sql": "SELECT au.code AS course_code, au.name AS course_name, COUNT(DISTINCT sc.id) AS registered_students, COUNT(DISTINCT a.id) AS scripts_attempted, SUM(CASE WHEN a.lifecycle_status = 'ABSENT' THEN 1 ELSE 0 END) AS absent_students, SUM(CASE WHEN a.lifecycle_status = 'BARRED' THEN 1 ELSE 0 END) AS barred_students, ROUND(100.0 * COUNT(DISTINCT CASE WHEN r.final_marks >= 0.4 * qp.total_marks THEN a.id ELSE NULL END) / NULLIF(COUNT(DISTINCT a.id), 0), 2) AS pass_percentage FROM academic_unit au JOIN student_cache sc ON au.id = sc.course_id JOIN answer_script a ON sc.id = a.student_id JOIN exam_schedule_cache esc ON a.exam_id = esc.id JOIN board b ON b.id = a.board_id JOIN question_paper qp ON qp.id = b.qp_id LEFT JOIN result r ON r.script_id = a.id WHERE esc.academic_year = (SELECT academic_year FROM exam_schedule_cache ORDER BY academic_year DESC LIMIT 1) GROUP BY au.code, au.name ORDER BY pass_percentage DESC;",
-  "error": "Validation failed (schema): Column 'sc.course_id' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
-  "retries": 4,
-  "corrected_sql": ""
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T13:27:52.698183+00:00",
-  "nl_query": "What is the average number of sections per question paper?",
-  "failed_sql": "SELECT AVG(T2.section_count) FROM question_paper AS T1 JOIN (SELECT qp_id, COUNT(*) AS section_count FROM question_section GROUP BY qp_id) AS T2 ON T1.id = T2.qp_id",
-  "error": "Validation failed (schema): Hallucinated column(s): question_section.section_count. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

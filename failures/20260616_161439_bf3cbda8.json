@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-16T16:14:39.086295+00:00",
-  "nl_query": "What is the average number of annotations per frozen attempt?",
-  "failed_sql": "SELECT AVG(COUNT(*)) AS avg_annotations_per_freeze\nFROM   evaluation_attempt ea\nJOIN   evaluation_annotation ea_a ON ea_a.attempt_id = ea.id\nWHERE  ea.status = 'FROZEN' AND ea.is_active = TRUE",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: aggregate function calls cannot be nested\nLINE 1: EXPLAIN (FORMAT JSON) SELECT AVG(COUNT(*)) AS avg_annotation...\n                                         ^\n",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

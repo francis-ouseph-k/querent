@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T15:07:07.113995+00:00",
-  "nl_query": "How many evaluation attempts have been superseded by a new cycle?",
-  "failed_sql": "SELECT COUNT(ea.id) AS superseded_attempts\nFROM   evaluation_attempt ea\nWHERE  ea.evaluation_cycle < (\n           SELECT MAX(ea2.evaluation_cycle)\n           FROM   evaluation_attempt ea2\n           WHERE  ea2.script_id = ea.script_id\n       );",
-  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'evaluation_attempt' and 'max_cycles'. Please review the schema for the correct join path.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

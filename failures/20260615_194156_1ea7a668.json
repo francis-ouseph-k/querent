@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-15T19:41:56.383619+00:00",
-  "nl_query": "List honorarium summaries that have been exported to payroll.",
-  "failed_sql": "",
-  "error": "LLM produced empty SQL output.",
-  "retries": 0,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

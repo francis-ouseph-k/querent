@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T12:24:14.337962+00:00",
-  "nl_query": "How many DEKs were created per KEK?",
-  "failed_sql": "SELECT kek_id, COUNT(*) AS dek_count FROM data_encryption_key GROUP BY kek_id",
-  "error": "Validation failed (schema): Column 'dek_id' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
-  "retries": 4,
-  "corrected_sql": ""
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T08:45:47.042211+00:00",
-  "nl_query": "For each department, show the department name, number of courses, number of faculty members, number of active boards, number of scripts currently in evaluation, and the average marks awarded per script.",
-  "failed_sql": "SELECT au.name AS academic_unit_name, COUNT(DISTINCT au.id) AS num_courses, COUNT(DISTINCT fc.employee_id) AS num_faculty, COUNT(DISTINCT b.id) AS num_active_boards, COUNT(DISTINCT a.id) AS num_scripts_in_evaluation, AVG(em.marks_awarded) AS avg_evaluation_marks_per_script\nFROM   academic_unit au\nJOIN   academic_unit_closure c      ON c.ancestor_id = au.id\nJOIN   academic_unit         course ON course.id     = c.descendant_id\nJOIN   faculty_cache         fc ON fc.department_id = au.id\nJOIN   board                b      ON b.course_id     = au.id\nJOIN   script_assignment     sa      ON sa.script_id     = b.id\nJOIN   evaluation_attempt   ea      ON ea.script_id     = sa.script_id\nJOIN   evaluation_marks     em      ON em.attempt_id   = ea.id\nWHERE  au.unit_type   = 'COURSE'\nGROUP  BY au.name\nORDER  BY num_courses DESC;",
-  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (evaluation_attempt, script_assignment, evaluation_marks, academic_unit, board). You must qualify it with a table alias.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

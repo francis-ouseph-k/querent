@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T02:13:54.916967+00:00",
-  "nl_query": "Show all configurations updated in the last 7 days.",
-  "failed_sql": "SELECT c.id, c.config_key, c.config_value, c.data_type, c.scope_type, c.scope_id, c.description, c.version, c.updated_by, c.updated_at, c.created_at FROM configuration c WHERE c.updated_at >= CURRENT_TIMESTAMP - INTERVAL '7 days' AND c.is_active = TRUE LIMIT 100;",
-  "error": "Validation failed (schema): Hallucinated column(s): configuration.is_active. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

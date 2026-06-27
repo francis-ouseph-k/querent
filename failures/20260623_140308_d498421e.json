@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T14:03:08.245136+00:00",
-  "nl_query": "List all bundles created for exam hall Hall A.",
-  "failed_sql": "SELECT b.id, b.bundle_code, b.exam_id FROM bundle b JOIN exam_schedule_cache esc ON b.exam_id = esc.id WHERE esc.campus_id = (SELECT id FROM academic_unit WHERE campus_id = :campus_id AND unit_type = 'CAMPUS') AND b.status = 'OPEN'",
-  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (academic_unit, bundle, exam_schedule_cache). You must qualify it with a table alias.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

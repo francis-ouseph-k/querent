@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T09:04:04.861866+00:00",
-  "nl_query": "Which questions participate in a GROUP-type attempt rule?",
-  "failed_sql": "SELECT q.id, q.code, q.path, ar.rule_type, ar.min_select, ar.max_select, ar.config_json FROM attempt_rule ar JOIN question q ON q.id = ar.question_id WHERE q.qp_id = :qp_id AND ar.rule_type = 'GROUP' ORDER BY q.path, ar.rule_type;",
-  "error": "Validation failed (semantic): SQL contains a suspicious hardcoded string literal '12345' in condition qp_id = '12345'. This value does not appear in the question. Do NOT invent IDs. Remove this filter or replace it with the correct value from the question.",
-  "retries": 4,
-  "corrected_sql": ""
-}

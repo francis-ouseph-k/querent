@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T08:03:34.013587+00:00",
-  "nl_query": "For each audit log entry related to a result correction, show the result ID, the old marks, the new marks, the name of the user who made the correction, the reason given, and the time elapsed since the previous correction on the same result.",
-  "failed_sql": "SELECT r.id AS result_id, em_old.marks_awarded AS old_evaluation_marks, em_new.marks_awarded AS new_evaluation_marks, au.display_name AS actor, al.reason AS reason, (al.created_at - al_prev.created_at) AS time_elapsed FROM audit_log al JOIN evaluation_marks em_old ON al.old_value->>'marks_awarded'::NUMERIC = em_old.marks_awarded JOIN evaluation_marks em_new ON al.new_value->>'marks_awarded'::NUMERIC = em_new.marks_awarded JOIN app_user au ON au.id = al.user_id JOIN result r ON r.id = em_new.result_id LEFT JOIN audit_log al_prev ON al_prev.entity_type = 'EVALUATION_ATTEMPT' AND al_prev.entity_id = r.id AND al_prev.created_at < al.created_at WHERE al.entity_type = 'EVALUATION_ATTEMPT' AND al.new_value->>'marks_awarded'::NUMERIC > al.old_value->>'marks_awarded'::NUMERIC ORDER BY al.created_at DESC",
-  "error": "Validation failed (schema): Hallucinated column(s): evaluation_marks.result_id. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

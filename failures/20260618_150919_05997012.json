@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T15:09:19.829800+00:00",
-  "nl_query": "Show the complete encryption and scanning chain for each script created in the last 7 days: script URN, DEK ID, KEK external ID, KEK scope, KEK status, scanner device name, and whether the DEK was re-wrapped after a Direct Connect outage.",
-  "failed_sql": "SELECT a.urn, dek.id AS dek_id, kek.external_id AS kek_external_id, kek.scope AS kek_scope, kek.status AS kek_status, sd.device_name AS scanner_device_name, CASE WHEN dek.id IN (SELECT dek_id FROM data_encryption_key WHERE key_encryption_key_id IN (SELECT id FROM key_encryption_key WHERE scope = 'WORKSTATION')) THEN 'YES' ELSE 'NO' END AS re_wrapped_after_direct_connect_outage FROM answer_script a JOIN data_encryption_key dek ON dek.id = a.dek_id JOIN key_encryption_key kek ON kek.id = dek.key_encryption_key_id LEFT JOIN scanner_device sd ON sd.id = kek.workstation_id WHERE a.lifecycle_status = 'ATTEMPTED' AND a.scan_status = 'SCANNED' AND a.evaluation_status = 'NOT_ASSIGNED' AND a.block_status = 'NONE' AND a.created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days' ORDER BY a.created_at DESC LIMIT 500;",
-  "error": "Validation failed (schema): Ambiguous column reference: 'id'. It exists in multiple tables (answer_script, key_encryption_key, data_encryption_key, scanner_device). You must qualify it with a table alias.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

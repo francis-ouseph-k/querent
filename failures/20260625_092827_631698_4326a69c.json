@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T09:28:27.631698+00:00",
-  "nl_query": "For each faculty member, show their name, department, total scripts assigned as primary evaluator, total scripts submitted, total honorarium approved, and the average marks they awarded per script.",
-  "failed_sql": "SELECT fc.name AS faculty_name, au.academic_unit_name, COUNT(CASE WHEN sa.attempt_type = 'PRIMARY' THEN 1 END) AS total_primary_evaluations, COUNT(CASE WHEN ea.status = 'SUBMITTED' THEN 1 END) AS total_submitted_scripts, SUM(hs.final_amount) AS total_honorarium_approved, AVG(em.marks_awarded) AS average_marks_per_script FROM faculty_cache fc JOIN app_user au ON au.faculty_cache_id = fc.id JOIN script_assignment sa ON sa.faculty_cache_id = fc.id JOIN evaluation_attempt ea ON ea.assignment_id = sa.id JOIN honorarium_summary hs ON hs.faculty_cache_id = fc.id JOIN evaluation_marks em ON em.attempt_id = ea.id WHERE ea.is_active = TRUE GROUP BY fc.name, au.academic_unit_name ORDER BY total_primary_evaluations DESC LIMIT 100;",
-  "error": "Validation failed (schema): Column 'au.department_id' does not exist. The Postgres planner suggests 'fc.department_id' — use that, or verify the column belongs to the qualifying table in your FROM/JOIN clauses.",
-  "retries": 4,
-  "corrected_sql": ""
-}

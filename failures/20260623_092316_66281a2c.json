@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T09:23:16.597790+00:00",
-  "nl_query": "What percentage of scripts are blocked for administrative reasons?",
-  "failed_sql": "SELECT COUNT(*) FILTER (WHERE block_status = 'MALPRACTICE' OR block_status = 'ABSENT' OR block_status = 'NOT_PERMITTED' OR block_status = 'BLOCKED' OR block_status = 'NOT_ELIGIBLE') * 100.0 / NULLIF(COUNT(*), 0) AS percentage_of_administrative_blocks",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column \"block_status\" does not exist\nLINE 1: ...PLAIN (FORMAT JSON) SELECT COUNT(*) FILTER (WHERE block_stat...\n                                                             ^\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

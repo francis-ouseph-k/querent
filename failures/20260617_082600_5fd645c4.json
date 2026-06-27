@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-17T08:26:00.700220+00:00",
-  "nl_query": "What is the average records held per purge job?",
-  "failed_sql": "SELECT AVG(records_held) AS avg_records_held FROM purge_job_log WHERE is_active = TRUE",
-  "error": "Validation failed (schema): Hallucinated column(s): purge_job_log.is_active. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

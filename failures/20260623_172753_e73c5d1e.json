@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T17:27:53.869592+00:00",
-  "nl_query": "What is the average number of preparers per approved answer key?",
-  "failed_sql": "SELECT AVG(COUNT(DISTINCT faculty_cache_id)) AS avg_preparers_per_ak\nFROM   answer_key_preparer\nJOIN   answer_key ON answer_key.id = answer_key_preparer.answer_key_id\nWHERE  ak.status = 'APPROVED'\nGROUP BY ak.id;",
-  "error": "Validation failed (joins): Invalid JOIN: No explicit foreign key relationship exists between 'answer_key' and 'sub'. Please review the schema for the correct join path.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

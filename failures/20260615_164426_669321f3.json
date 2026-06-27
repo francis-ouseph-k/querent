@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-15T16:44:26.139292+00:00",
-  "nl_query": "For each student who filed a revaluation request that was approved, show their name, original final marks, revaluation attempt total marks, the absolute difference, and whether the difference exceeds the board's configured deviation threshold.",
-  "failed_sql": "SELECT rr.student_id, sc.name AS student_name, rm1.final_marks AS original_final_marks, rm2.total_marks AS revaluation_total_marks, ABS(rm1.final_marks - rm2.total_marks) AS difference, ep.deviation_threshold, CASE WHEN ABS(rm1.final_marks - rm2.total_marks) > ep.deviation_threshold THEN 'EXCEEDS' ELSE 'DOES NOT EXCEED' END AS deviation_status FROM revaluation_request rr JOIN answer_script a ON a.id = rr.script_id JOIN student_cache sc ON sc.student_id = a.student_id JOIN evaluation_attempt ea_p ON ea_p.script_id = a.id JOIN evaluation_marks rm1 ON rm1.attempt_id = ea_p.id JOIN evaluation_attempt ea_r ON ea_r.script_id = a.id JOIN board b ON b.id = ea_p.board_id CROSS JOIN LATERAL (SELECT ep2.deviation_threshold, ep2.review_required, ep2.third_eval_trigger FROM evaluation_policy ep2 WHERE (ep2.board_id = ea_p.board_id) OR (ep2.course_id = b.course_id AND ep2.board_id IS NULL) OR (ep2.course_id IS NULL AND ep2.board_id IS NULL) ORDER BY CASE WHEN ep2.board_id IS NOT NULL THEN 1 WHEN ep2.course_id IS NOT NULL THEN 2 ELSE 3 END LIMIT 1) ep WHERE rr.approval_status = 'APPROVED' AND ea_p.attempt_type = 'PRIMARY' AND ea_r.attempt_type = 'REVAL' AND ea_p.status IN ('FROZEN', 'SUBMITTED') AND ea_r.status IN ('FROZEN', 'SUBMITTED') AND ea_p.is_active = TRUE AND ea_r.is_active = TRUE ORDER BY difference DESC LIMIT 100;",
-  "error": "Validation failed (schema): Hallucinated column(s): revaluation_request.student_id, evaluation_marks.final_marks, evaluation_marks.final_marks, evaluation_marks.final_marks. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

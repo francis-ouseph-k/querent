@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T13:08:50.992609+00:00",
-  "nl_query": "Which faculty members have prepared answer keys for papers where they are also assigned as the board coordinator, creating a potential conflict of interest?",
-  "failed_sql": "SELECT DISTINCT fc.name AS preparer_name, bc.faculty_cache_id AS coordinator_id\nFROM   faculty_cache fc\nJOIN   board_coordinator bc ON bc.faculty_cache_id = fc.id\nJOIN   answer_key_preparer akp ON akp.faculty_cache_id = fc.id\nJOIN   answer_key ak ON ak.id = akp.answer_key_id\nJOIN   board b ON b.qp_id = ak.qp_id\nWHERE  bc.board_id = b.id\n  AND  akp.employee_id = bc.faculty_cache_id\n  AND  fc.is_active = TRUE\n  AND  bc.is_active = TRUE\nORDER BY fc.name, bc.faculty_cache_id;",
-  "error": "Validation failed (schema): Hallucinated column(s): board_coordinator.is_active, answer_key_preparer.employee_id. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

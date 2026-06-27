@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-27T06:04:48.982840+00:00",
-  "nl_query": "Show the complete encryption and scanning chain for each script created in the last 7 days: script URN, DEK ID, KEK external ID, KEK scope, KEK status, scanner device name, and whether the DEK was re-wrapped after a Direct Connect outage.",
-  "failed_sql": "SELECT a.urn, dek.id AS dek_id, kek.external_id AS kek_external_id, kek.scope AS kek_scope, kek.status AS kek_status, sd.device_name AS scanner_device_name, CASE WHEN al.action = 'DEK_REWRAP' THEN TRUE ELSE FALSE END AS was_rewrapped_after_outage FROM answer_script a JOIN data_encryption_key dek ON dek.id = a.dek_id JOIN key_encryption_key kek ON kek.id = dek.key_encryption_key_id LEFT JOIN scanner_device sd ON sd.id = kek.workstation_id LEFT JOIN audit_log al ON al.entity_type = 'data_encryption_key' AND al.entity_id = dek.id AND al.action = 'DEK_REWRAP' WHERE a.created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days' ORDER BY a.urn ASC;",
-  "error": "Validation failed (semantic): The filter 'entity_type = 'data_encryption_key'' is inside a LEFT JOIN ON clause, making it inert — unmatched rows still appear with NULLs instead of being excluded. Since the question explicitly mentions 'data_encryption_key', this is a hard constraint. Either move the filter to the WHERE clause, or change the LEFT JOIN to an INNER JOIN.",
-  "retries": 4,
-  "corrected_sql": ""
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T13:10:25.295534+00:00",
-  "nl_query": "List deadline extension requests where the original deadline was January 2026.",
-  "failed_sql": "SELECT de.id, de.original_deadline, de.requested_deadline, de.approval_status, de.approved_at, au.display_name AS approved_by FROM deadline_extension_request de JOIN academic_calendar ac ON ac.id = de.academic_year WHERE ac.cal_date = '2026-01-01' AND de.approval_status = 'APPROVED'",
-  "error": "Validation failed (schema): Hallucinated column(s): deadline_extension_request.academic_year. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

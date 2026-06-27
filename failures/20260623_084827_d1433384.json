@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T08:48:27.467421+00:00",
-  "nl_query": "Which scripts have been through more than one evaluation cycle and have at least one result history correction, showing the script URN, number of cycles, number of corrections, and the latest final marks.",
-  "failed_sql": "SELECT DISTINCT s.urn, COUNT(DISTINCT b.id) AS num_cycles, COUNT(DISTINCT rh.id) AS num_corrections, MAX(r.final_marks) AS latest_final_marks\nFROM   answer_script s\nJOIN   script_assignment sa ON sa.script_id = s.id\nJOIN   board b ON b.id = sa.board_id\nJOIN   evaluation_attempt ea ON ea.assignment_id = sa.id\nJOIN   result r ON r.script_id = s.id\nJOIN   result_history rh ON rh.result_id = r.id\nWHERE  COUNT(DISTINCT b.id) > 1\n  AND  COUNT(DISTINCT rh.id) > 0\nGROUP BY s.urn, r.final_marks\nORDER BY num_cycles DESC, num_corrections DESC, latest_final_marks DESC;",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: aggregate functions are not allowed in WHERE\nLINE 8: WHERE  (SELECT COUNT(DISTINCT b.id) FROM script_assignment s...\n                       ^\n",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-17T17:44:22.500127+00:00",
-  "nl_query": "Count result history entries per result.",
-  "failed_sql": "SELECT result_id, COUNT(*) AS history_count\nFROM result_history\nWHERE is_active = TRUE\nGROUP BY result_id\nORDER BY history_count DESC LIMIT 10;",
-  "error": "Validation failed (schema): Hallucinated column(s): result_history.is_active. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

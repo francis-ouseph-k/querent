@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T03:23:25.313400+00:00",
-  "nl_query": "Show all approved revaluation requests where the resulting evaluation attempt was created but the evaluator has not started marking within 3 working days of the attempt assignment.",
-  "failed_sql": "SELECT rr.id AS request_id, rr.script_id, rr.approved_at, ea.id AS attempt_id, ea.status, ea.evaluator_user_id, ea.started_at, ea.board_id, ea.assignment_id, ea.evaluator_id, ea.evaluator_user_id, ea.parent_attempt_id, ea.section_id, ea.status, ea.total_marks, ea.frozen_at, ea.submitted_at, ea.archived_at, ea.is_active, ea.version, ea.created_at, ea.updated_at, a.id AS script_id, a.urn, a.lifecycle_status, a.scan_status, a.evaluation_status, a.block_status, a.block_reason, a.block_comments, a.total_marks, a.is_held, a.version, a.created_at, a.updated_at, b.id AS board_id, b.course_id, b.unit_type, au.id AS evaluator_user_id, au.display_name AS evaluator FROM revaluation_request rr JOIN evaluation_attempt ea ON ea.id = rr.resulting_attempt_id JOIN answer_script a ON a.id = ea.script_id JOIN board b ON b.id = a.board_id JOIN academic_unit au ON au.id = b.course_id WHERE rr.approval_status = 'APPROVED' AND ea.status = 'ASSIGNED' AND ea.is_active = TRUE AND ea.frozen_at IS NULL AND ea.started_at < working_day_offset(a.cal_date, 3, a.academic_year)",
-  "error": "Validation failed (schema): Hallucinated column(s): evaluation_attempt.updated_at, board.unit_type, academic_unit.display_name, answer_script.board_id, answer_script.cal_date. Use only columns that exist in the schema.",
-  "retries": 1,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

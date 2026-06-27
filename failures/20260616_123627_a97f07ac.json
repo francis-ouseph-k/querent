@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-16T12:36:27.778434+00:00",
-  "nl_query": "Which bundles have been in SCANNING status for more than 24 hours without reaching COMPLETE, and show the exam hall, bundle code, scanned count, expected count, and the device that last scanned a script in that bundle?",
-  "failed_sql": "SELECT b.id, b.bundle_code, b.exam_hall, b.scanned_count, b.expected_count, sh.device_id, sh.scanned_at\nFROM   bundle b\nJOIN   scan_history  sh ON sh.script_id = b.id\nWHERE  b.status = 'OPEN'\n  AND  sh.scanned_at < CURRENT_TIMESTAMP - INTERVAL '24 hours'\n  AND  sh.scanned_at > b.scanned_at\n  AND  b.scanned_count < b.expected_count\nGROUP BY b.id, b.bundle_code, b.exam_hall, b.scanned_count, b.expected_count, sh.device_id, sh.scanned_at\nORDER BY b.scanned_count DESC",
-  "error": "Validation failed (schema): Hallucinated column(s): bundle.scanned_at. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

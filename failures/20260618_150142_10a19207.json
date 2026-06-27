@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-18T15:01:42.193924+00:00",
-  "nl_query": "For each board in EVAL_IN_PROGRESS status, show the course code, total scripts, number of scripts in each evaluation status, the board coordinator name and honorarium weight, and the number of calendar days remaining until the deadline.",
-  "failed_sql": "SELECT au.code AS unit_code, COUNT(a.id) AS total_scripts, SUM(CASE WHEN a.evaluation_status = 'NOT_ASSIGNED' THEN 1 ELSE 0 END) AS not_assigned, SUM(CASE WHEN a.evaluation_status = 'ASSIGNED' THEN 1 ELSE 0 END) AS assigned, SUM(CASE WHEN a.evaluation_status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS in_progress, SUM(CASE WHEN a.evaluation_status = 'FROZEN' THEN 1 ELSE 0 END) AS frozen, SUM(CASE WHEN a.evaluation_status = 'SUBMITTED' THEN 1 ELSE 0 END) AS submitted, bc.name AS board_coordinator_name, bc.honorarium_weight AS honorarium_weight, (EXTRACT(EPOCH FROM (b.deadline - CURRENT_TIMESTAMP)) / 86400) AS days_remaining FROM academic_unit au JOIN board b ON au.id = b.course_id JOIN answer_script a ON b.id = a.board_id JOIN board_coordinator bc ON b.id = bc.board_id WHERE b.status = 'EVAL_IN_PROGRESS' GROUP BY au.code, bc.name, bc.honorarium_weight ORDER BY au.code, days_remaining DESC LIMIT 100;",
-  "error": "Validation failed (schema): Hallucinated column(s): board_coordinator.name, board_coordinator.name, answer_script.board_id. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-16T01:28:02.984070+00:00",
-  "nl_query": "How many honorarium summaries are pending per evaluator?",
-  "failed_sql": "SELECT hs.employee_id, COUNT(*) AS pending_count\nFROM   honorarium_summary hs\nWHERE  hs.approval_status = 'PENDING'\nGROUP  BY hs.employee_id\nORDER  BY pending_count DESC\nLIMIT  100;",
-  "error": "Validation failed (schema): Hallucinated column(s): honorarium_summary.pending_count. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

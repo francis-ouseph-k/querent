@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-25T17:25:50.882661+00:00",
-  "nl_query": "List honorarium summaries that have been exported to payroll.",
-  "failed_sql": "SELECT hs.id, hs.board_id, fc.employee_erp_id, hs.role_in_board, hs.scripts_completed, hs.final_amount, hs.approved_at, hs.approval_status FROM honorarium_summary hs JOIN faculty_cache fc ON fc.id = hs.faculty_cache_id WHERE hs.approval_status = 'EXPORTED' LIMIT 500;",
-  "error": "Validation failed (semantic): SQL filters on 'approval_status' but the question does not mention it. Do not apply defensive filters like 'approval_status' unless explicitly justified by the question (e.g., asking for 'final', 'approved', etc.).",
-  "retries": 4,
-  "corrected_sql": ""
-}

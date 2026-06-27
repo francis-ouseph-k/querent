@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-27T06:46:31.696956+00:00",
-  "nl_query": "Which scripts have been through more than one evaluation cycle and have at least one result history correction, showing the script URN, number of cycles, number of corrections, and the latest final marks.",
-  "failed_sql": "SELECT s.urn, COUNT(DISTINCT ea.evaluation_cycle) AS num_cycles, COUNT(rh.id) AS num_corrections, MAX(r.final_marks) AS latest_final_marks\nFROM   answer_script s\nJOIN   script_assignment sa ON sa.script_id = s.id AND sa.is_active = TRUE\nJOIN   evaluation_attempt ea ON ea.assignment_id = sa.id AND ea.is_active = TRUE\nJOIN   result r ON r.script_id = s.id\nJOIN   result_history rh ON rh.result_id = r.id\nGROUP BY s.urn\nHAVING COUNT(DISTINCT ea.evaluation_cycle) > 1 AND COUNT(rh.id) > 0\nORDER BY num_cycles DESC, latest_final_marks DESC;",
-  "error": "Validation failed (schema): Hallucinated table(s): script_cycles, script_corrections. These tables do not exist in the schema.",
-  "retries": 4,
-  "corrected_sql": ""
-}

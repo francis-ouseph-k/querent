@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-23T08:51:13.847226+00:00",
-  "nl_query": "Show the complete faculty eligibility and performance chain: faculty name, department, courses they are mapped to, boards they are in the pool for, scripts assigned, scripts submitted, and their average evaluation speed.",
-  "failed_sql": "SELECT fc.name AS evaluator_name, au.display_name AS user_display_name, d.name AS department_name, b.id AS board_id, sa.script_id AS script_id, ea.submitted_at AS submitted_at, AVG(EXTRACT(EPOCH FROM (ea.submitted_at - ea.started_at)) / 3600) AS avg_evaluation_speed FROM evaluator_pool ep JOIN board b ON b.id = ep.board_id JOIN faculty_cache fc ON fc.id = ep.faculty_cache_id JOIN academic_unit au ON au.id = b.course_id JOIN faculty_course_mapping fcm ON fcm.faculty_cache_id = ep.faculty_cache_id AND fcm.course_id = b.course_id LEFT JOIN script_assignment sa ON sa.faculty_cache_id = fc.id AND sa.is_active = TRUE LEFT JOIN evaluation_attempt ea ON ea.assignment_id = sa.id AND ea.is_active = TRUE WHERE ep.is_available = TRUE GROUP BY fc.name, au.display_name, d.name, b.id, sa.script_id, ea.submitted_at ORDER BY fc.name, b.id, sa.script_id",
-  "error": "Validation failed (schema): Ambiguous column reference: 'name'. It exists in multiple tables (faculty_cache, academic_unit). You must qualify it with a table alias.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

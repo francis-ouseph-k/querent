@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-16T02:10:10.407866+00:00",
-  "nl_query": "Show all unit types configured for this university and whether they are mandatory.",
-  "failed_sql": "SELECT unit_type, is_mandatory FROM unit_type_config WHERE is_active = TRUE",
-  "error": "Validation failed (schema): Hallucinated column(s): unit_type_config.is_active. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

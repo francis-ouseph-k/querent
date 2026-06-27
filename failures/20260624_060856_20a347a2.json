@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-24T06:08:56.534256+00:00",
-  "nl_query": "Which evaluation policies are currently effective for boards that have at least one script with a pending revaluation request, and show the policy scope, deviation threshold, and review requirement.",
-  "failed_sql": "SELECT ep.id, ep.board_id, ep.course_id, ep.deviation_threshold, ep.review_required, ep.third_eval_trigger FROM evaluation_policy ep JOIN revaluation_request rr ON rr.board_id = ep.board_id WHERE rr.approval_status = 'PENDING' GROUP BY ep.id, ep.board_id, ep.course_id, ep.deviation_threshold, ep.review_required, ep.third_eval_trigger",
-  "error": "Validation failed (schema): Column validation failed: revaluation_request does NOT have board_id. Join via answer_script and board.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

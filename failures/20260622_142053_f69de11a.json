@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-22T14:20:53.652834+00:00",
-  "nl_query": "Which questions are grouped under the Choice group for attempt rule 1?",
-  "failed_sql": "SELECT q.id, q.code, q.max_marks, argq.group_label FROM question q JOIN attempt_rule_group_question argq ON q.id = argq.question_id JOIN attempt_rule ar ON argq.attempt_rule_id = ar.id WHERE ar.id = :rule_id AND argq.group_label = 'Choice'",
-  "error": "Validation failed (schema): Hallucinated column(s): attempt_rule_group_question.group_label, attempt_rule_group_question.attempt_rule_id, attempt_rule_group_question.group_label. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

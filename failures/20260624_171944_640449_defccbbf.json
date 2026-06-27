@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T17:19:44.640449+00:00",
-  "nl_query": "How many scanner devices are active per campus?",
-  "failed_sql": "SELECT au.code AS campus_code, COUNT(sd.id) AS active_devices_count\nFROM   academic_unit au\nJOIN   scanner_device sd ON sd.campus_id = au.id\nWHERE  sd.is_active = TRUE\nGROUP BY au.code",
-  "error": "Validation failed (semantic): SQL applies COUNT(sd.id) but 'sd.id' is also a GROUP BY key. COUNT over a GROUP BY key is tautological: SUM returns the value itself, COUNT(DISTINCT) always returns 1. Use a different column for the aggregation, or restructure the query.",
-  "retries": 4,
-  "corrected_sql": ""
-}

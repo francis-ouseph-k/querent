@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T17:34:25.673018+00:00",
-  "nl_query": "Count marks entries per question for all PRIMARY attempts.",
-  "failed_sql": "SELECT q.id, COUNT(*) AS eval_count FROM question q JOIN evaluation_attempt ea ON ea.question_id = q.id AND ea.attempt_type = 'PRIMARY' AND ea.is_active = TRUE GROUP BY q.id",
-  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: column ea.question_id does not exist\nLINE 1: ...unt FROM question q JOIN evaluation_attempt ea ON ea.questio...\n                                                             ^\nHINT:  Perhaps you meant to reference the column \"ea.section_id\".\n",
-  "retries": 4,
-  "corrected_sql": ""
-}

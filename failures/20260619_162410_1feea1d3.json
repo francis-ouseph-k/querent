@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-19T16:24:10.580170+00:00",
-  "nl_query": "For each student who filed a revaluation request that was approved, show their name, original final marks, revaluation attempt total marks, the absolute difference, and whether the difference exceeds the board's configured deviation threshold.",
-  "failed_sql": "SELECT DISTINCT sc.name AS student_name, ra.final_marks AS original_final_marks, ea_r.total_marks AS revaluation_total_marks, ABS(ra.final_marks - ea_r.total_marks) AS variance, ep.deviation_threshold, CASE WHEN ABS(ra.final_marks - ea_r.total_marks) > ep.deviation_threshold THEN 'Exceeds' ELSE 'Does not Exceed' END AS exceeds_threshold\nFROM   revaluation_request rr\nJOIN   answer_script       ra ON ra.id  = rr.script_id\nJOIN   student_cache       sc ON sc.student_id = ra.student_id\nJOIN   evaluation_attempt  ea_r ON ea_r.id = rr.resulting_attempt_id\nJOIN   board              b   ON b.id           = ea_r.board_id\nCROSS  JOIN LATERAL (\n  SELECT ep2.deviation_threshold, ep2.review_required, ep2.third_eval_trigger\n  FROM   evaluation_policy ep2\n  WHERE  (ep2.board_id = b.board_id)\n     OR  (ep2.course_id = b.course_id AND ep2.board_id IS NULL)\n     OR  (ep2.course_id IS NULL AND ep2.board_id IS NULL)\n  ORDER  BY CASE WHEN ep2.board_id IS NOT NULL THEN 1\n                 WHEN ep2.course_id IS NOT NULL THEN 2\n                 ELSE 3 END\n  LIMIT  1\n) ep\nWHERE  rr.approval_status = 'APPROVED'\nORDER  BY variance DESC",
-  "error": "Validation failed (schema): Hallucinated column(s): answer_script.final_marks, answer_script.final_marks, answer_script.final_marks, board.board_id. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

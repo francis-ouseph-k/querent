@@ -1,9 +1,0 @@
-{
-  "timestamp": "2026-06-17T02:55:35.289386+00:00",
-  "nl_query": "Which courses have no faculty_course_mapping entries for 2025-2026?",
-  "failed_sql": "SELECT au.id, au.code, au.name\nFROM   academic_unit au\nWHERE  au.unit_type = 'COURSE'\n  AND  au.is_active = TRUE\n  AND  NOT EXISTS (\n         SELECT 1 FROM faculty_course_mapping fcm\n         JOIN   exam_schedule_cache esc ON esc.exam_id = fcm.exam_id\n         WHERE  fcm.course_id     = au.id\n           AND  esc.academic_year = '2025-2026'\n       )\nORDER  BY au.code;",
-  "error": "Validation failed (schema): Hallucinated column(s): faculty_course_mapping.exam_id. Use only columns that exist in the schema.",
-  "retries": 2,
-  "corrected_sql": "",
-  "source": "pipeline"
-}

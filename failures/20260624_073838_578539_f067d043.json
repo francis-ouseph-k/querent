@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-06-24T07:38:38.578539+00:00",
-  "nl_query": "How many boards have a board-level policy overriding the course-level policy?",
-  "failed_sql": "SELECT COUNT(DISTINCT ep.board_id) AS board_policy_override_count\nFROM   evaluation_policy ep\nWHERE  ep.scope_type = 'BOARD'\n  AND  ep.is_active = TRUE;",
-  "error": "Validation failed (schema): Hallucinated column(s): evaluation_policy.is_active, evaluation_policy.scope_type. Use only columns that exist in the schema.",
-  "retries": 4,
-  "corrected_sql": ""
-}
