@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T18:08:57.241337+00:00",
+  "nl_query": "How many relationships have expired?",
+  "failed_sql": "SELECT COUNT(*) FROM relationship_type_config WHERE status = 'EXPIRED'",
+  "error": "Validation failed (schema): Column 'rtc.status' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
+  "retries": 4,
+  "corrected_sql": ""
+}

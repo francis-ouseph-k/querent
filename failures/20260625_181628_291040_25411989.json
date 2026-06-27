@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T18:16:28.291040+00:00",
+  "nl_query": "List all bundles created for exam hall Hall A.",
+  "failed_sql": "SELECT b.id, b.bundle_code, b.exam_id FROM bundle b JOIN exam_schedule_cache esc ON b.exam_id = esc.id WHERE esc.campus_id = (SELECT id FROM academic_unit WHERE campus_id = 1 AND unit_type = 'CAMPUS') AND b.status = 'OPEN'",
+  "error": "Validation failed (schema): Column 'esc.unit_type' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
+  "retries": 4,
+  "corrected_sql": ""
+}

@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T18:12:53.609219+00:00",
+  "nl_query": "Show the attempt rule configuration for question 2 in the Data Structures paper.",
+  "failed_sql": "SELECT ar.id AS rule_id, ar.rule_type, ar.min_select, ar.max_select, ar.config_json FROM attempt_rule ar JOIN question q ON q.id = ar.question_id WHERE q.qp_id = :qp_id AND ar.rule_type = 'PICK_N' ORDER BY ar.id",
+  "error": "Validation failed (schema): Column 'q.title' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
+  "retries": 4,
+  "corrected_sql": ""
+}

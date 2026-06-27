@@ -1857,6 +1857,11 @@ class RetryValidator:
         on_retry_fallback: callable = None,  # Callback to dynamically expand context on retry
         parsed_query                = None,
         max_retries:     int        = None,
+        # ── Full-context params (Fix 1+4+5: retry context parity) ──
+        schema_chunks:   list       = None,
+        join_paths:      list[str]  = None,
+        few_shots:       list       = None,
+        tenant_context:  str        = "",
     ) -> tuple[ValidationResult, int]:
         """
         Validate SQL with up to max_retries correction attempts.
@@ -1868,7 +1873,13 @@ class RetryValidator:
             user_context: Key context mapping parameters (e.g. board_id, user_id).
             schema_context: Chunk schemas injected into the correction context.
             label_filters: RapidFuzz matching details to preserve quotes on strings.
-            on_retry_fallback: Optional callback taking (attempt_num, tables_used) to fetch expanded context.
+            on_retry_fallback: Optional callback taking (attempt_num, tables_used, error_message)
+                to fetch expanded context. Returns (chunks, join_paths) when full-context
+                mode is active, or str when in legacy mode.
+            schema_chunks: Full list of SemanticChunk objects for the correction prompt.
+            join_paths: FK join path descriptions from the Steiner tree.
+            few_shots: Few-shot example chunks for the correction prompt.
+            tenant_context: RLS/security context string.
 
         Returns:
             A tuple of (final_ValidationResult, retry_count).
@@ -1898,9 +1909,17 @@ class RetryValidator:
             # Dynamically expand schema context if a fallback callback is provided.
             # On subsequent retries, the initial schema context might have been too restricted,
             # so we request broader database schema metadata (expanded context budget) to guide correction.
+            # Fix 2: on_retry_fallback now receives the error message so it can extract
+            # error-mentioned tables and add them to the retrieval scope.
             if on_retry_fallback:
                 try:
-                    schema_context = on_retry_fallback(retries, tables_used)
+                    expanded = on_retry_fallback(retries, tables_used, result.message)
+                    # Full-context mode: callback returns (chunks, join_paths)
+                    if isinstance(expanded, tuple) and len(expanded) == 2:
+                        schema_chunks, join_paths = expanded
+                    else:
+                        # Legacy mode: callback returns a string
+                        schema_context = expanded
                 except Exception as exc:
                     logger.warning(
                         component="retry_validator",
@@ -1909,15 +1928,21 @@ class RetryValidator:
                     )
 
             # Build repair/correction instructions for the LLM.
-            # This packages the user's query, the failing SQL, the validation error, and the schema context
-            # into a structured correction prompt.
+            # Fix 1+4+5: when full context objects are available, the correction
+            # prompt rebuilds the entire initial-quality prompt (via build()) and
+            # appends the error feedback — ensuring the retry sees ALL schema DDL,
+            # join recipes, few-shots, and glossary, not just a 10-chunk subset.
             correction_prompt = self.prompt_builder.build_correction_prompt(
                 original_query = original_query,
                 failed_sql     = sql,
                 error_message  = result.message,
                 schema_context = schema_context,
                 label_filters  = label_filters,
-                parsed_query   = parsed_query
+                parsed_query   = parsed_query,
+                schema_chunks  = schema_chunks,
+                join_paths     = join_paths,
+                few_shots      = few_shots,
+                tenant_context = tenant_context,
             )
 
             # Run the SQL generator model on the correction prompt to generate a repaired candidate.

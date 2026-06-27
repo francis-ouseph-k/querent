@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-27T05:46:11.860248+00:00",
+  "nl_query": "Show the complete moderation audit trail for each script that received moderation: the rule type, parameters, original total, adjusted total, mark difference, and the name of the COE user who applied it, ordered by application date.",
+  "failed_sql": "SELECT mr.rule_type, mr.parameters, ma.original_total, ma.adjusted_total, ma.applied_at, au.display_name AS coe_app_user_name\nFROM   moderation_application ma\nJOIN   moderation_rule        mr ON mr.id = ma.moderation_rule_id\nJOIN   app_user            au ON au.id = ma.applied_by\nWHERE  ma.script_id = :script_id\nORDER  BY ma.applied_at;",
+  "error": "Validation failed (semantic): The question mentions 'script', but the SQL does not seem to query any related tables or columns. Ensure you are joining the correct tables.",
+  "retries": 4,
+  "corrected_sql": ""
+}

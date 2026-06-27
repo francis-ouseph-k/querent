@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T17:30:00.458564+00:00",
+  "nl_query": "Which purge jobs successfully deleted notification records?",
+  "failed_sql": "SELECT pjl.id, pjl.entity_type, pjl.records_purged, pjl.records_held, pjl.started_at, pjl.completed_at, pjl.status FROM purge_job_log pjl WHERE pjl.entity_type = 'NOTIFICATION' AND pjl.status = 'SUCCESS' ORDER BY pjl.started_at DESC",
+  "error": "Validation failed (semantic): SQL filters on 'status' but the question does not mention it. Do not apply defensive filters like 'status' unless explicitly justified by the question (e.g., asking for 'final', 'approved', etc.).",
+  "retries": 4,
+  "corrected_sql": ""
+}

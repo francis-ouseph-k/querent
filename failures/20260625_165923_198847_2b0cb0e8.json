@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T16:59:23.198847+00:00",
+  "nl_query": "Which scripts have been through more than one evaluation cycle and have at least one result history correction, showing the script URN, number of cycles, number of corrections, and the latest final marks.",
+  "failed_sql": "SELECT s.urn, COUNT(DISTINCT ea.evaluation_cycle) AS num_cycles, COUNT(DISTINCT rh.id) AS num_corrections, MAX(r.final_marks) AS latest_final_marks\nFROM   answer_script s\nJOIN   script_assignment sa ON sa.script_id = s.id AND sa.is_active = TRUE\nJOIN   evaluation_attempt ea ON ea.assignment_id = sa.id AND ea.is_active = TRUE\nJOIN   result r ON r.script_id = s.id\nJOIN   result_history rh ON rh.result_id = r.id\nGROUP  BY s.urn\nHAVING COUNT(DISTINCT ea.evaluation_cycle) > 1\n  AND  COUNT(DISTINCT rh.id) > 0\nORDER  BY num_cycles DESC, latest_final_marks DESC",
+  "error": "Validation failed (schema): Column 'sa.evaluation_cycle' does not exist. The Postgres planner suggests 'ea.evaluation_cycle' — use that, or verify the column belongs to the qualifying table in your FROM/JOIN clauses.",
+  "retries": 4,
+  "corrected_sql": ""
+}

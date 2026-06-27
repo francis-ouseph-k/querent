@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T16:02:10.107835+00:00",
+  "nl_query": "For each active evaluation attempt, show the script URN, student name, evaluator name, assignment type, attempt type, section name if split, current status, total marks, and the number of marks entries.",
+  "failed_sql": "SELECT a.urn, sc.name AS student_name, fc.name AS evaluator_name, sa.assignment_type, ea.attempt_type, CASE WHEN sa.section_id IS NOT NULL THEN qs.name ELSE NULL END AS section_name, ea.status, ea.total_marks, COUNT(em.id) AS num_evaluation_marks\nFROM   answer_script a\nJOIN   student_cache sc ON sc.id = a.student_id\nJOIN   faculty_cache fc ON fc.id = ea.evaluator_user_id\nJOIN   script_assignment sa ON sa.script_id = a.id AND sa.is_active = TRUE\nJOIN   evaluation_attempt ea ON ea.script_id = a.id AND ea.is_active = TRUE\nLEFT JOIN question_section qs ON qs.id = sa.section_id\nJOIN   evaluation_marks em ON em.attempt_id = ea.id\nWHERE  ea.status IN ('ASSIGNED', 'IN_PROGRESS', 'PARTIALLY_FROZEN', 'FROZEN')\nGROUP BY a.urn, sc.name, fc.name, sa.assignment_type, ea.attempt_type, CASE WHEN sa.section_id IS NOT NULL THEN qs.name ELSE NULL END, ea.status, ea.total_marks\nORDER BY ea.attempt_type, a.urn;",
+  "error": "Validation failed (schema): Table or alias 'ea' is referenced (e.g. in an ON clause or SELECT list) but is not declared in the FROM/JOIN clauses. Add the missing table to the FROM list, or check JOIN ordering — a JOIN's ON clause cannot reference a table that appears later in the JOIN chain.",
+  "retries": 4,
+  "corrected_sql": ""
+}

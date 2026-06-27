@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-27T05:21:55.284034+00:00",
+  "nl_query": "What is the average final honorarium amount per board coordinator?",
+  "failed_sql": "SELECT fc.name AS coordinator_name, AVG(hs.final_amount) AS avg_honorarium FROM board_coordinator bc JOIN faculty_cache fc ON fc.id = bc.faculty_cache_id JOIN honorarium_summary hs ON hs.faculty_cache_id = fc.id AND hs.board_id = bc.board_id AND hs.role_in_board = 'BOARD_COORDINATOR' AND hs.approval_status IN ('APPROVED', 'EXPORTED') WHERE bc.effective_from <= CURRENT_DATE AND (bc.effective_to IS NULL OR bc.effective_to >= CURRENT_DATE) GROUP BY fc.name ORDER BY avg_honorarium DESC",
+  "error": "Validation failed (semantic): The filter 'role_in_board = 'BOARD_COORDINATOR'' is inside a LEFT JOIN ON clause, making it inert — unmatched rows still appear with NULLs instead of being excluded. Since the question explicitly mentions 'BOARD_COORDINATOR', this is a hard constraint. Either move the filter to the WHERE clause, or change the LEFT JOIN to an INNER JOIN.",
+  "retries": 4,
+  "corrected_sql": ""
+}

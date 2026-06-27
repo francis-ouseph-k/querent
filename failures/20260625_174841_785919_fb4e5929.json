@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T17:48:41.785919+00:00",
+  "nl_query": "What is the average number of pages per scanned script?",
+  "failed_sql": "SELECT AVG(page_count) AS avg_pages\nFROM   (\n         SELECT a.id, COUNT(sp.id) AS page_count\n         FROM   answer_script a\n         JOIN   script_page sp ON sp.script_id = a.id\n         WHERE  a.scan_status = 'SCANNED'\n         GROUP  BY a.id\n       ) sub;",
+  "error": "Validation failed (schema): Column 'page_count' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
+  "retries": 4,
+  "corrected_sql": ""
+}

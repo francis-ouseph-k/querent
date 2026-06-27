@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-27T05:14:01.041666+00:00",
+  "nl_query": "What is the average duration of a legal hold in days?",
+  "failed_sql": "SELECT AVG(DATEDIFF(CURRENT_DATE, hold_start_date)) AS avg_hold_duration FROM script_hold WHERE is_active = TRUE AND released_at IS NULL",
+  "error": "Validation failed (cost): EXPLAIN revealed a SQL error: function pg_catalog.extract(unknown, integer) does not exist\nLINE 1: EXPLAIN (FORMAT JSON) SELECT AVG(EXTRACT(EPOCH FROM (hold_en...\n                                         ^\nHINT:  No function matches the given name and argument types. You might need to add explicit type casts.\n",
+  "retries": 4,
+  "corrected_sql": ""
+}

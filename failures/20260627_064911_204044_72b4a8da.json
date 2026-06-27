@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-27T06:49:11.204044+00:00",
+  "nl_query": "Show the complete faculty eligibility and performance chain: faculty name, department, courses they are mapped to, boards they are in the pool for, scripts assigned, scripts submitted, and their average evaluation speed.",
+  "failed_sql": "SELECT fc.name AS faculty_name, au.display_name AS user_display_name, d.name AS department_name, b.id AS board_id, sa.script_id AS script_id, sa.submitted_at AS submitted_at, AVG(ea.total_marks) OVER (PARTITION BY sa.script_id) AS avg_evaluation_speed FROM faculty_course_mapping fcm JOIN faculty_cache fc ON fc.id = fcm.faculty_cache_id JOIN academic_unit au ON au.id = fc.department_id JOIN board b ON b.course_id = fcm.course_id JOIN script_assignment sa ON sa.faculty_cache_id = fc.id AND sa.is_active = TRUE JOIN evaluation_attempt ea ON ea.assignment_id = sa.id WHERE fcm.is_active = TRUE AND b.status NOT IN ('CLOSED', 'SUBMITTED') GROUP BY fc.name, au.display_name, d.name, b.id, sa.script_id, sa.submitted_at ORDER BY fc.name, b.id, sa.script_id",
+  "error": "Validation failed (schema): Column validation failed: script_assignment does NOT have submitted_at. submitted_at is on evaluation_attempt.",
+  "retries": 4,
+  "corrected_sql": ""
+}

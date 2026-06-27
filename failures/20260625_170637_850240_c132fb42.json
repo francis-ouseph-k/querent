@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T17:06:37.850240+00:00",
+  "nl_query": "Show all scripts where the scan was performed by a scanner device registered at a campus different from the campus where the exam was scheduled, indicating a potential logistics or data entry error.",
+  "failed_sql": "SELECT a.id, a.urn, esc.campus_id AS exam_campus, au.code AS scanner_campus\nFROM   answer_script a\nJOIN   exam_schedule_cache esc ON esc.id = a.exam_id\nJOIN   scan_history sh ON sh.script_id = a.id\nJOIN   scanner_device sd ON sd.id = sh.device_id\nJOIN   academic_unit au ON au.id = sd.campus_id\nWHERE  au.code IS DISTINCT FROM esc.campus_id\n  AND  sh.scanned_at = (\n         SELECT MAX(sh2.scanned_at)\n         FROM   scan_history sh2\n         WHERE  sh2.script_id = a.id\n       )\nORDER  BY a.id;",
+  "error": "Validation failed (semantic): LEFT JOIN on alias 'sd' is nullified by 'WHERE sd.campus_id = ...' which eliminates NULL rows. Move the filter into the ON clause: LEFT JOIN ... ON ... AND sd.campus_id = ..., or change to INNER JOIN if zero-match rows should be excluded.",
+  "retries": 4,
+  "corrected_sql": ""
+}

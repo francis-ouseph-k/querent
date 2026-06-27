@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T15:43:53.906839+00:00",
+  "nl_query": "What is the average number of active grants per faculty user?",
+  "failed_sql": "SELECT au.id AS faculty_user_id, COUNT(DISTINCT uar.id) AS active_grants_count\nFROM   app_user au\nJOIN   user_auxiliary_role uar ON uar.user_id = au.id\nWHERE  uar.scope_type = 'BOARD'\n  AND  uar.effective_from <= CURRENT_DATE\n  AND (uar.effective_to IS NULL OR uar.effective_to > CURRENT_DATE)\nGROUP  BY au.id\nORDER  BY active_grants_count DESC\nLIMIT  100;",
+  "error": "Validation failed (semantic): SQL applies AVG(uar.id). Averaging a surrogate key (an ID column) is meaningless. If the question asks for 'average X per Y', you must first compute COUNT(X) grouped by Y in a subquery or CTE, and then apply AVG() to that count in the outer query.",
+  "retries": 4,
+  "corrected_sql": ""
+}

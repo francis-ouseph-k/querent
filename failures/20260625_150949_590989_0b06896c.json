@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T15:09:49.590989+00:00",
+  "nl_query": "What is the average number of active grants per faculty user?",
+  "failed_sql": "SELECT fc.employee_erp_id, COUNT(DISTINCT uar.id) AS active_grants_count FROM faculty_cache fc JOIN app_user au ON au.faculty_cache_id = fc.id JOIN user_auxiliary_role uar ON uar.user_id = au.id WHERE uar.scope_type = 'BOARD' AND uar.effective_from <= CURRENT_DATE AND (uar.effective_to IS NULL OR uar.effective_to > CURRENT_DATE) GROUP BY fc.employee_erp_id ORDER BY active_grants_count DESC LIMIT 100;",
+  "error": "Validation failed (semantic): The question asks for a metric 'per' or 'for each' entity. Using an INNER JOIN drops entities that have a count of zero. You MUST use a LEFT JOIN to ensure entities with zero associated records are included in the results.",
+  "retries": 4,
+  "corrected_sql": ""
+}

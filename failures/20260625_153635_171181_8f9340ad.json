@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T15:36:35.171181+00:00",
+  "nl_query": "What is the average time between exam schedule creation and board creation?",
+  "failed_sql": "SELECT AVG(EXTRACT(EPOCH FROM (b.created_at - esc.created_at)) / 86400) AS avg_time_between_creation\nFROM   board b\nJOIN   exam_schedule_cache esc ON esc.id = b.exam_id;",
+  "error": "Validation failed (schema): Column 'esc.created_at' does not exist. The Postgres planner suggests 'b.created_at' — use that, or verify the column belongs to the qualifying table in your FROM/JOIN clauses.",
+  "retries": 4,
+  "corrected_sql": ""
+}

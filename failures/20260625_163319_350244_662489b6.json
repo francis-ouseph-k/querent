@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T16:33:19.350244+00:00",
+  "nl_query": "Show the daily scanning velocity for each exam in December 2025: the number of scripts scanned per day, the change from the previous day, and the number of new bundles opened.",
+  "failed_sql": "SELECT esc.exam_date, COUNT(DISTINCT sh.script_id) AS scripts_scanned, COUNT(DISTINCT b.id) AS new_bundles_opened, (COUNT(DISTINCT sh.script_id) - LAG(COUNT(DISTINCT sh.script_id)) OVER (PARTITION BY esc.exam_date ORDER BY esc.exam_date)) AS change FROM exam_schedule_cache esc JOIN bundle b ON b.exam_id = esc.id JOIN scan_history sh ON sh.bundle_id = b.id WHERE esc.exam_date BETWEEN '2025-12-01' AND '2025-12-31' GROUP BY esc.exam_date ORDER BY esc.exam_date;",
+  "error": "Validation failed (schema): Column 'sh.bundle_id' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
+  "retries": 4,
+  "corrected_sql": ""
+}

@@ -602,7 +602,19 @@ def check_semantic(sql: str, original_query: str) -> ValidationResult:
             )
 
     # ── Check 17: Subject Resolution ───────────────
-    match = re.search(r'how many ([a-z_]+s?)\b', query_lower)
+    # 2026-06-25: Expanded to match 'count of', 'total', 'number of',
+    # 'distribution of' patterns in addition to 'how many'.
+    entity_count_patterns = [
+        r'how many ([a-z_]+s?)\b',
+        r'(?:count of|total|number of|distribution of)\s+([a-z_]+s?)\b',
+        r'([a-z_]+s?)\s+count\b',
+    ]
+    match = None
+    for pattern in entity_count_patterns:
+        match = re.search(pattern, query_lower)
+        if match:
+            break
+
     if match:
         noun = match.group(1)
         noun_map = HEURISTICS.get('entity_synonyms', {})
@@ -706,6 +718,160 @@ def check_semantic(sql: str, original_query: str) -> ValidationResult:
                                 )
     except Exception:
         pass
+
+    # ── Check 19: LEFT JOIN + WHERE nullification ─────────────────
+    # Catches: LEFT JOIN ... WHERE right_alias.col = value
+    # This silently converts LEFT JOIN to INNER JOIN because NULL
+    # rows from the LEFT side are eliminated by the WHERE filter.
+    # The filter should be in the ON clause instead.
+    try:
+        ast = sqlglot.parse_one(sql, dialect="postgres")
+        if ast:
+            # Collect right-side aliases from LEFT JOINs
+            left_join_aliases: set[str] = set()
+            for select_node in ast.find_all(exp.Select):
+                for join in select_node.args.get("joins", []):
+                    side = getattr(join, 'side', None) or ''
+                    if isinstance(side, str) and side.upper() == 'LEFT':
+                        tbl = join.this
+                        if isinstance(tbl, exp.Table):
+                            alias = (tbl.alias or tbl.name or '').lower()
+                            if alias:
+                                left_join_aliases.add(alias)
+                        elif hasattr(tbl, 'find'):
+                            for t in tbl.find_all(exp.Table):
+                                alias = (t.alias or t.name or '').lower()
+                                if alias:
+                                    left_join_aliases.add(alias)
+
+            if left_join_aliases:
+                # Walk WHERE clause for references to LEFT JOIN aliases
+                for where in ast.find_all(exp.Where):
+                    for col in where.find_all(exp.Column):
+                        col_table = (col.table or '').lower()
+                        if col_table in left_join_aliases:
+                            # Skip IS NULL pattern (anti-join is correct)
+                            parent = col.parent
+                            if isinstance(parent, exp.Is):
+                                continue
+                            # Skip NOT (col IS NULL) too
+                            grandparent = getattr(parent, 'parent', None)
+                            if isinstance(grandparent, exp.Not) and isinstance(parent, exp.Is):
+                                continue
+                            col_name = (col.name or '').lower()
+                            logger.warning(
+                                component="sql_validator",
+                                event="semantic_left_join_nullified",
+                                alias=col_table,
+                                column=col_name,
+                            )
+                            return ValidationResult(
+                                passed=False, step="semantic",
+                                message=(
+                                    f"LEFT JOIN on alias '{col_table}' is nullified by "
+                                    f"'WHERE {col_table}.{col_name} = ...' which eliminates "
+                                    f"NULL rows. Move the filter into the ON clause: "
+                                    f"LEFT JOIN ... ON ... AND {col_table}.{col_name} = ..., "
+                                    f"or change to INNER JOIN if zero-match rows should be excluded."
+                                ),
+                                sql=sql,
+                            )
+    except Exception:
+        pass
+
+    # ── Check 20: Missing AVG() for "average" questions ───────────────
+    # Broader than Check 3 ("average per"). Triggers on any question
+    # containing "average" or "avg" where the outermost SELECT has no AVG().
+    avg_patterns = ['average ', ' avg ', 'average(', 'avg(']
+    asks_average = any(p in f" {query_lower} " for p in avg_patterns)
+    if asks_average and 'avg(' not in sql_lower and 'avg (' not in sql_lower:
+        # Guard: skip if "average" appears as part of a name
+        # (e.g., "Average Joe" — unlikely in our domain but safe)
+        if 'averag' not in sql_lower:  # no AVG alias either
+            logger.warning(
+                component="sql_validator",
+                event="semantic_avg_missing",
+                query_preview=original_query[:60],
+            )
+            return ValidationResult(
+                passed=False, step="semantic",
+                message=(
+                    "The question asks for an 'average' but the outermost SELECT "
+                    "has no AVG() function. Use AVG(column) for simple averages, "
+                    "or SELECT AVG(sub.cnt) FROM (...) sub for averages of counts."
+                ),
+                sql=sql,
+            )
+
+    # ── Check 21: Missing scope filter ─────────────────────────────────
+    # When the question uses a keyword that implies a specific filter,
+    # verify the SQL contains that filter. Conservative design:
+    # only triggers when keyword + matching table + no skip phrase.
+    _keyword_filter_map = {
+        'exported': {
+            'sql_check': "'exported'",
+            'tables': ['honorarium_summary', 'honorarium'],
+            'skip_if': ['all', 'distribution', 'breakdown', 'each'],
+        },
+        'global': {
+            'sql_check': "'global'",
+            'tables': ['configuration', 'evaluation_policy'],
+            'skip_if': ['all', 'every', 'each scope', 'by scope'],
+        },
+    }
+    for keyword, spec in _keyword_filter_map.items():
+        if keyword in query_lower:
+            if any(skip in query_lower for skip in spec['skip_if']):
+                continue
+            if any(t in sql_lower for t in spec['tables']):
+                if spec['sql_check'] not in sql_lower:
+                    logger.warning(
+                        component="sql_validator",
+                        event="semantic_missing_scope_filter",
+                        keyword=keyword,
+                    )
+                    return ValidationResult(
+                        passed=False, step="semantic",
+                        message=(
+                            f"The question mentions '{keyword}' but the SQL has no "
+                            f"corresponding filter (expected {spec['sql_check']} in the query). "
+                            f"Add the appropriate WHERE clause to scope the results."
+                        ),
+                        sql=sql,
+                    )
+
+    # ── Check 22: HAVING on "list all" questions ───────────────────────
+    # When the question says "list all" or "show all", a HAVING COUNT > 1
+    # inappropriately filters out entities. The user wants ALL entities.
+    all_patterns = ['list all', 'show all', 'find all', 'get all']
+    asks_all = any(p in query_lower for p in all_patterns)
+    if asks_all:
+        try:
+            ast = sqlglot.parse_one(sql, dialect="postgres")
+            if ast:
+                having = ast.find(exp.Having)
+                if having:
+                    for gt in having.find_all(exp.GT):
+                        if gt.find(exp.Count) and isinstance(gt.right, exp.Literal):
+                            threshold = gt.right.this
+                            if threshold in ('1', '2'):
+                                logger.warning(
+                                    component="sql_validator",
+                                    event="semantic_having_on_list_all",
+                                    threshold=threshold,
+                                )
+                                return ValidationResult(
+                                    passed=False, step="semantic",
+                                    message=(
+                                        f"The question asks to 'list all' but the HAVING clause "
+                                        f"filters out entities with count <= {threshold}. "
+                                        f"Remove the HAVING clause or adjust it to match the "
+                                        f"question's intent of listing ALL entities."
+                                    ),
+                                    sql=sql,
+                                )
+        except Exception:
+            pass
 
     return ValidationResult(passed=True, step="semantic", sql=sql)
 

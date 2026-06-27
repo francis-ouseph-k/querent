@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T15:08:23.132838+00:00",
+  "nl_query": "What is the average number of history corrections per published result?",
+  "failed_sql": "SELECT COUNT(*) / COUNT(DISTINCT r.id) AS avg_corrections_per_result FROM result_history rh JOIN result r ON rh.result_id = r.id",
+  "error": "Validation failed (semantic): The question asks for an aggregation 'per' or 'by' something, but the SQL lacks a GROUP BY clause. You MUST include a GROUP BY clause when grouping data.",
+  "retries": 4,
+  "corrected_sql": ""
+}

@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-27T05:28:28.426432+00:00",
+  "nl_query": "Which faculty members have prepared answer keys for papers where they are also assigned as the board coordinator, creating a potential conflict of interest?",
+  "failed_sql": "SELECT fc.id AS faculty_id, fc.name AS faculty_name, qp.title AS paper_title, b.id AS board_id\nFROM   faculty_cache fc\nJOIN   answer_key ak ON ak.faculty_cache_id = fc.id\nJOIN   question_paper qp ON qp.id = ak.qp_id\nJOIN   board b ON b.qp_id = qp.id\nJOIN   board_coordinator bc ON bc.board_id = b.id AND bc.faculty_cache_id = fc.id;",
+  "error": "Validation failed (schema): Table or alias 'ak' is referenced (e.g. in an ON clause or SELECT list) but is not declared in the FROM/JOIN clauses. Add the missing table to the FROM list, or check JOIN ordering — a JOIN's ON clause cannot reference a table that appears later in the JOIN chain.",
+  "retries": 4,
+  "corrected_sql": ""
+}

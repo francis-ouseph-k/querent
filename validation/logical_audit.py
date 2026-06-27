@@ -116,56 +116,78 @@ def _sql_lower(sql: str) -> str:
 # that we expect to see in the SQL if the NL mentions this entity.
 # Multiple entries per noun allow for flexible matching — e.g., "evaluator"
 # could appear as faculty_cache (the person) or evaluation_attempt (the action).
-_NOUN_TO_SQL_PATTERNS: dict[str, list[str]] = {
-    # --- Core entities ---
+#
+# 2026-06-25 (E5 consolidation): Base mappings loaded from entity_synonyms
+# in heuristics.yaml. Enriched with additional SQL identifier variants
+# that the L1 noun coverage check needs for flexible matching.
+# This eliminates drift between entity_synonyms and this dict.
+
+# Additional SQL identifiers beyond the base table name from entity_synonyms.
+# These are table/column fragments that are valid in SQL for each noun.
+_NOUN_SQL_ENRICHMENTS: dict[str, list[str]] = {
+    'scripts': ['script_id', 'script'],
+    'evaluators': ['evaluator', 'evaluation_attempt', 'script_assignment'],
+    'students': ['student_id', 'student'],
+    'coordinators': ['board_coordinator'],
+    'bundles': ['bundle'],
+    'transitions': ['workflow_state_transition'],
+    'configurations': ['configuration', 'config_key'],
+    'policies': ['evaluation_policy'],
+    'annotations': ['evaluation_annotation', 'annotation'],
+    'results': ['result'],
+    'marks': ['evaluation_marks', 'marks', 'total_marks', 'max_marks'],
+    'attempts': ['evaluation_attempt', 'attempt'],
+}
+
+# Build the patterns dict from entity_synonyms + enrichments
+_entity_synonyms = HEURISTICS.get('entity_synonyms', {})
+_NOUN_TO_SQL_PATTERNS: dict[str, list[str]] = {}
+
+# Populate from entity_synonyms (each maps noun → single table name)
+for noun, table in _entity_synonyms.items():
+    patterns = [table]
+    # Add enrichments if defined
+    if noun in _NOUN_SQL_ENRICHMENTS:
+        patterns.extend(_NOUN_SQL_ENRICHMENTS[noun])
+    _NOUN_TO_SQL_PATTERNS[noun] = patterns
+
+# Add singular/plural variants and domain-specific extras
+# that aren't in entity_synonyms but are needed for L1 matching.
+_EXTRA_NOUN_PATTERNS: dict[str, list[str]] = {
     'script': ['answer_script', 'script_id', 'script'],
-    'scripts': ['answer_script', 'script_id', 'script'],
     'board': ['board'],
-    'boards': ['board'],
     'evaluator': ['evaluator', 'faculty_cache', 'evaluation_attempt', 'script_assignment'],
-    'evaluators': ['evaluator', 'faculty_cache', 'evaluation_attempt', 'script_assignment'],
     'student': ['student_cache', 'student_id', 'student'],
-    'students': ['student_cache', 'student_id', 'student'],
     'faculty': ['faculty_cache', 'faculty_course_mapping'],
     'coordinator': ['board_coordinator'],
-    'coordinators': ['board_coordinator'],
-    # --- Scanning & physical assets ---
     'bundle': ['bundle'],
-    'bundles': ['bundle'],
     'scanner': ['scanner_device', 'scan_history'],
     'scan': ['scan_history', 'scan_status', 'scan_metadata'],
-    # --- Evaluation components ---
     'rubric': ['answer_key_rubric', 'rubric'],
     'rubrics': ['answer_key_rubric', 'rubric'],
     'annotation': ['evaluation_annotation', 'annotation'],
-    'annotations': ['evaluation_annotation', 'annotation'],
     'revaluation': ['revaluation_request'],
     'honorarium': ['honorarium_summary', 'honorarium'],
     'moderation': ['moderation_rule', 'moderation_application'],
     'result': ['result'],
-    'results': ['result'],
-    'marks': ['evaluation_marks', 'marks', 'total_marks', 'max_marks'],
     'attempt': ['evaluation_attempt', 'attempt'],
-    'attempts': ['evaluation_attempt', 'attempt'],
     'policy': ['evaluation_policy'],
-    'policies': ['evaluation_policy'],
-    # --- Academic structure ---
     'question': ['question'],
-    'questions': ['question'],
     'paper': ['question_paper'],
-    'papers': ['question_paper'],
     'department': ['academic_unit', 'department'],
     'departments': ['academic_unit', 'department'],
     'course': ['academic_unit', 'course'],
     'courses': ['academic_unit', 'course'],
     'exam': ['exam_schedule_cache', 'exam'],
     'exams': ['exam_schedule_cache', 'exam'],
-    # --- Workflow entities ---
     'hold': ['script_hold', 'hold'],
     'holds': ['script_hold', 'hold'],
     'deadline': ['deadline_extension_request', 'deadline'],
     'extension': ['deadline_extension_request', 'revaluation_extension_request', 'extension'],
 }
+for noun, patterns in _EXTRA_NOUN_PATTERNS.items():
+    if noun not in _NOUN_TO_SQL_PATTERNS:
+        _NOUN_TO_SQL_PATTERNS[noun] = patterns
 
 
 def _check_noun_coverage(nl: str, sql: str, result: AuditResult) -> None:

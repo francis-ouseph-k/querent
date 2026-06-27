@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T17:09:32.255854+00:00",
+  "nl_query": "List all faculty members who prepared the answer key for the Algorithms exam and whether they are also in the evaluator pool for that course.",
+  "failed_sql": "SELECT fc.name AS faculty_name, ep.is_available AS is_in_evaluator_pool\nFROM   evaluator_pool ep\nJOIN   board b ON b.id = ep.board_id\nJOIN   faculty_cache fc ON fc.id = ep.faculty_cache_id\nJOIN   answer_key_preparer akp ON akp.faculty_cache_id = fc.id\nJOIN   answer_key ak ON ak.id = akp.answer_key_id\nJOIN   exam_schedule_cache esc ON esc.id = b.exam_id\nJOIN   academic_unit au ON au.id = b.course_id\nWHERE  ak.qp_id = esc.qp_id AND ak.status = 'APPROVED'\n  AND  au.name = 'Algorithms'\nORDER  BY fc.name;",
+  "error": "Validation failed (semantic): LEFT JOIN on alias 'au' is nullified by 'WHERE au.name = ...' which eliminates NULL rows. Move the filter into the ON clause: LEFT JOIN ... ON ... AND au.name = ..., or change to INNER JOIN if zero-match rows should be excluded.",
+  "retries": 4,
+  "corrected_sql": ""
+}

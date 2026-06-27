@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T17:56:09.311007+00:00",
+  "nl_query": "Count marks entries per question for all PRIMARY attempts.",
+  "failed_sql": "SELECT q.id, COUNT(*) AS eval_count\nFROM   evaluation_marks em\nJOIN   evaluation_attempt ea ON ea.id = em.attempt_id\nJOIN   question           q  ON q.id  = em.question_id\nWHERE  ea.attempt_type = 'PRIMARY'\n  AND  ea.is_active    = TRUE\n  AND  em.is_final     = TRUE\nGROUP  BY q.id;",
+  "error": "Validation failed (schema): Column 'em.attempt_type' does not exist. Verify that the column is defined on the table referenced by its alias prefix, or that the alias prefix matches a table declared in FROM/JOIN.",
+  "retries": 4,
+  "corrected_sql": ""
+}

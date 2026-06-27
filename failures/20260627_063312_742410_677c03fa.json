@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-27T06:33:12.742410+00:00",
+  "nl_query": "Identify all scripts where the cached total marks on the answer script row differs from the total marks on the latest active evaluation attempt by more than 0.5 marks, indicating a cache synchronization issue.",
+  "failed_sql": "SELECT a.id, a.urn, a.total_marks AS cached_total, ea.total_marks AS attempt_total\nFROM   answer_script a\nJOIN   evaluation_attempt ea ON ea.script_id = a.id\n                            AND ea.evaluation_cycle = (\n                              SELECT MAX(ea2.evaluation_cycle)\n                              FROM   evaluation_attempt ea2\n                              WHERE  ea2.script_id = a.id AND ea2.is_active = TRUE\n                            )\nWHERE  ea.is_active = TRUE\n  AND  a.total_marks IS NOT NULL\n  AND  ABS(a.total_marks - ea.total_marks) > 0.5\nLIMIT  100;",
+  "error": "Validation failed (semantic): LEFT JOIN on alias 'ea' is nullified by 'WHERE ea.total_marks = ...' which eliminates NULL rows. Move the filter into the ON clause: LEFT JOIN ... ON ... AND ea.total_marks = ..., or change to INNER JOIN if zero-match rows should be excluded.",
+  "retries": 4,
+  "corrected_sql": ""
+}

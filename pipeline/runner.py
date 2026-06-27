@@ -74,6 +74,19 @@ def _outer_query_has_limit(sql: str) -> bool:
         return False
 
 
+def _extract_tables_from_error(error_message: str, valid_tables: set[str]) -> list[str]:
+    """
+    Fix 2: Extract table names mentioned in validator error messages.
+
+    When the validator says 'Column X does not exist on table Y, suggests Z',
+    the correct table (Z) may not be in tables_used.  This function finds
+    valid table names in the error text so the expanded retrieval includes
+    schema chunks for tables the LLM needs to fix the error.
+    """
+    words = set(re.findall(r'[a-z_]+', error_message.lower()))
+    return [t for t in valid_tables if t in words]
+
+
 from config.settings import settings
 from generation.prompt_builder import PromptBuilder
 from generation.query_understanding import QueryUnderstanding
@@ -473,59 +486,60 @@ class PipelineRunner:
         # ── Step 5: Validation + Retry ────────────────────────────────────
         t0 = time.time()
 
-        # FIX-M8: build schema context from chunks relevant to the tables in
-        # generated.tables_used, not just the first 5 ranked chunks.  If the
-        # failing column/table is in a lower-ranked chunk, the correction prompt
-        # previously lacked the schema it needed to self-correct.
-        # P2-FIX: include join_path_text so the correction prompt has FK
-        # relationship paths — critical for fixing wrong-join errors.
-        schema_context_str = self._build_correction_context(
-            generated.tables_used, schema_chunks, join_paths=join_path_text
-        )
-
-        # Callback to dynamically expand the retrieval context budget on subsequent retries
-        # if the initial schema context is insufficient for correction.
-        def get_expanded_schema_context(attempt_num: int, current_tables: list[str]) -> str:
-            # 1. Retrieve the base context budget and the maximum token budget ceiling from settings
+        # ── Retry callback: expand retrieval on subsequent attempts ─────
+        # Fix 1+2+4+5: the callback now returns (chunks, join_paths) tuples
+        # instead of a pre-rendered string.  This lets the correction prompt
+        # rebuild the full initial-quality prompt from structured chunks.
+        # Fix 2: error_message is parsed for table names so the expanded
+        # retrieval includes the correct table the LLM needs to fix the error.
+        def get_expanded_context(attempt_num: int, current_tables: list[str], error_message: str):
             base_budget = settings.retrieval.context_budget_tokens
             max_budget = settings.retrieval.max_context_budget_tokens
-            
-            # 2. Scale the token budget up by 30% per retry attempt (exponential growth).
-            # This incrementally increases the context window to pull in extra documentation/schema mappings.
-            # We enforce a strict upper cap of max_budget (RETRIEVAL_MAX_CONTEXT_BUDGET_TOKENS) to avoid
-            # exceeding the LLM's prompt context limit or inflating inference latency/costs.
             expanded_budget = min(int(base_budget * (1.3 ** attempt_num)), max_budget)
-            
+
+            # Fix 2: extract table names from error message so the retrieval
+            # scope includes tables the LLM needs (e.g. the table where a
+            # column actually exists, not the table the LLM wrongly used).
+            error_tables = _extract_tables_from_error(
+                error_message, set(t.lower() for t in self.tables.keys())
+            )
+
+            all_tables = list(set(
+                (parsed.entities or []) + current_tables + error_tables
+            ))
+
             logger.info(
                 component="pipeline",
-                event="expanding_retry_context_budget",
+                event="expanding_retry_context",
                 attempt=attempt_num,
                 expanded_budget=expanded_budget,
+                error_tables=error_tables,
+                total_tables=len(all_tables),
             )
-            
-            # 3. Re-run hybrid retrieval (RRF combining dense Qdrant and sparse OpenSearch BM25)
-            # using the new, larger budget. We join the initial entity extractions with any tables
-            # referenced in the failed SQL to ensure the retried search prioritizes their schema definitions.
-            expanded_chunks, _ = self.orchestrator.retrieve(
+
+            expanded_chunks, expanded_meta = self.orchestrator.retrieve(
                 query_text    = query_for_pipeline,
-                entity_tables = list(set(parsed.entities + current_tables)),
+                entity_tables = all_tables,
                 intent        = parsed.intent.value,
                 budget_tokens = expanded_budget,
             )
-            
-            # 4. Form and return the newly formatted correction context string to the repair prompt.
-            # P2-FIX: include join_path_text so correction context has FK relationship paths.
-            return self._build_correction_context(current_tables, expanded_chunks, join_paths=join_path_text)
+            expanded_join_paths = expanded_meta.get("join_paths", [])
+            return expanded_chunks, expanded_join_paths
 
         val_result, retries = self.retry_validator.validate_with_retry(
             sql            = generated.sql,
             original_query = query_for_pipeline,   # Issue 5: clean, marker-free
             tables_used    = generated.tables_used,
             user_context   = user_context,
-            schema_context = schema_context_str,
             label_filters  = parsed.label_filters,
-            on_retry_fallback = get_expanded_schema_context,
+            on_retry_fallback = get_expanded_context,
             parsed_query   = parsed,
+            # Fix 1+4+5: pass full context objects so the correction prompt
+            # rebuilds the entire initial-quality prompt, not a 10-chunk subset.
+            schema_chunks  = schema_chunks,
+            join_paths     = join_path_text,
+            few_shots      = few_shots,
+            tenant_context = user_context.get("tenant_context", ""),
         )
         timings["validation_ms"] = round((time.time() - t0) * 1000)
 
@@ -555,8 +569,6 @@ class PipelineRunner:
             generated.confidence = max(0.0, round(calibrated_conf, 2))
             
             # H-2 fix: remaining_budget prevents total retries from exceeding max_retries.
-            # Previously, calibration retries could add up to max_retries MORE retries
-            # on top of already-exhausted normal retries (up to 5 LLM calls total).
             remaining_budget = settings.validation.max_retries - retries
             if generated.confidence < 0.80 and remaining_budget > 0:
                 logger.info(
@@ -565,29 +577,36 @@ class PipelineRunner:
                     confidence=generated.confidence,
                     sql_preview=validated_sql[:80]
                 )
-                # Force one more retry through the validation loop by simulating a failure
+                # Force one more retry with full context
                 correction_prompt = self.prompt_builder.build_correction_prompt(
                     original_query = query_for_pipeline,
                     failed_sql     = validated_sql,
                     error_message  = f"Query confidence dropped to {generated.confidence} (below 0.80) due to risky patterns like ILIKE on IDs or excessive nesting. Please simplify the query and use exact matches for IDs.",
-                    schema_context = schema_context_str,
                     label_filters  = [],
+                    parsed_query   = parsed,
+                    schema_chunks  = schema_chunks,
+                    join_paths     = join_path_text,
+                    few_shots      = few_shots,
+                    tenant_context = user_context.get("tenant_context", ""),
                 )
                 generated = self.sql_generator.generate(correction_prompt)
                 retries += 1
                 
                 if generated.sql:
                     # H-2 fix: limit validate_with_retry to remaining budget minus 1
-                    # (we already consumed 1 retry for the calibration generation above)
                     capped_remaining = max(0, settings.validation.max_retries - retries)
                     val_result, additional_retries = self.retry_validator.validate_with_retry(
                         sql            = generated.sql,
                         original_query = query_for_pipeline,
                         tables_used    = generated.tables_used,
                         user_context   = user_context,
-                        schema_context = schema_context_str,
-                        on_retry_fallback = get_expanded_schema_context,
-                        max_retries    = capped_remaining
+                        on_retry_fallback = get_expanded_context,
+                        max_retries    = capped_remaining,
+                        parsed_query   = parsed,
+                        schema_chunks  = schema_chunks,
+                        join_paths     = join_path_text,
+                        few_shots      = few_shots,
+                        tenant_context = user_context.get("tenant_context", ""),
                     )
                     retries += additional_retries
 
@@ -810,12 +829,10 @@ class PipelineRunner:
         relevant_fk    = [c for c in relevant if c.chunk_type == _CT.FK_MAP]
         relevant_other = [c for c in relevant if c.chunk_type not in (_CT.TABLE, _CT.VIEW, _CT.FK_MAP)]
         # TABLE chunks first (column definitions), then FK_MAP (join paths), then others
-        selected = (
-            relevant_table[:5]
-            + relevant_fk[:3]
-            + relevant_other[:2]
-            + other[:max(0, 3 - len(relevant_table[:5]))]
-        )
+        # Fix 3: removed hard-caps ([:5], [:3], [:2]) that previously
+        # truncated correction context to ~10 chunks regardless of budget.
+        # Now includes all relevant chunks, with TABLE prioritised first.
+        selected = relevant_table + relevant_fk + relevant_other + other[:3]
         context = "\n".join(c.text for c in selected)
 
         # P2-FIX: append FK relationship paths to the correction context.

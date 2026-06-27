@@ -593,82 +593,87 @@ class PromptBuilder:
         schema_context:  str        = "",
         label_filters:   list[dict] = None,
         parsed_query                = None,
+        # ── Full-context params (Fix 1+4+5: retry context parity) ──
+        schema_chunks:   list       = None,
+        join_paths:      list[str]  = None,
+        few_shots:       list       = None,
+        tenant_context:  str        = "",
     ) -> str:
         """
         Build a correction prompt for the retry loop.
+
+        When schema_chunks and parsed_query are provided, rebuilds the full
+        initial-quality prompt (via build()) and appends the error correction
+        section.  This ensures the retry has the SAME rich context as the
+        first attempt — schema DDL, join map, recipes, few-shots, glossary —
+        fixing the context loss where retries previously received only a
+        stripped-down 10-chunk subset (~30% of original context).
+
+        Falls back to the legacy stripped-down prompt when schema_chunks
+        is not provided (backward compatibility).
         """
         label_filters = label_filters or []
-        lines = [
-            _SYSTEM_PROMPT,
-            "",
-            "The following SQL query failed validation.",
-            "",
-            f"Original question: {original_query}",
-            "",
-            "Failed SQL:",
-            failed_sql,
-            "",
-            f"Error: {error_message}",
-            "",
-        ]
 
-        # ── Label-filter correction hints ─────────────────────────────────
-        if label_filters:
-            lines.append("IDENTIFIER CORRECTION:")
-            lines.append(
-                "The query contains text identifiers (codes/labels) that were "
-                "incorrectly matched to integer columns. Use the text columns below:"
+        # ── Full-context path (Fix 1+4+5) ────────────────────────────────
+        # Rebuild the exact same prompt the LLM saw on the first attempt,
+        # then append the correction section at the end.
+        if schema_chunks is not None and parsed_query is not None:
+            full_prompt = self.build(
+                parsed_query       = parsed_query,
+                schema_chunks      = schema_chunks,
+                join_paths         = join_paths or [],
+                few_shots          = few_shots or [],
+                tenant_context     = tenant_context,
+                clarification_note = getattr(parsed_query, 'clarification_note', None),
+                course_code_match  = getattr(parsed_query, 'course_code_match', None),
+                label_filters      = label_filters,
             )
-            for lf in label_filters:
-                lines.append(
-                    f"  '{lf['raw']}' is a text code — use {lf['hint']}. "
-                    f"Correct filter: WHERE {lf['table']}.{lf['column']} = '{lf['raw']}'"
-                )
-            lines.append("")
 
-        if schema_context:
-            lines.extend([
-                "Schema context:",
-                schema_context,
+            # Build correction suffix to append after the full prompt
+            correction_lines = [
                 "",
-            ])
+                "=== CORRECTION REQUIRED ===",
+                "The following SQL query failed validation. Fix the error and regenerate.",
+                "",
+                "Failed SQL:",
+                failed_sql,
+                "",
+                f"Error: {error_message}",
+                "",
+            ]
 
-        # Conditional Rules (re-evaluating triggers if parsed_query is provided)
-        _nl_words = set(original_query.lower().split())
-        _intent_val = ""
-        entity_tables_set = set()
-        
-        if parsed_query:
-            _intent = getattr(parsed_query, 'intent', None)
-            _intent_val = _intent.value if hasattr(_intent, 'value') else str(_intent or '')
-            entity_tables_set = set(
-                t.lower() for t in (getattr(parsed_query, 'entities', None) or [])
-            )
+            if label_filters:
+                correction_lines.append("IDENTIFIER CORRECTION:")
+                correction_lines.append(
+                    "The query contains text identifiers (codes/labels) that were "
+                    "incorrectly matched to integer columns. Use the text columns below:"
+                )
+                for lf in label_filters:
+                    correction_lines.append(
+                        f"  '{lf['raw']}' is a text code — use {lf['hint']}. "
+                        f"Correct filter: WHERE {lf['table']}.{lf['column']} = '{lf['raw']}'"
+                    )
+                correction_lines.append("")
 
-        if _nl_words & _ANTI_JOIN_TRIGGER_WORDS:
-            lines.append(_ANTI_JOIN_RULES_BLOCK)
-            lines.append("")
+            correction_lines.extend(_CORRECTION_PROMPT_FOOTER)
+            correction_suffix = "\n".join(correction_lines)
 
-        if _intent_val in ('aggregation', 'comparison') or (_nl_words & _AGG_TRIGGER_WORDS):
-            lines.append(_AGGREGATION_RULES_BLOCK)
-            lines.append("")
+            # Replace the closing JSON instruction with the correction section
+            # (the footer already contains its own JSON instruction)
+            closing_marker = "Respond with ONLY the JSON object as specified above:"
+            if closing_marker in full_prompt:
+                idx = full_prompt.rindex(closing_marker)
+                return full_prompt[:idx] + correction_suffix
+            else:
+                return full_prompt + "\n" + correction_suffix
 
-        if (entity_tables_set & _TEMPORAL_TRIGGER_TABLES) or (_nl_words & _TEMPORAL_TRIGGER_WORDS):
-            lines.append(_TEMPORAL_RULES_BLOCK)
-            lines.append("")
-
-        # Always inject Logic Rules Block (this contains many phantom column definitions)
-        lines.append(_LOGIC_RULES_BLOCK)
-        lines.append("")
-
-        if entity_tables_set & _STATUS_TRIGGER_TABLES:
-            lines.append(_STATUS_MODEL_BLOCK)
-            lines.append("")
-
-        if 'academic_unit' in entity_tables_set:
-            lines.append(_POLYMORPHISM_BLOCK)
-            lines.append("")
-
-        lines.extend(_CORRECTION_PROMPT_FOOTER)
-
-        return "\n".join(lines)
+        # ── Guard: full context is required ─────────────────────────────────
+        # The legacy stripped-down path was the root cause of retry context
+        # loss (retries received ~30% of schema context).  All callers must
+        # now provide schema_chunks + parsed_query.  Failing loudly here is
+        # intentional — silent degradation was the original bug.
+        raise ValueError(
+            "build_correction_prompt requires schema_chunks and parsed_query. "
+            "The legacy stripped-down prompt path has been removed to prevent "
+            "retry context loss."
+        )

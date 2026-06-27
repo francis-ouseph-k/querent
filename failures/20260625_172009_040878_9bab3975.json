@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-06-25T17:20:09.040878+00:00",
+  "nl_query": "Show all annotations created by Dr. Anand Rao.",
+  "failed_sql": "SELECT ea_ann.id AS annotation_id, ea_ann.annotation_type, ea_ann.payload, ea_ann.created_at, au.display_name AS evaluator_name\nFROM   evaluation_annotation ea_ann\nJOIN   evaluation_attempt    ea ON ea.id = ea_ann.attempt_id\nJOIN   app_user              au ON au.id = ea.evaluator_user_id\nJOIN   faculty_cache        fc ON fc.id = au.faculty_cache_id\nWHERE  fc.name = 'Dr. Anand Rao'",
+  "error": "Validation failed (schema): Table or alias 'au' is referenced (e.g. in an ON clause or SELECT list) but is not declared in the FROM/JOIN clauses. Add the missing table to the FROM list, or check JOIN ordering — a JOIN's ON clause cannot reference a table that appears later in the JOIN chain.",
+  "retries": 4,
+  "corrected_sql": ""
+}
