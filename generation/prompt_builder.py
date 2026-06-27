@@ -598,6 +598,14 @@ class PromptBuilder:
         join_paths:      list[str]  = None,
         few_shots:       list       = None,
         tenant_context:  str        = "",
+        # ── Audit-driven correction (NEW) ─────────────────────────────
+        # When the logical audit produced coverage_misses, pass them
+        # here.  The correction prompt then tells the LLM the SPECIFIC
+        # requirements its previous SQL failed to satisfy, instead of
+        # only echoing the generic validator error.  Format of each
+        # entry: "constraint:<kind>=<raw>" or "output:<name>" or
+        # "entity_type:<id>=<expected>-><actual>".
+        audit_misses:    list[str]  = None,
     ) -> str:
         """
         Build a correction prompt for the retry loop.
@@ -609,10 +617,17 @@ class PromptBuilder:
         fixing the context loss where retries previously received only a
         stripped-down 10-chunk subset (~30% of original context).
 
+        When audit_misses is non-empty, the prompt ALSO includes the
+        specific NL requirements the previous attempt failed to satisfy.
+        This closes the loop between detection (logical_audit.py L6-L9)
+        and correction — without it, the audit knows what's wrong but
+        the retry has no idea what to fix.
+
         Falls back to the legacy stripped-down prompt when schema_chunks
         is not provided (backward compatibility).
         """
         label_filters = label_filters or []
+        audit_misses  = audit_misses  or []
 
         # ── Full-context path (Fix 1+4+5) ────────────────────────────────
         # Rebuild the exact same prompt the LLM saw on the first attempt,
@@ -653,6 +668,80 @@ class PromptBuilder:
                         f"  '{lf['raw']}' is a text code — use {lf['hint']}. "
                         f"Correct filter: WHERE {lf['table']}.{lf['column']} = '{lf['raw']}'"
                     )
+                correction_lines.append("")
+
+            # ── Audit-driven feedback (NEW) ──────────────────────────
+            # When the previous SQL passed structural validation but
+            # the NL→requirements audit found missing constraints,
+            # output columns, or entity-type mismatches, tell the
+            # LLM SPECIFICALLY what to fix.  This is the actionable
+            # piece of the audit signal — without it the LLM only
+            # hears "validation failed" with no direction.
+            if audit_misses:
+                correction_lines.append("REQUIREMENTS NOT SATISFIED:")
+                correction_lines.append(
+                    "Your previous SQL failed to express the following "
+                    "requirements from the question.  Fix EACH ONE in the "
+                    "regenerated SQL:"
+                )
+                for m in audit_misses:
+                    # Parse the structured miss into a human directive.
+                    # Format strings come from logical_audit.py.
+                    if m.startswith("constraint:"):
+                        # constraint:<kind>=<raw>
+                        kind_raw = m[len("constraint:"):]
+                        kind, _, raw = kind_raw.partition("=")
+                        if kind == "enum":
+                            correction_lines.append(
+                                f"  - The NL filter value '{raw}' must appear as a "
+                                f"literal in the WHERE clause (uppercase form)."
+                            )
+                        elif kind == "time_range":
+                            correction_lines.append(
+                                f"  - The time-range '{raw}' must be expressed in "
+                                f"the WHERE clause (use BETWEEN, INTERVAL, or "
+                                f"DATE_TRUNC as appropriate)."
+                            )
+                        elif kind == "numeric":
+                            correction_lines.append(
+                                f"  - The numeric threshold from '{raw}' must "
+                                f"appear in the WHERE clause."
+                            )
+                        elif kind == "boolean":
+                            correction_lines.append(
+                                f"  - The boolean condition '{raw}' must appear "
+                                f"in the WHERE clause (e.g. is_active = FALSE for "
+                                f"'inactive', archived_at IS NOT NULL for "
+                                f"'decommissioned')."
+                            )
+                        elif kind == "text_like":
+                            correction_lines.append(
+                                f"  - The text-substring constraint '{raw}' must "
+                                f"appear as an ILIKE in the WHERE clause."
+                            )
+                        else:
+                            correction_lines.append(
+                                f"  - The {kind} constraint '{raw}' is missing "
+                                f"from the SQL."
+                            )
+                    elif m.startswith("output:"):
+                        col = m[len("output:"):]
+                        correction_lines.append(
+                            f"  - The output column '{col}' must be projected "
+                            f"in the SELECT list."
+                        )
+                    elif m.startswith("entity_type:"):
+                        # entity_type:<id>=<expected>-><actual>
+                        body = m[len("entity_type:"):]
+                        ident, _, type_part = body.partition("=")
+                        expected, _, actual = type_part.partition("->")
+                        correction_lines.append(
+                            f"  - The identifier '{ident}' refers to a "
+                            f"{expected}, not {actual}.  Filter the "
+                            f"academic_unit lookup with unit_type = '{expected}'."
+                        )
+                    else:
+                        correction_lines.append(f"  - {m}")
                 correction_lines.append("")
 
             correction_lines.extend(_CORRECTION_PROMPT_FOOTER)

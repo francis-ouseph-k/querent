@@ -640,11 +640,119 @@ class PipelineRunner:
                 event="logical_audit_warnings",
                 warnings=audit.warnings,
                 confidence_penalty=audit.confidence_penalty,
+                requirement_coverage=audit.requirement_coverage,
+                coverage_misses=audit.coverage_misses,
                 sql_preview=validated_sql[:80],
             )
             generated.confidence = max(0.0, round(
                 generated.confidence - audit.confidence_penalty, 2
             ))
+
+        # NEW: log requirement_coverage even when no warnings fired —
+        # gives observability into queries where the parser found a
+        # contract and the SQL fully satisfied it.
+        elif audit.requirement_coverage is not None:
+            logger.info(
+                component="pipeline",
+                event="logical_audit_pass",
+                requirement_coverage=audit.requirement_coverage,
+            )
+
+        # ── Step 5.9: Audit-driven retry (NEW) ────────────────────────────
+        # When the NL→requirements audit found specific misses AND we
+        # have retry budget remaining, regenerate once with the
+        # misses fed into the correction prompt.  This closes the
+        # loop between DETECTION (logical_audit.py L6-L9) and
+        # CORRECTION — without this step, the audit would know what
+        # is missing but the next attempt would have no idea what
+        # to fix.
+        #
+        # Triggers only when:
+        #   * audit.coverage_misses is non-empty (specific actionable items)
+        #   * audit.requirement_coverage is below 0.7 (genuine gap, not
+        #     a single soft miss)
+        #   * retry budget remains
+        #   * NOT a dry-run (saves a round-trip when there's no exec)
+        #
+        # On the regenerated SQL we re-run structural validation but
+        # do NOT re-trigger another audit retry (one shot only — avoid
+        # ping-pong between competing signals).
+        remaining_budget = settings.validation.max_retries - retries
+        should_audit_retry = (
+            audit.requirement_coverage is not None
+            and audit.requirement_coverage < 0.7
+            and audit.coverage_misses
+            and remaining_budget > 0
+            and not dry_run
+        )
+        if should_audit_retry:
+            logger.info(
+                component="pipeline",
+                event="audit_driven_retry",
+                requirement_coverage=audit.requirement_coverage,
+                coverage_misses=audit.coverage_misses,
+            )
+            correction_prompt = self.prompt_builder.build_correction_prompt(
+                original_query = query_for_pipeline,
+                failed_sql     = validated_sql,
+                error_message  = (
+                    f"The SQL passed structural validation but the audit "
+                    f"found requirement_coverage={audit.requirement_coverage} "
+                    f"— the SQL does not satisfy all requirements from the "
+                    f"question."
+                ),
+                label_filters  = [],
+                parsed_query   = parsed,
+                schema_chunks  = schema_chunks,
+                join_paths     = join_path_text,
+                few_shots      = few_shots,
+                tenant_context = user_context.get("tenant_context", ""),
+                audit_misses   = audit.coverage_misses,    # NEW
+            )
+            regenerated = self.sql_generator.generate(correction_prompt)
+            retries += 1
+            if regenerated.sql:
+                # Re-run structural validation on the regenerated SQL.
+                # We do NOT call validate_with_retry here — one shot only;
+                # the audit-retry is itself the corrective attempt.
+                re_val = self.validator.validate(
+                    sql            = regenerated.sql,
+                    tables_used    = regenerated.tables_used,
+                    user_context   = user_context,
+                    original_query = query_for_pipeline,
+                )
+                if re_val.passed:
+                    # Re-audit the regenerated SQL.  Use the NEW coverage
+                    # as the final signal; if it improved, accept the
+                    # regeneration.  If it regressed, keep the original.
+                    re_audit = run_logical_audit(
+                        nl_query    = query_for_pipeline,
+                        sql         = re_val.sql or regenerated.sql,
+                        intent      = parsed.intent.value,
+                        tables_used = regenerated.tables_used,
+                    )
+                    re_cov = re_audit.requirement_coverage
+                    accept_regen = (
+                        re_cov is None
+                        or audit.requirement_coverage is None
+                        or re_cov >= audit.requirement_coverage
+                    )
+                    if accept_regen:
+                        validated_sql = re_val.sql or regenerated.sql
+                        generated     = regenerated
+                        audit         = re_audit
+                        logger.info(
+                            component="pipeline",
+                            event="audit_retry_accepted",
+                            new_coverage=re_cov,
+                        )
+                    else:
+                        logger.info(
+                            component="pipeline",
+                            event="audit_retry_rejected_regression",
+                            old_coverage=audit.requirement_coverage,
+                            new_coverage=re_cov,
+                        )
 
         # ── Step 6: Execution ─────────────────────────────────────────────
 
@@ -698,6 +806,9 @@ class PipelineRunner:
             success        = True,
             latency_ms     = timings,
             retrieval_meta = retrieval_meta,
+            # NEW: structural confidence from NL-requirements audit
+            requirement_coverage = audit.requirement_coverage,
+            coverage_misses      = audit.coverage_misses,
         )
 
     # ─────────────────────────────────────────────────────────────────────

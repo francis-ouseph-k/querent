@@ -264,3 +264,14 @@ class QueryResult:
     # MCP corpus entry ID — set when USE_MCP_SERVERS=true and failure is logged.
     # CLI :correct command uses this to call save_correction() without scanning failures/.
     failure_entry_id: str | None           = None
+    # Structural (non-LLM) confidence signal from the NL→requirements audit.
+    # Populated by Step 5.8 (logical_audit.py L6/L7).  None means "no NL
+    # requirements were extractable, so no signal".  A value < 1.0 means
+    # the SQL is missing some constraint or output column the NL asked
+    # for — surfaced to the CLI as an objective secondary confidence.
+    requirement_coverage: float | None     = None
+    # Human-readable list of which NL requirements the SQL failed to
+    # satisfy (e.g. "constraint:enum=expired", "output:student name").
+    # Empty when requirement_coverage is 1.0 or None.  Used by batch_run.py
+    # and by the retry-loop correction prompt builder for targeted feedback.
+    coverage_misses: list[str]             = field(default_factory=list)
