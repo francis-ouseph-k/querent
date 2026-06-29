@@ -460,6 +460,10 @@ class PipelineRunner:
             # RapidFuzz: pass resolved course code if available so prompt_builder
             # can inject a concrete JOIN hint in the [CLARIFICATION] block.
             course_code_match  = parsed.course_code_match,
+            # PHASE-1 FIX (cheatsheet): pass full TableInventory map so the
+            # builder can emit the [COLUMN CHEATSHEET] block.  See
+            # prompt_builder.build() docstring for rationale and impact.
+            tables             = self.tables,
         )
         timings["prompt_ms"] = round((time.time() - t0) * 1000)
 
@@ -540,6 +544,9 @@ class PipelineRunner:
             join_paths     = join_path_text,
             few_shots      = few_shots,
             tenant_context = user_context.get("tenant_context", ""),
+            # PHASE-1 FIX (cheatsheet): forward the full TableInventory map
+            # so the correction prompt can re-emit the [COLUMN CHEATSHEET].
+            schema_inventory = self.tables,
         )
         timings["validation_ms"] = round((time.time() - t0) * 1000)
 
@@ -588,6 +595,7 @@ class PipelineRunner:
                     join_paths     = join_path_text,
                     few_shots      = few_shots,
                     tenant_context = user_context.get("tenant_context", ""),
+                    tables         = self.tables,
                 )
                 generated = self.sql_generator.generate(correction_prompt)
                 retries += 1
@@ -607,6 +615,7 @@ class PipelineRunner:
                         join_paths     = join_path_text,
                         few_shots      = few_shots,
                         tenant_context = user_context.get("tenant_context", ""),
+                        schema_inventory = self.tables,
                     )
                     retries += additional_retries
 
@@ -708,6 +717,7 @@ class PipelineRunner:
                 few_shots      = few_shots,
                 tenant_context = user_context.get("tenant_context", ""),
                 audit_misses   = audit.coverage_misses,    # NEW
+                tables         = self.tables,
             )
             regenerated = self.sql_generator.generate(correction_prompt)
             retries += 1

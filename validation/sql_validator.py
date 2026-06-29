@@ -97,6 +97,7 @@ from validation.blocklist import (
 from validation.semantic_checks import (
     check_semantic,
     check_hardcoded_literals,
+    check_groupby_alignment,
 )
 
 logger = get_logger(__name__)
@@ -346,6 +347,21 @@ class SQLValidator:
         # Step 4 — Security (modifies SQL — uses result.sql for subsequent steps)
         result = self._step_security(result.sql or sql, tables_used, user_context, statements)
         secured_sql = result.sql or sql
+        if not result.passed:
+            return result
+
+        # Step 4.5 — Static GROUP BY / SELECT alignment (PHASE-1 FIX)
+        # AST-level check: every non-aggregate column in SELECT must be in
+        # GROUP BY (or inside an aggregate / window / subquery / be a
+        # constant).  Catches Q36, Q37, Q108-style errors that previously
+        # slipped through to EXPLAIN — where they were classified as
+        # generic "cost" errors with the verbatim PG message.  This runs
+        # before EXPLAIN so:
+        #   * the error has a precise, actionable message,
+        #   * the failure is logged at step="schema" so the retry loop
+        #     uses the schema-context expansion path,
+        #   * it works in dry-run / offline mode without DB access.
+        result = check_groupby_alignment(secured_sql)
         if not result.passed:
             return result
 
@@ -1472,6 +1488,230 @@ class SQLValidator:
             )
             return None
 
+    # ─────────────────────────────────────────────────────────────────────
+    # PHASE-1 FIX (autofix): deterministic AST repair using PG planner hints
+    # ─────────────────────────────────────────────────────────────────────
+    #
+    # WHY THIS EXISTS
+    # ───────────────
+    # When EXPLAIN reports a hallucinated column (`bc.name does not exist`)
+    # PostgreSQL frequently emits a HINT like:
+    #     Perhaps you meant to reference the column "fc.name"
+    # The planner has compared the failed reference against every column
+    # in the FROM/JOIN scope and chosen the lexically and semantically
+    # closest match. This is a strong, deterministic, free signal.
+    #
+    # Today the validator simply rewrites that hint into a string error
+    # and ships the SQL back to the LLM for another attempt. That wastes
+    # an LLM call on what is mechanically a `find-and-replace`.  In the
+    # 27-Jun batch, 22/43 failures (51%) were column-on-wrong-table
+    # errors — a sizeable fraction of which have a planner hint pointing
+    # straight at the fix.
+    #
+    # WHAT THIS DOES
+    # ──────────────
+    # 1. Parse the PG error for `column "X" does not exist` +
+    #    `Perhaps you meant to reference the column "Y"` (the only PG
+    #    hint form we trust — never speculate without it).
+    # 2. Verify Y's table is in the SQL's FROM/JOIN scope (via the
+    #    alias_map we already build for schema validation).
+    # 3. Verify Y's column actually exists on that table according to
+    #    `self.schema_map` (the DDL truth).  This is critical — we
+    #    never accept the planner's hint without independent
+    #    confirmation against the DDL, in case the planner suggested
+    #    a column on a table we're not aware of.
+    # 4. AST-rewrite every reference to X with Y in the parsed SQL.
+    # 5. Re-run EXPLAIN once on the rewritten SQL.  If it passes, the
+    #    autofix is accepted.  If it fails, we fall back to the
+    #    original error and let the LLM retry as before.
+    #
+    # SAFETY
+    # ──────
+    # * Capped at ONE autofix attempt per query (no recursion).
+    # * Triggers only on PG hint, never on validator-internal errors.
+    # * Verifies replacement column exists in DDL (defence against
+    #   malformed hints).
+    # * Verifies replacement target table is actually in the SQL's
+    #   FROM/JOIN clauses (no fabrication of new tables).
+    # * Re-EXPLAINs to confirm the fix.  An autofix that doesn't
+    #   actually fix anything is rejected.
+    # * Returns audit fields on the ValidationResult so the runner can
+    #   log + measure autofix hit-rate without polluting normal flow.
+
+    _PG_COL_PERHAPS_RE = re.compile(
+        r'column\s+"?([\w.]+)"?\s+does not exist.*?'
+        r'Perhaps you meant to reference the column\s+"([^"]+)"',
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    def _attempt_pg_autofix(
+        self,
+        sql:        str,
+        error_msg:  str,
+        run_explain: Any,
+    ) -> tuple[str | None, str | None]:
+        """
+        Try a deterministic column-rename based on a PG planner hint.
+
+        Returns (fixed_sql, fix_description) on success, or (None, None) on
+        failure / no-applicable-hint.
+
+        Args:
+            sql:        the SQL that just failed EXPLAIN
+            error_msg:  the PG error text including HINT
+            run_explain: a callable(sql) -> (pgcode, err_msg) or None on success.
+                         Reuses the existing connection path so we don't open
+                         a new connection in this method.
+        """
+        m = self._PG_COL_PERHAPS_RE.search(error_msg)
+        if not m:
+            return None, None
+        bad_ref = m.group(1).strip().strip('"')      # e.g. "b.name" or "bc.name"
+        hint    = m.group(2).strip().strip('"')      # e.g. "fc.name"
+
+        # Both must be table-qualified (alias.col).  An unqualified
+        # PG hint isn't precise enough to act on safely.
+        if '.' not in bad_ref or '.' not in hint:
+            return None, None
+        bad_tbl_or_alias, bad_col = bad_ref.lower().split('.', 1)
+        good_tbl_or_alias, good_col = hint.lower().split('.', 1)
+
+        # Parse the SQL
+        try:
+            statements = sqlglot.parse(sql, dialect="postgres")
+        except Exception:
+            return None, None
+        if not statements:
+            return None, None
+
+        # Build alias_map from the SQL's tables.  We need it to know that
+        # e.g. `fc` resolves to `faculty_cache` so we can verify the hint
+        # target table is in scope.
+        alias_to_table: dict[str, str] = {}
+        cte_names: set[str] = set()
+        for stmt in statements:
+            if stmt is None:
+                continue
+            for cte in stmt.find_all(exp.CTE):
+                if cte.alias:
+                    cte_names.add(cte.alias.lower())
+            for tbl in stmt.find_all(exp.Table):
+                name = (tbl.name or '').lower()
+                if not name or name in cte_names:
+                    continue
+                alias = (tbl.alias or '').lower()
+                if alias:
+                    alias_to_table[alias] = name
+                alias_to_table[name] = name      # self alias
+
+        # Resolve hint target.  PG always reports the canonical table name
+        # (not an alias), but we must accept either.
+        if good_tbl_or_alias in alias_to_table:
+            good_table = alias_to_table[good_tbl_or_alias]
+        elif good_tbl_or_alias in self.schema_map:
+            good_table = good_tbl_or_alias
+        else:
+            # Hint references a table not in the SQL — refuse to invent it.
+            logger.info(
+                component="sql_validator",
+                event="autofix_skipped_target_not_in_scope",
+                bad=bad_ref, hint=hint,
+            )
+            return None, None
+
+        # Independent DDL confirmation: the suggested column must actually
+        # exist on the target table per the DDL.
+        inv = self.schema_map.get(good_table)
+        if inv is None or not hasattr(inv, 'columns'):
+            return None, None
+        if good_col not in inv.columns:
+            logger.info(
+                component="sql_validator",
+                event="autofix_skipped_col_not_in_ddl",
+                bad=bad_ref, hint=hint,
+                target=good_table,
+            )
+            return None, None
+
+        # Decide what alias to write in the rewritten SQL.
+        # If the user originally used an alias for good_table, keep that
+        # alias (preserves their JOIN style); otherwise use the canonical
+        # table name.  Find the alias-of-choice by scanning alias_to_table
+        # for the FIRST alias mapping to good_table (other than the
+        # self-alias).
+        chosen_alias = None
+        for a, t in alias_to_table.items():
+            if t == good_table and a != good_table:
+                chosen_alias = a
+                break
+        rewrite_table_part = chosen_alias or good_table
+
+        # AST-rewrite: replace every Column where (table.lower() == bad
+        # table/alias AND name.lower() == bad column) with the new
+        # (rewrite_table_part, good_col).
+        replacements_made = 0
+        new_statements: list[exp.Expression] = []
+        for stmt in statements:
+            if stmt is None:
+                new_statements.append(stmt)
+                continue
+            def _swap(node: exp.Expression) -> exp.Expression:
+                nonlocal replacements_made
+                if isinstance(node, exp.Column):
+                    if ((node.table or '').lower() == bad_tbl_or_alias
+                            and (node.name or '').lower() == bad_col):
+                        replacements_made += 1
+                        return exp.Column(
+                            this  = exp.to_identifier(good_col, quoted=False),
+                            table = exp.to_identifier(rewrite_table_part, quoted=False),
+                        )
+                return node
+            new_statements.append(stmt.transform(_swap, copy=True))
+
+        if replacements_made == 0:
+            # The bad ref didn't survive parsing (e.g. it was inside a
+            # CAST or other construct we didn't traverse).  Refuse to claim
+            # a fix we didn't actually apply.
+            return None, None
+
+        # Reassemble SQL.  Preserve the trailing semicolon if any.
+        new_sql_parts = []
+        for stmt in new_statements:
+            if stmt is None:
+                continue
+            new_sql_parts.append(stmt.sql(dialect="postgres"))
+        new_sql = ";\n".join(new_sql_parts)
+        if sql.rstrip().endswith(';') and not new_sql.endswith(';'):
+            new_sql += ';'
+
+        # Re-EXPLAIN once to confirm the fix actually fixes things.
+        pgcode, err = run_explain(new_sql)
+        if pgcode is None and err is None:
+            # EXPLAIN passed — fix accepted
+            desc = (
+                f"autofix: replaced `{bad_ref}` with `{rewrite_table_part}."
+                f"{good_col}` ({replacements_made} occurrence(s)) per "
+                f"PostgreSQL planner hint"
+            )
+            logger.info(
+                component="sql_validator",
+                event="autofix_accepted",
+                bad=bad_ref, hint=hint,
+                target=f"{rewrite_table_part}.{good_col}",
+                replacements=replacements_made,
+            )
+            return new_sql, desc
+
+        # Re-EXPLAIN still failed — reject the autofix.  The retry loop
+        # will see the ORIGINAL error and proceed as normal.
+        logger.info(
+            component="sql_validator",
+            event="autofix_re_explain_failed",
+            bad=bad_ref, hint=hint,
+            new_err=str(err)[:120] if err else None,
+        )
+        return None, None
+
     def _step_cost(self, sql: str) -> ValidationResult:
         """
         Step 5: Resource Cost Limit check - Run EXPLAIN and check estimated costs.
@@ -1493,7 +1733,7 @@ class SQLValidator:
         """
         threshold = settings.validation.explain_cost_threshold
 
-        def check_pgcode(pgcode: str, error_msg: str) -> ValidationResult | None:
+        def check_pgcode(pgcode: str, error_msg: str, run_explain=None) -> ValidationResult | None:
             """
             Analyze the Postgres error code. Return a failed ValidationResult if the
             query is structurally flawed, otherwise return None (so it can be ignored).
@@ -1514,6 +1754,24 @@ class SQLValidator:
             (e.g. after a retry introduced a new phantom column not in alias_map).
             """
             if pgcode.startswith("42") or pgcode.startswith("22"):
+                # PHASE-1 FIX (autofix): before declaring the failure, try
+                # a deterministic AST repair using the PG planner hint.
+                # If the planner said `Perhaps you meant the column "fc.name"`
+                # and the suggestion checks out against the DDL + FROM/JOIN
+                # scope, we substitute and re-EXPLAIN once.  An accepted
+                # fix saves an LLM retry roundtrip.
+                if run_explain is not None:
+                    fixed_sql, desc = self._attempt_pg_autofix(
+                        sql, error_msg, run_explain
+                    )
+                    if fixed_sql is not None:
+                        return ValidationResult(
+                            passed  = True,
+                            step    = "cost",
+                            message = desc or "PG planner autofix accepted",
+                            sql     = fixed_sql,
+                        )
+
                 # Try to extract a more specific category and produce a
                 # correction-friendly message.
                 step, message = _classify_pg_error(error_msg)
@@ -1527,6 +1785,19 @@ class SQLValidator:
 
         # ── Case A: MCP Connection Path ───────────────────────────────────
         if settings.use_mcp_servers:
+            # PHASE-1 FIX (autofix): callback the autofix helper uses to
+            # re-EXPLAIN the rewritten SQL.  Returns (pgcode, err) on
+            # failure, (None, None) on success.  Closes over the MCP
+            # client so we don't open a new path.
+            def _mcp_run_explain(new_sql: str):
+                try:
+                    r = call_postgres_explain(new_sql)
+                except MCPCallError as e:
+                    return ("08000", str(e))  # connection class — autofix will reject
+                if "error" in r:
+                    return (r.get("pgcode", ""), r["error"])
+                return (None, None)
+
             try:
                 result = call_postgres_explain(sql)
             except MCPCallError as exc:
@@ -1541,7 +1812,7 @@ class SQLValidator:
             if "error" in result:
                 pgcode = result.get("pgcode", "")
                 
-                validation_err = check_pgcode(pgcode, result["error"])
+                validation_err = check_pgcode(pgcode, result["error"], run_explain=_mcp_run_explain)
                 if validation_err:
                     return validation_err
                     
@@ -1647,11 +1918,35 @@ class SQLValidator:
                 sql_preview=sql[:80],
             )
             pgcode = getattr(exc, "pgcode", None) or ""
-            
-            validation_err = check_pgcode(pgcode, str(exc))
+
+            # PHASE-1 FIX (autofix): callback to re-EXPLAIN a rewritten SQL.
+            # Uses a FRESH cursor since the failed EXPLAIN aborted the
+            # current transaction; rollback first to unstick the conn.
+            # Returns (pgcode, err) on failure, (None, None) on success.
+            def _direct_run_explain(new_sql: str):
+                try:
+                    if conn is not None:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                    cur2 = conn.cursor()
+                    explain_body2 = new_sql.rstrip(";")
+                    if not _outer_query_has_limit(explain_body2):
+                        explain_body2 = f"{explain_body2} LIMIT {settings.postgres.max_rows}"
+                    cur2.execute(f"EXPLAIN (FORMAT JSON) {explain_body2}")
+                    cur2.fetchone()
+                    cur2.close()
+                    return (None, None)
+                except psycopg2.Error as e2:
+                    return (getattr(e2, "pgcode", None) or "", str(e2))
+                except Exception as e2:
+                    return ("UNKNOWN", str(e2))
+
+            validation_err = check_pgcode(pgcode, str(exc), run_explain=_direct_run_explain)
             if validation_err:
                 return validation_err
-                
+
             logger.warning(component="sql_validator", event="explain_failed",
                            error=str(exc))
 
@@ -1726,7 +2021,7 @@ class SQLValidator:
         Returns ValidationResult with passed=False and an actionable error
         message if any check fails, allowing the retry loop to self-correct.
         """
-        return check_semantic(sql, original_query)
+        return check_semantic(sql, original_query, schema_map=self.schema_map)
 
     # ─────────────────────────────────────────────────────────────────────
     # Step 8 — Hardcoded literal detection (delegated to semantic_checks.py)
@@ -1862,6 +2157,12 @@ class RetryValidator:
         join_paths:      list[str]  = None,
         few_shots:       list       = None,
         tenant_context:  str        = "",
+        # ── Column-cheatsheet pass-through (PHASE-1 FIX) ───────────────
+        # Forwarded as `tables=` into build_correction_prompt so the
+        # retry sees the same positive-form alias→columns list the
+        # original attempt did.  Named schema_inventory here to avoid
+        # confusion with `tables_used` (a list of table names).
+        schema_inventory: dict      = None,
     ) -> tuple[ValidationResult, int]:
         """
         Validate SQL with up to max_retries correction attempts.
@@ -1943,6 +2244,7 @@ class RetryValidator:
                 join_paths     = join_paths,
                 few_shots      = few_shots,
                 tenant_context = tenant_context,
+                tables         = schema_inventory,
             )
 
             # Run the SQL generator model on the correction prompt to generate a repaired candidate.

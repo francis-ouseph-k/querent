@@ -92,6 +92,8 @@ degrades fine-tuning generalisation.
 
 from __future__ import annotations
 
+import re
+
 from models.schema import ChunkType, ParsedQuery, SemanticChunk
 from utils.logging_config import get_logger
 from utils.heuristics import HEURISTICS
@@ -221,6 +223,7 @@ class PromptBuilder:
         clarification_note: str | None          = None,
         course_code_match                       = None,  # CourseCodeMatch | None
         label_filters:      list[dict]          = None,  # from parsed_query.label_filters
+        tables:             dict                = None,  # dict[str, TableInventory] — for COLUMN CHEATSHEET
     ) -> str:
         """
         Build and return the full prompt string.
@@ -240,6 +243,20 @@ class PromptBuilder:
           Injected as a [FILTER HINTS] block so the model knows to use text
           columns (e.g. .code, .name) instead of integer PKs when the user
           supplies alphanumeric identifiers like MBA101.
+
+        tables — full {table_name: TableInventory} map produced by the DDL
+          parser.  When provided, a [COLUMN CHEATSHEET] block is injected
+          immediately before the user's question.  The cheatsheet is a
+          terse, positive-form per-table column list for every table whose
+          schema is in scope for this query (entities + Steiner-tree
+          connector tables + tables that appear in retrieved chunks).
+          This block is the single highest-impact mitigation for the
+          column-on-wrong-table hallucination class observed in the
+          batch evaluation (22/43 = 51% of failures).  Positive-form
+          enumeration is far more effective than the prompt's many
+          "table X has NO column Y" negative rules — a 3B model is poor
+          at applying negations across a 10k-token prompt but excellent
+          at copying from a short structured list it just read.
         """
         join_paths    = join_paths    or []
         few_shots     = few_shots     or []
@@ -531,6 +548,74 @@ class PromptBuilder:
             sections.extend(clarification_lines)
             sections.append("")
 
+        # ── [COLUMN CHEATSHEET] — deterministic alias→columns map ────────
+        # Terse, positive-form list of the columns that actually exist on
+        # each table currently in scope.  Built deterministically from the
+        # TableInventory map produced by the DDL parser — independent of
+        # what the retrieval pipeline ranked highest.
+        #
+        # WHY THIS BLOCK EXISTS:
+        # The dominant failure pattern in batch evaluation
+        # (22/43 = 51% of failures) is the LLM emitting a real column name
+        # against the wrong table (e.g. `bc.name` when name is on
+        # faculty_cache, or `sa.board_id` when board_id is reached via
+        # answer_script).  The system prompt's WARNING block tells the
+        # model what NOT to do (negative rules) — but a 3B model cannot
+        # reliably apply negations across a 10k-token prompt.  This block
+        # supplies the same information in POSITIVE form: "the only
+        # columns that exist on board_coordinator are …".  Positive lists
+        # of legal names are far easier for small models to copy from
+        # than negative warnings to track and avoid.
+        #
+        # PLACEMENT:
+        # Last block before [QUERY] — exploits transformer recency bias.
+        # The model reads this immediately before it starts writing SQL.
+        #
+        # SCOPE:
+        # Only tables in this query's working set are included:
+        #   - parsed_query.entities       (entity tables from NL parse)
+        #   - tables present in retrieved schema_chunks (TABLE/FK_MAP/etc.)
+        #   - tables present in the Steiner-tree connector path
+        # This keeps the block compact (~150-400 tokens typical) and
+        # focused on the schema actually needed for this query.
+        if tables:
+            scope: set[str] = set()
+            scope.update(entity_tables_set)
+            for c in schema_chunks:
+                if c.table_name:
+                    scope.add(c.table_name.lower())
+                for rt in (c.referenced_tables or []):
+                    scope.add(rt.lower())
+            # Also pull any table names referenced in the join_paths text
+            # (e.g. "ea.script_id → answer_script.id" mentions both).
+            for jp in join_paths:
+                for tok in re.findall(r'[a-z][a-z0-9_]+', jp.lower()):
+                    if tok in tables:
+                        scope.add(tok)
+
+            scope = {t for t in scope if t in tables}
+            if scope:
+                cheatsheet_lines = ["=== COLUMN CHEATSHEET ==="]
+                cheatsheet_lines.append(
+                    "These are the ONLY columns that exist on each table. "
+                    "When you reference T.col, T must appear in this list "
+                    "AND col must appear after T's colon. "
+                    "If a column you need is not here, the column lives on "
+                    "a different table — find the right one before using it."
+                )
+                # Sort: entity tables first (most likely to be the SELECT
+                # target), then alphabetical for stability.
+                sort_key = lambda t: (0 if t in entity_tables_set else 1, t)
+                for tname in sorted(scope, key=sort_key):
+                    inv = tables[tname]
+                    cols = getattr(inv, 'columns', None)
+                    if not cols:
+                        continue
+                    col_names = sorted(cols.keys())
+                    cheatsheet_lines.append(f"{tname}: {', '.join(col_names)}")
+                sections.extend(cheatsheet_lines)
+                sections.append("")
+
         # ── [QUERY] — the user's clean question (markers stripped) ────────
         # PROMPT ENGINEERING PRINCIPLE: "Recency Bias"
         # ──────────────────────────────────────────────
@@ -606,6 +691,10 @@ class PromptBuilder:
         # entry: "constraint:<kind>=<raw>" or "output:<name>" or
         # "entity_type:<id>=<expected>-><actual>".
         audit_misses:    list[str]  = None,
+        # ── Column-cheatsheet pass-through (NEW) ─────────────────────────
+        # Forwarded to build() so the retry sees the same positive-form
+        # alias→columns list the original attempt did.
+        tables:          dict       = None,
     ) -> str:
         """
         Build a correction prompt for the retry loop.
@@ -642,6 +731,7 @@ class PromptBuilder:
                 clarification_note = getattr(parsed_query, 'clarification_note', None),
                 course_code_match  = getattr(parsed_query, 'course_code_match', None),
                 label_filters      = label_filters,
+                tables             = tables,
             )
 
             # Build correction suffix to append after the full prompt

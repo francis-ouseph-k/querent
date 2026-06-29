@@ -40,7 +40,7 @@ SAFE_LITERALS = frozenset(str(x) for x in HEURISTICS.get('safe_literals', []))
 
 # ── Step 7: Semantic heuristic checks ─────────────────────────────────────────
 
-def check_semantic(sql: str, original_query: str) -> ValidationResult:
+def check_semantic(sql: str, original_query: str, schema_map: dict | None = None) -> ValidationResult:
     """
     Step 7: Lightweight heuristic logic checks.
 
@@ -64,8 +64,15 @@ def check_semantic(sql: str, original_query: str) -> ValidationResult:
       without wrapping in SELECT AVG(cnt) FROM (...) sub. This returns
       a LIST of counts, not their average. Observed in Q12, Q26.
 
-    Returns ValidationResult with passed=False and an actionable error
-    message if any check fails, allowing the retry loop to self-correct.
+    PHASE-1 FIX (Check 18b):
+      schema_map (optional) enables a SCHEMA-DRIVEN defensive-filter
+      check that supplements the original hard-coded keyword-list
+      Check 18.  When provided, the new check fires for ANY column whose
+      DDL has a CHECK (col IN (...)) constraint (i.e. an enum), if the
+      SQL filters that column to a value not present in the NL question.
+      This catches the Q67/Q91/Q162 class of hidden bugs where the LLM
+      added an unprompted enum filter on a column the original Check 18
+      didn't know to look at (e.g. user_type, rule_type).
     """
     sql_lower = sql.lower()
     query_lower = original_query.lower()
@@ -719,6 +726,198 @@ def check_semantic(sql: str, original_query: str) -> ValidationResult:
     except Exception:
         pass
 
+    # ── Check 18b: Schema-driven defensive-filter check (PHASE-1 FIX) ──
+    #
+    # WHY THIS EXISTS
+    # ───────────────
+    # The original Check 18 has a hard-coded `defensive_filters` dict
+    # keyed by column name (is_final, approval_status, lifecycle_status,
+    # status).  It misses defensive filters on ANY OTHER enum column.
+    # In the 27-Jun batch, 3 hidden bugs in the "Success" set fell
+    # into this gap:
+    #
+    #   Q67  added `ak.status = 'APPROVED'` to a question that just
+    #        asked "who prepared the answer key" — dropping DRAFT keys.
+    #        (status IS in Check 18's dict, but the value 'APPROVED'
+    #         WAS in its keyword list — false-negative on the keyword
+    #         path, because the NL just didn't mention it.)
+    #
+    #   Q91  added `au.user_type = 'ADMIN_STAFF'` to "show all bulk
+    #        operations initiated by the COE Office".  user_type isn't
+    #        in Check 18's defensive_filters dict at all.
+    #
+    #   Q162 added `ar.rule_type = 'PICK_N'` to "show THE attempt rule
+    #        configuration for question 2".  rule_type isn't in
+    #        Check 18's defensive_filters dict at all.
+    #
+    # WHAT THIS DOES
+    # ──────────────
+    # When the validator's schema_map is available, scan every WHERE
+    # equality of the form `T.col = 'literal'`.  If `col` has a
+    # CHECK (col IN (...)) constraint AND `'literal'` is in that
+    # allowed-values set AND `'literal'` doesn't appear in the NL
+    # (in either UPPER form, lower form, or with underscores replaced
+    # by spaces) — flag it.
+    #
+    # We additionally skip the answer_script 4-status columns because
+    # they participate in the documented "active-marking filter"
+    # pattern (lifecycle_status='ATTEMPTED' is intentionally added by
+    # the LLM per the system prompt's status model block).  Those are
+    # exactly the legitimate cases that the keyword-driven Check 18
+    # already accepted; the new check honours the same exemption.
+    if schema_map:
+        _AS_STATUS_EXEMPT = {
+            ("answer_script", "lifecycle_status"),
+            ("answer_script", "scan_status"),
+            ("answer_script", "evaluation_status"),
+            ("answer_script", "block_status"),
+        }
+        try:
+            ast = sqlglot.parse_one(sql, dialect="postgres")
+        except Exception:
+            ast = None
+
+        if ast is not None:
+            # Build alias_map for this SQL
+            cte_names: set[str] = set()
+            for cte in ast.find_all(exp.CTE):
+                if cte.alias:
+                    cte_names.add(cte.alias.lower())
+
+            alias_to_table: dict[str, str] = {}
+            for tbl in ast.find_all(exp.Table):
+                tname = (tbl.name or "").lower()
+                if not tname or tname in cte_names:
+                    continue
+                alias = (tbl.alias or "").lower()
+                if alias:
+                    alias_to_table[alias] = tname
+                alias_to_table[tname] = tname
+
+            nl_lower = query_lower
+            nl_under_to_space = nl_lower.replace('_', ' ')
+
+            # Collect every EQ comparison we want to scan:
+            #   * Anywhere in a WHERE clause
+            #   * Anywhere in an INNER JOIN's ON clause
+            # SKIP equalities inside a LEFT JOIN's ON clause: those are
+            # legitimate join-scoping that don't drop rows from the main
+            # query (Check 19 handles the LEFT-JOIN-with-WHERE-filter
+            # nullification case separately).  For Q67-class bugs, the
+            # defensive filter is often in an INNER JOIN ON — where the
+            # filter behaves exactly like a WHERE.
+            scan_eqs: list[exp.EQ] = []
+
+            for where in ast.find_all(exp.Where):
+                for eq in where.find_all(exp.EQ):
+                    scan_eqs.append(eq)
+
+            for join in ast.find_all(exp.Join):
+                side = (getattr(join, 'side', None) or '')
+                if isinstance(side, str) and side.upper() == 'LEFT':
+                    continue  # LEFT JOIN ON: skip
+                on_clause = join.args.get('on')
+                if on_clause is None:
+                    continue
+                for eq in on_clause.find_all(exp.EQ):
+                    scan_eqs.append(eq)
+
+            # Scan all WHERE equalities + INNER JOIN ON equalities.  We
+            # already trust Check 18 for the 4 hard-coded columns and
+            # don't want to double-fire when it accepted them.
+            checked_18_cols = {
+                'is_final', 'approval_status', 'lifecycle_status', 'status'
+            }
+            for eq in scan_eqs:
+                lhs, rhs = eq.left, eq.right
+                if not (isinstance(lhs, exp.Column) and isinstance(rhs, exp.Literal)
+                        and rhs.is_string):
+                    continue
+                col_name = (lhs.name or "").lower()
+
+                # For the 4 hard-coded columns Check 18 owns, only second-
+                # guess Check 18 when the column reference is in a JOIN ON
+                # (Check 18 only walks WHERE, so it missed it).  When
+                # Check 18 already had a chance and let it through, don't
+                # override it from here — its keyword whitelists for
+                # those columns are deliberately broader than ours.
+                in_where = False
+                p = eq.parent
+                while p is not None:
+                    if isinstance(p, exp.Where):
+                        in_where = True
+                        break
+                    p = p.parent
+                if col_name in checked_18_cols and in_where:
+                    continue
+
+                tbl_part = (lhs.table or "").lower()
+                target = alias_to_table.get(tbl_part)
+                if target is None and tbl_part in schema_map:
+                    target = tbl_part
+                if target is None:
+                    continue
+
+                if (target, col_name) in _AS_STATUS_EXEMPT:
+                    continue
+
+                inv = schema_map.get(target)
+                if inv is None:
+                    continue
+                col_info = inv.columns.get(col_name) if hasattr(inv, 'columns') else None
+                if col_info is None:
+                    continue
+                allowed = getattr(col_info, 'allowed_values', None)
+                if not allowed:
+                    # No CHECK enum — not a defensive-filter candidate
+                    continue
+
+                val_raw = str(rhs.this)
+                if val_raw not in allowed:
+                    # Already handled by the literal/enum-membership
+                    # check inside _validate_column_types.
+                    continue
+
+                val_lo  = val_raw.lower()
+                val_spc = val_lo.replace('_', ' ')
+                val_hyp = val_lo.replace('_', '-')
+
+                # Justification: does the NL mention this value in any
+                # of its surface forms?  Substring match is intentional:
+                # "approved" matches "approved", "Approved", "APPROVED",
+                # "approved keys", etc.
+                justified = (
+                    val_lo  in nl_lower
+                    or val_spc in nl_lower
+                    or val_hyp in nl_lower
+                    or val_lo  in nl_under_to_space
+                    or val_spc in nl_under_to_space
+                )
+                if justified:
+                    continue
+
+                logger.warning(
+                    component="sql_validator",
+                    event="semantic_unprompted_enum_filter",
+                    table=target,
+                    column=col_name,
+                    value=val_raw,
+                )
+                return ValidationResult(
+                    passed=False, step="semantic",
+                    message=(
+                        f"SQL filters {target}.{col_name} = '{val_raw}' "
+                        f"but the question does not mention '{val_raw}' "
+                        f"(or any close paraphrase).  This is a "
+                        f"defensive filter not supported by the user's "
+                        f"intent — remove it, or surface it as a "
+                        f"clarification.  Allowed values for "
+                        f"{target}.{col_name}: "
+                        f"{sorted(allowed)}."
+                    ),
+                    sql=sql,
+                )
+
     # ── Check 19: LEFT JOIN + WHERE nullification ─────────────────
     # Catches: LEFT JOIN ... WHERE right_alias.col = value
     # This silently converts LEFT JOIN to INNER JOIN because NULL
@@ -947,3 +1146,260 @@ def check_hardcoded_literals(
         pass
 
     return ValidationResult(passed=True, step="hardcoded", sql=sql)
+
+
+# ── Step 7b: Static GROUP BY / SELECT alignment ───────────────────────────────
+#
+# PHASE-1 FIX: catch missing-GROUP-BY errors at the AST step, not only at EXPLAIN.
+#
+# The PostgreSQL EXPLAIN step today catches the classic
+#     "column \"x.y\" must appear in the GROUP BY clause or be used in
+#      an aggregate function"
+# error.  That's a fine LAST defence but a poor PRIMARY one:
+#   * EXPLAIN-classified errors flow through the "cost"/"schema" reclassifier,
+#     where the message becomes a generic verbatim quote of the PG error.
+#   * EXPLAIN requires a DB connection.  Offline / dry-run validation
+#     misses these entirely.
+#   * EXPLAIN runs LATE.  Every prior step has already spent work on a
+#     query we could have rejected earlier.
+#
+# In the 27-Jun batch this was the proximate cause of Q36, Q37, Q108
+# (3/43 failures).  More importantly, it's a deterministic rule that
+# we should never need a planner to check.
+#
+# THIS CHECK
+# ──────────
+# For each top-level SELECT that has a GROUP BY clause:
+#   1. Collect the set of GROUP BY expressions (as canonical SQL strings).
+#      Also accept SELECT-projection aliases that are themselves GROUP BY
+#      targets (PostgreSQL allows `GROUP BY alias`).
+#   2. Walk each SELECT projection.  If the projection contains an
+#      aggregate function (COUNT/SUM/AVG/MIN/MAX/etc.) at any nesting
+#      level around its column refs — accept it.
+#   3. Otherwise the projection's column atoms must either be constants
+#      or appear in the GROUP BY (or be inside subqueries/windows).
+#
+# False-positive avoidance:
+#   * Subqueries are NOT walked at this level — they have their own scopes.
+#   * Window aggregates (OVER (...)) are accepted.
+#   * When ANY GROUP BY key is named "id" we skip the check entirely
+#     (PG's functional-dependency relaxation makes most non-agg projections
+#      legal in that case; we don't reimplement FD analysis).
+
+_AGGREGATE_FUNC_NAMES = frozenset({
+    "count", "sum", "avg", "min", "max",
+    "string_agg", "array_agg", "json_agg", "jsonb_agg",
+    "bool_and", "bool_or", "every",
+    "variance", "var_pop", "var_samp",
+    "stddev", "stddev_pop", "stddev_samp",
+    "covar_pop", "covar_samp",
+    "corr", "regr_slope", "regr_intercept",
+    "percentile_cont", "percentile_disc", "mode",
+})
+
+
+def _node_contains_aggregate(node: exp.Expression) -> bool:
+    """True if node contains an aggregate function call (recursively)."""
+    if node is None:
+        return False
+    for sub in node.walk():
+        if isinstance(sub, exp.AggFunc):
+            return True
+        if isinstance(sub, exp.Anonymous):
+            fn = ""
+            if isinstance(sub.this, str):
+                fn = sub.this.lower()
+            elif hasattr(sub.this, "name"):
+                fn = (sub.this.name or "").lower()
+            if fn in _AGGREGATE_FUNC_NAMES:
+                return True
+    return False
+
+
+def _node_inside_window(node: exp.Expression) -> bool:
+    """True if node is nested inside an OVER (...) window expression."""
+    p = node.parent
+    while p is not None:
+        if isinstance(p, exp.Window):
+            return True
+        p = p.parent
+    return False
+
+
+def check_groupby_alignment(sql: str) -> ValidationResult:
+    """
+    Step 7b: Verify SELECT non-aggregate columns appear in GROUP BY.
+
+    Returns a failing ValidationResult with step="schema" so the retry
+    loop expands the schema context (treating it like a structural
+    issue, which it is).
+    """
+    try:
+        ast = sqlglot.parse_one(sql, dialect="postgres")
+    except Exception:
+        return ValidationResult(passed=True, step="groupby", sql=sql)
+    if ast is None:
+        return ValidationResult(passed=True, step="groupby", sql=sql)
+
+    outer = ast if isinstance(ast, exp.Select) else ast.find(exp.Select)
+    if outer is None:
+        return ValidationResult(passed=True, step="groupby", sql=sql)
+
+    group = outer.args.get("group")
+    if group is None:
+        return ValidationResult(passed=True, step="groupby", sql=sql)
+
+    gb_exprs = group.expressions or []
+
+    # Functional-dependency relaxation: skip when any GROUP BY key is "id".
+    for g in gb_exprs:
+        for col in g.find_all(exp.Column):
+            if (col.name or "").lower() == "id":
+                return ValidationResult(passed=True, step="groupby", sql=sql)
+
+    gb_canonical: set[str] = set()
+    for g in gb_exprs:
+        try:
+            gb_canonical.add(g.sql(dialect="postgres").lower())
+        except Exception:
+            continue
+
+    # SELECT-projection aliases that GROUP BY references.  PG allows
+    # `GROUP BY <select_alias>`, so if a CASE/expression projection is
+    # aliased and that alias appears in GROUP BY, the whole projection
+    # is covered.  We track which aliases are GROUP BY targets.
+    aliased_gb_targets: set[str] = set()
+    for sel in outer.expressions:
+        if isinstance(sel, exp.Alias) and sel.alias:
+            alias_lo = sel.alias.lower()
+            if alias_lo in gb_canonical:
+                aliased_gb_targets.add(alias_lo)
+
+    projection_aliases: set[str] = {
+        sel.alias.lower() for sel in outer.expressions
+        if isinstance(sel, exp.Alias) and sel.alias
+    }
+
+    # Identify ALL inner-scope SELECTs so we don't peek inside their columns.
+    # An inner-scope SELECT is any exp.Select that is descended from
+    # `outer` AND is not `outer` itself.  This catches:
+    #   * exp.Subquery wrappers   (SELECT ... FROM (SELECT ...))
+    #   * exp.Exists arguments    (EXISTS (SELECT ...))
+    #   * Scalar subqueries       ((SELECT MAX(x) FROM ...))
+    #   * CTE bodies if walked    (already excluded by separate logic)
+    inner_select_node_ids: set[int] = set()
+    for inner_sel in outer.find_all(exp.Select):
+        if inner_sel is outer:
+            continue
+        for n in inner_sel.walk():
+            inner_select_node_ids.add(id(n))
+
+    def _covered(col: exp.Column) -> bool:
+        """True if col is legally referenced under PG's GROUP BY rules."""
+        # Inside an inner SELECT (subquery / EXISTS) — different scope
+        if id(col) in inner_select_node_ids:
+            return True
+        # Inside a window OVER (...) — window-aggregates self-handle grouping
+        if _node_inside_window(col):
+            return True
+        # Inside an aggregate function up the chain
+        p = col.parent
+        while p is not None and p is not outer:
+            if isinstance(p, exp.AggFunc):
+                return True
+            p = p.parent
+        # Direct match against GROUP BY
+        try:
+            col_sql = col.sql(dialect="postgres").lower()
+        except Exception:
+            return True
+        if col_sql in gb_canonical:
+            return True
+        # Unqualified projection-alias reference
+        cn = (col.name or "").lower()
+        if not (col.table or "") and cn in projection_aliases:
+            return True
+        # Weak match: column NAME matches the trailing token of a GB key
+        if cn in {k.split('.')[-1].strip() for k in gb_canonical}:
+            return True
+        return False
+
+    bad_projections: list[str] = []
+    for sel in outer.expressions:
+        # If the projection IS an alias and that alias is in GROUP BY,
+        # the whole expression is accepted (PG semantics).
+        if isinstance(sel, exp.Alias) and sel.alias and sel.alias.lower() in aliased_gb_targets:
+            continue
+
+        real = sel.this if isinstance(sel, exp.Alias) else sel
+        try:
+            real_sql = real.sql(dialect="postgres").lower()
+        except Exception:
+            continue
+
+        if real_sql in gb_canonical:
+            continue
+
+        if _node_contains_aggregate(real):
+            continue
+
+        if not real.find(exp.Column):
+            continue
+
+        uncovered: list[str] = []
+        for col in real.find_all(exp.Column):
+            if _covered(col):
+                continue
+            try:
+                col_sql = col.sql(dialect="postgres").lower()
+            except Exception:
+                continue
+            uncovered.append(col_sql)
+
+        if uncovered:
+            bad_projections.append(
+                f"`{real.sql(dialect='postgres')[:60]}` "
+                f"(uncovered column(s): {', '.join(sorted(set(uncovered))[:3])})"
+            )
+
+    # PHASE-1 FIX: also walk ORDER BY.  PostgreSQL enforces the same
+    # GROUP BY rule on ORDER BY columns — non-aggregate ORDER BY
+    # columns must appear in GROUP BY (or be SELECT projection aliases).
+    # This catches Q36-class failures (`ORDER BY a.id` with GROUP BY
+    # not including a.id) at the AST step rather than at EXPLAIN.
+    order_clause = outer.args.get("order")
+    if order_clause is not None:
+        for col in order_clause.find_all(exp.Column):
+            if _covered(col):
+                continue
+            try:
+                col_sql = col.sql(dialect="postgres").lower()
+            except Exception:
+                continue
+            bad_projections.append(
+                f"ORDER BY `{col_sql}` "
+                f"(uncovered: not in GROUP BY, not in an aggregate)"
+            )
+            break  # one ORDER BY problem is enough — don't spam
+
+    if bad_projections:
+        msg = (
+            "SQL has a GROUP BY clause but the following SELECT/ORDER BY "
+            "expression(s) are non-aggregate AND not in GROUP BY: "
+            + "; ".join(bad_projections[:3])
+            + ". Either add them to GROUP BY, or wrap them in an "
+              "aggregate function (e.g. MAX, MIN, STRING_AGG)."
+        )
+        logger.warning(
+            component="sql_validator",
+            event="groupby_misalignment",
+            bad=bad_projections[:3],
+        )
+        return ValidationResult(
+            passed=False,
+            step="schema",
+            message=msg,
+            sql=sql,
+        )
+
+    return ValidationResult(passed=True, step="groupby", sql=sql)
