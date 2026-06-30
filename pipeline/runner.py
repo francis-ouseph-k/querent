@@ -105,8 +105,8 @@ from models.schema import QueryResult, TableInventory
 from retrieval.orchestrator import RetrievalOrchestrator
 from retrieval.reranker import CrossEncoderReranker
 from utils.logging_config import get_logger
-from validation.sql_validator import RetryValidator, SQLValidator
-from validation.logical_audit import run_logical_audit
+from validation.core.sql_validator import RetryValidator, SQLValidator
+from validation.semantic.logical_audit import run_logical_audit
 
 logger = get_logger(__name__)
 

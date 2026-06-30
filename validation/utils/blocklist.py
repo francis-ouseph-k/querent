@@ -157,3 +157,105 @@ def check_literal_type_compat(
         return None
 
     return None  # unknown node type — skip
+
+import re
+import sqlglot
+
+_PG_COLUMN_NOT_EXIST_RE = re.compile(
+    r'column\s+"?([\w.]+)"?\s+does not exist', re.IGNORECASE
+)
+_PG_HINT_DID_YOU_MEAN_RE = re.compile(
+    r'Perhaps you meant to reference the column\s+"([^"]+)"', re.IGNORECASE
+)
+_PG_MISSING_FROM_RE = re.compile(
+    r'missing FROM-clause entry for table\s+"?(\w+)"?', re.IGNORECASE
+)
+_PG_OPERATOR_RE = re.compile(
+    r'operator does not exist:\s+(.+)', re.IGNORECASE
+)
+_PG_TABLE_DUP_RE = re.compile(
+    r'table name\s+"?(\w+)"?\s+specified more than once', re.IGNORECASE
+)
+_PG_INVALID_INPUT_RE = re.compile(
+    r'invalid input syntax for type (\w+):\s+"([^"]*)"', re.IGNORECASE
+)
+
+def classify_pg_error(error_msg: str) -> tuple[str, str]:
+    """
+    Reclassify a PostgreSQL error from EXPLAIN into a validator step label
+    and an actionable correction message.
+    """
+    m = _PG_COLUMN_NOT_EXIST_RE.search(error_msg)
+    if m:
+        col = m.group(1)
+        hint = _PG_HINT_DID_YOU_MEAN_RE.search(error_msg)
+        if hint:
+            msg = (
+                f"Column '{col}' does not exist. The Postgres planner suggests "
+                f"'{hint.group(1)}' — use that, or verify the column belongs to "
+                f"the qualifying table in your FROM/JOIN clauses."
+            )
+        else:
+            msg = (
+                f"Column '{col}' does not exist. Verify that the column is "
+                f"defined on the table referenced by its alias prefix, or that "
+                f"the alias prefix matches a table declared in FROM/JOIN."
+            )
+        return "schema", msg
+
+    m = _PG_MISSING_FROM_RE.search(error_msg)
+    if m:
+        tbl = m.group(1)
+        return "schema", (
+            f"Table or alias '{tbl}' is referenced (e.g. in an ON clause or "
+            f"SELECT list) but is not declared in the FROM/JOIN clauses. "
+            f"Add the missing table to the FROM list, or check JOIN ordering — "
+            f"a JOIN's ON clause cannot reference a table that appears later "
+            f"in the JOIN chain."
+        )
+
+    m = _PG_OPERATOR_RE.search(error_msg)
+    if m:
+        op_expr = m.group(1).strip()
+        return "schema", (
+            f"Type mismatch in comparison ({op_expr}). One side is a string "
+            f"column (VARCHAR/TEXT) and the other is a numeric column "
+            f"(BIGINT/INTEGER). Check whether you are joining an ERP VARCHAR "
+            f"identifier (e.g. exam_erp_id) against a BIGINT surrogate "
+            f"primary key (e.g. .id). Use the surrogate id for joins."
+        )
+
+    m = _PG_TABLE_DUP_RE.search(error_msg)
+    if m:
+        tbl = m.group(1)
+        return "syntax", (
+            f"Alias '{tbl}' is used for more than one table in the same "
+            f"query. Give each occurrence a unique alias (e.g. 'au_user', "
+            f"'au_dept')."
+        )
+
+    m = _PG_INVALID_INPUT_RE.search(error_msg)
+    if m:
+        pg_type, bad_value = m.group(1), m.group(2)
+        return "syntax", (
+            f"A {pg_type} column was compared against the literal '{bad_value}' "
+            f"which is not a valid {pg_type}. This is often a leftover :param "
+            f"placeholder — replace it with a concrete value derived from the "
+            f"question, or join through a text column (e.g. .code, .name) if "
+            f"the user gave a label."
+        )
+
+    return "cost", f"EXPLAIN revealed a SQL error: {error_msg}"
+
+def outer_query_has_limit(sql: str) -> bool:
+    """Return True if the outermost SELECT already has a LIMIT clause."""
+    try:
+        stmt = sqlglot.parse_one(sql, dialect="postgres")
+        if stmt is None:
+            return False
+        outer = stmt if isinstance(stmt, exp.Select) else stmt.find(exp.Select)
+        if outer is None:
+            return False
+        return outer.args.get("limit") is not None
+    except Exception:
+        return False

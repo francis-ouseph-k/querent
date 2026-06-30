@@ -553,7 +553,7 @@ def _check_constraint_coverage(
             continue
 
         # Constraint was DROPPED.  Penalty depends on kind.
-        from validation.nl_requirements import ConstraintKind   # local import to avoid cycle
+        from validation.semantic.nl_requirements import ConstraintKind   # local import to avoid cycle
         if c.kind in (ConstraintKind.ENUM, ConstraintKind.STATUS,
                        ConstraintKind.ROLE, ConstraintKind.BOOLEAN,
                        ConstraintKind.SCOPE):
@@ -934,7 +934,7 @@ def run_logical_audit(
     # Import is local to keep validation.nl_requirements optional —
     # if the module is somehow missing, the existing audit still runs.
     try:
-        from validation.nl_requirements import parse_question
+        from validation.semantic.nl_requirements import parse_question
         requirements = parse_question(nl_query)
     except Exception:
         # Defensive: never let the new pipeline break the old one.
