@@ -1,0 +1,179 @@
+# sql_select.gbnf
+# PostgreSQL SELECT-only grammar for grammar-constrained decoding.
+# DML (INSERT, UPDATE, DELETE, MERGE, TRUNCATE) and DDL are explicitly absent.
+# Covers: CTEs, set ops (UNION/INTERSECT/EXCEPT), JOINs, LATERAL, window
+# functions, JSONB operators, array constructors, EXISTS, FILTER, ILIKE,
+# regex, type casts, COALESCE, NULLIF, GREATEST, LEAST, ROW, VALUES,
+# WITH ORDINALITY, quantified comparisons (ANY/SOME/ALL), scientific
+# notation, and SQL comments.
+#
+# FOR UPDATE / FOR SHARE / FOR KEY SHARE removed (v5 → v6).
+# Although these are technically SELECT clauses, they acquire row locks.
+# On a read-only replica they are rejected by PostgreSQL at execution time,
+# but removing them from the grammar prevents the model from generating them
+# at all and keeps the grammar's intent unambiguous: read-only queries only.
+#
+# Note: grammar-constrained decoding is the first of three safety layers.
+# Layer 2: sqlglot AST DML inspection (sql_validator.py _step_safety)
+# Layer 3: default_transaction_read_only=on enforced at connection level
+#           + read-only PostgreSQL replica (never the primary)
+# Side-effecting functions (pg_terminate_backend etc.) cannot be blocked
+# by grammar alone — layers 2 and 3 are the real protection.
+
+root ::= ws? select-statement ws? ";"? ws?
+
+# === SELECT (set ops allowed) ===
+# FOR UPDATE / FOR SHARE removed — see file header.
+select-statement ::= (with-clause ws)? select-expr (ws order-by-clause)? (ws limit-clause)? (ws offset-clause)? (ws fetch-clause)?
+
+select-expr ::= select-core (ws set-op ws select-core)*
+set-op ::= ("UNION" | "INTERSECT" | "EXCEPT") (ws "ALL")?
+
+select-core ::= select-clause (ws from-clause)? (ws where-clause)? (ws group-by-clause)? (ws having-clause)? (ws window-clause)?
+
+# === CTEs (no data-modifying CTEs) ===
+with-clause ::= "WITH" ws "RECURSIVE"? ws cte-list
+cte-list ::= cte-item (ws? "," ws? cte-item)*
+cte-item ::= identifier ws? ("(" ws? column-list ws? ")")? ws "AS" ws? "(" ws? select-statement ws? ")"
+
+# === Core SELECT ===
+select-clause ::= "SELECT" ws select-modifier? ws select-list
+select-modifier ::= "DISTINCT" (ws "ON" ws? "(" ws? expression-list ws? ")")?
+select-list ::= "*" | select-item (ws? "," ws? select-item)*
+select-item ::= expression (ws "AS"? ws identifier)? | identifier ws? "." ws? "*"
+
+# === FROM ===
+from-clause ::= "FROM" ws from-list
+from-list ::= join-expression (ws? "," ws? join-expression)*
+join-expression ::= from-item (ws join-tail)*
+from-item ::= "LATERAL"? ws? (table-ref | subquery-ref | function-ref | values-clause)
+
+# WITH ORDINALITY valid only on function-ref (set-returning functions).
+# table-ref and subquery-ref intentionally omit it.
+table-ref    ::= identifier (ws? "." ws? identifier)? (ws "AS"? ws identifier)?
+subquery-ref ::= "(" ws? select-statement ws? ")" (ws "AS"? ws identifier)?
+function-ref ::= function-call (ws "WITH" ws "ORDINALITY")? (ws "AS"? ws identifier)?
+values-clause ::= "VALUES" ws? "(" ws? expression-list ws? ")" (ws? "," ws? "(" ws? expression-list ws? ")")* (ws "AS"? ws identifier (ws? "(" ws? column-list ws? ")")?)?
+
+join-tail ::= join-type ws "JOIN" ws from-item ws join-condition
+join-type ::= "INNER" | "LEFT" ws? "OUTER"? | "RIGHT" ws? "OUTER"? | "FULL" ws? "OUTER"? | "CROSS"
+join-condition ::= "ON" ws expression | "USING" ws? "(" ws? column-list ws? ")"
+
+# === WHERE / GROUP / HAVING ===
+where-clause ::= "WHERE" ws expression
+group-by-clause ::= "GROUP" ws "BY" ws group-by-list
+group-by-list ::= group-by-item (ws? "," ws? group-by-item)*
+group-by-item ::= expression | "ROLLUP" ws? "(" ws? expression-list ws? ")" | "CUBE" ws? "(" ws? expression-list ws? ")" | "GROUPING" ws "SETS" ws? "(" ws? grouping-set-list ws? ")"
+grouping-set-list ::= grouping-set (ws? "," ws? grouping-set)*
+grouping-set ::= "(" ws? expression-list? ws? ")" | expression
+having-clause ::= "HAVING" ws expression
+
+# === WINDOW ===
+window-clause ::= "WINDOW" ws window-def (ws? "," ws? window-def)*
+window-def ::= identifier ws "AS" ws window-spec
+window-spec ::= "(" ws? partition-clause? ws? order-clause? ws? frame-clause? ws? ")"
+partition-clause ::= "PARTITION" ws "BY" ws expression-list
+order-clause ::= "ORDER" ws "BY" ws order-item (ws? "," ws? order-item)*
+frame-clause ::= ("ROWS" | "RANGE" | "GROUPS") ws frame-bound (ws "BETWEEN" ws frame-bound ws "AND" ws frame-bound)?
+frame-bound ::= "UNBOUNDED" ws ("PRECEDING" | "FOLLOWING") | expression ws ("PRECEDING" | "FOLLOWING") | "CURRENT" ws "ROW"
+
+# === ORDER / LIMIT / OFFSET / FETCH ===
+order-by-clause ::= "ORDER" ws "BY" ws order-item (ws? "," ws? order-item)*
+order-item ::= expression (ws ("ASC" | "DESC"))? (ws "NULLS" ws ("FIRST" | "LAST"))?
+limit-clause ::= "LIMIT" ws (integer | "ALL")
+offset-clause ::= "OFFSET" ws integer (ws ("ROW" | "ROWS"))?
+fetch-clause ::= "FETCH" ws ("FIRST" | "NEXT") ws integer? ws ("ROW" | "ROWS")? ws ("ONLY" | "WITH" ws "TIES")?
+
+# === EXPRESSIONS ===
+expression-list ::= expression (ws? "," ws? expression)*
+
+expression ::= or-expr
+or-expr ::= and-expr (ws "OR" ws and-expr)*
+and-expr ::= not-expr (ws "AND" ws not-expr)*
+not-expr ::= "NOT" ws? (comparison-expr | exists-expr) | comparison-expr
+comparison-expr ::= add-expr (ws compare-tail)?
+compare-tail ::= "<>" ws add-expr
+  | "!=" ws add-expr
+  | "<=" ws add-expr
+  | ">=" ws add-expr
+  | "<" ws add-expr
+  | ">" ws add-expr
+  | "=" ws add-expr
+  | "LIKE" ws add-expr (ws "ESCAPE" ws string)?
+  | "NOT" ws "LIKE" ws add-expr (ws "ESCAPE" ws string)?
+  | "ILIKE" ws add-expr (ws "ESCAPE" ws string)?
+  | "NOT" ws "ILIKE" ws add-expr (ws "ESCAPE" ws string)?
+  | "SIMILAR" ws "TO" ws add-expr (ws "ESCAPE" ws string)?
+  | "NOT" ws "SIMILAR" ws "TO" ws add-expr (ws "ESCAPE" ws string)?
+  | "BETWEEN" ws add-expr ws "AND" ws add-expr
+  | "NOT" ws "BETWEEN" ws add-expr ws "AND" ws add-expr
+  | "IN" ws? "(" ws? (expression-list | select-statement) ws? ")"
+  | "NOT" ws "IN" ws? "(" ws? (expression-list | select-statement) ws? ")"
+  | "IS" ws "NOT"? ws "NULL"
+  | "IS" ws "NOT"? ws "DISTINCT" ws "FROM" ws add-expr
+  | "!~~*" ws add-expr
+  | "!~~"  ws add-expr
+  | "~~*"  ws add-expr
+  | "~~"   ws add-expr
+  | "!~*"  ws add-expr
+  | "!~"   ws add-expr
+  | "~*"   ws add-expr
+  | "~"    ws add-expr
+  | "@@"   ws add-expr
+  | "@?"   ws add-expr
+  | ("=" | "<>" | "!=" | "<" | ">" | "<=" | ">=" | "LIKE" | "ILIKE" | "SIMILAR" ws "TO" | "~" | "~*" | "!~" | "!~*" | "~~" | "~~*" | "!~~" | "!~~*") ws ("ANY" | "SOME" | "ALL") ws? "(" ws? (expression-list | select-statement) ws? ")"
+
+add-expr ::= mul-expr (ws ("+" | "-" | "||") ws mul-expr)*
+mul-expr ::= unary-expr (ws ("*" | "/" | "%") ws unary-expr)*
+unary-expr ::= ("+" | "-") ws? primary | primary
+
+primary ::= base (ws? ("::" ws? type-name | jsonb-suffix))*
+
+base ::= literal | qualified-id | function-call | "(" ws? expression ws? ")" | case-expr | cast-expr | exists-expr | array-expr | row-expr | row-constructor | coalesce-expr | nullif-expr | greatest-expr | least-expr
+
+qualified-id ::= identifier (ws? "." ws? identifier)?
+
+function-call ::= qualified-id ws? "(" ws? ( "DISTINCT"? ws? expression-list | "*" | "ALL"? ws? expression )? ws? ")" (ws "FILTER" ws? "(" ws "WHERE" ws expression ws? ")")? (ws "OVER" ws (window-spec | identifier))?
+
+case-expr ::= "CASE" (ws when-clause)+ ws? (ws "ELSE" ws expression)? ws "END"
+when-clause ::= "WHEN" ws expression ws "THEN" ws expression
+
+cast-expr ::= "CAST" ws? "(" ws? expression ws "AS" ws type-name ws? ")"
+type-name ::= identifier (ws? "(" ws? integer (ws? "," ws? integer)? ws? ")")? (ws? "[" ws? "]")*
+
+exists-expr ::= "EXISTS" ws? "(" ws? select-statement ws? ")"
+
+array-expr ::= "ARRAY" ws? "[" ws? expression-list? ws? "]" | "ARRAY" ws? "(" ws? select-statement ws? ")"
+
+row-expr ::= "ROW" ws? "(" ws? expression-list? ws? ")"
+row-constructor ::= "(" ws? expression (ws? "," ws? expression)+ ws? ")"
+
+coalesce-expr ::= "COALESCE" ws? "(" ws? expression-list ws? ")"
+nullif-expr   ::= "NULLIF"   ws? "(" ws? expression ws? "," ws? expression ws? ")"
+greatest-expr ::= "GREATEST" ws? "(" ws? expression-list ws? ")"
+least-expr    ::= "LEAST"    ws? "(" ws? expression-list ws? ")"
+
+# === JSONB OPERATORS ===
+# ->  / ->> : get object/text by key (string) or array index (integer)
+# #>  / #>> : get object/text by path (text array — string only, not integer)
+# ?         : key exists (string key)
+# ?|  / ?&  : any/all keys exist (string or ARRAY[...])
+# @>  / <@  : containment — heavily used against scan_metadata, rate_card_snapshot
+jsonb-suffix ::= ("->>" | "->") ws? (string | integer)
+  | ("#>>" | "#>") ws? string
+  | ("?&" | "?|" | "?") ws? (string | array-expr)
+  | ("@>" | "<@") ws? base
+
+# === TERMINALS ===
+literal ::= string | numeric | boolean | "NULL"
+string ::= "'" ( [^'\x00] | "''" )* "'"
+numeric ::= integer ("." integer)? (("e" | "E") ("+" | "-")? integer)? | "." integer (("e" | "E") ("+" | "-")? integer)?
+integer ::= [0-9]+
+boolean ::= "TRUE" | "FALSE" | "true" | "false"
+
+identifier ::= [a-zA-Z_][a-zA-Z0-9_]* | "\"" [^"\x00]* "\""
+column-list ::= identifier (ws? "," ws? identifier)*
+table-list ::= table-ref (ws? "," ws? table-ref)*
+
+# === WHITESPACE (includes SQL comments) ===
+ws ::= ([ \t\n\r] | "--" [^\n]* "\n"? | "/*" ([^*] | "*" [^/])* "*/")+

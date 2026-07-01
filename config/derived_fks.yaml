@@ -1,0 +1,62 @@
+schema_version: "10.4"
+extraction_date: "2026-06-19"
+total_derived_edges: 5
+
+derived_fks:
+  - source_table: answer_script
+    target_table: board
+    column_mappings:
+      - source_column: course_id
+        target_column: course_id
+      - source_column: exam_id
+        target_column: exam_id
+    join_type: "LEFT"
+    comment: >
+      Derived relationship inferred from DDL comment:
+      'scope via course_id + exam_id join to board'.
+      board has a UNIQUE constraint on (course_id, exam_id).
+
+  - source_table: configuration
+    target_table: board
+    column_mappings:
+      - source_column: scope_id
+        target_column: id
+    condition: "scope_type = 'BOARD'"
+    join_type: "LEFT"
+    comment: >
+      Polymorphic derived join: configuration.scope_id references board.id
+      ONLY when scope_type = 'BOARD'. Validated by trigger
+      trg_check_configuration_scope_id_target (D-5).
+
+  - source_table: configuration
+    target_table: academic_unit
+    column_mappings:
+      - source_column: scope_id
+        target_column: id
+    condition: "scope_type = 'COURSE'"
+    join_type: "LEFT"
+    comment: >
+      Polymorphic derived join: configuration.scope_id references
+      academic_unit.id ONLY when scope_type = 'COURSE'.
+
+  - source_table: user_auxiliary_role
+    target_table: board
+    column_mappings:
+      - source_column: scope_id
+        target_column: id
+    condition: "scope_type = 'BOARD'"
+    join_type: "LEFT"
+    comment: >
+      Polymorphic derived join: user_auxiliary_role.scope_id references
+      board.id ONLY when scope_type = 'BOARD'.
+
+  - source_table: user_auxiliary_role
+    target_table: academic_unit
+    column_mappings:
+      - source_column: scope_id
+        target_column: id
+    condition: "scope_type IN ('DEPARTMENT', 'COURSE')"
+    join_type: "LEFT"
+    comment: >
+      Polymorphic derived join: user_auxiliary_role.scope_id references
+      academic_unit.id when scope_type is 'DEPARTMENT' or 'COURSE'.

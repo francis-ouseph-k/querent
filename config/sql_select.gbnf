@@ -1,0 +1,35 @@
+# sql_select.gbnf
+#
+# FIX #1 (Critical) — GBNF grammar was a no-op placeholder.
+#
+# The original grammar used:
+#   select-body ::= [^\x00]+
+# which matches any character except null — effectively no constraint at all.
+# It gave false confidence that output was being constrained to SELECT-only SQL
+# while actually allowing the model to output prose, markdown fences, JSON
+# wrappers, DML statements, or anything else.
+#
+# CURRENT DECISION: Remove GBNF grammar usage entirely.
+#
+# RATIONALE:
+#   A correct SQL GBNF grammar that handles PostgreSQL's full SELECT syntax
+#   (CTEs, window functions, JSONB operators, lateral joins, etc.) is complex
+#   to write and brittle to maintain. The existing JSON extraction fallback in
+#   sql_generator.py already handles malformed output reliably:
+#   - It strips markdown fences
+#   - It extracts JSON objects from within prose using regex
+#   - It falls back to raw SQL extraction if JSON parsing fails entirely
+#   - Step 1 of the validation pipeline (sqlglot syntax check) catches any
+#     SQL that slipped through malformed
+#
+#   The AST-based safety check in _step_safety (sql_validator.py) now provides
+#   a stronger DML/DDL guard than a GBNF grammar ever could, because it
+#   inspects the parse tree rather than constraining token generation.
+#
+# This file is retained so the grammar_path config setting does not cause a
+# FileNotFoundError at startup. sql_generator.py checks for file existence
+# before loading — if the grammar is absent or empty, it proceeds without it.
+#
+# To re-enable grammar-constrained decoding in the future, replace this file
+# with a complete PostgreSQL SELECT grammar and set RERANKER_ENABLED=true
+# only after testing it against the full schema query set.

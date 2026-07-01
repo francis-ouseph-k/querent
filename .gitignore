@@ -1,12 +1,47 @@
+# Python
 __pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+venv1/
+env/
+
+# Environment
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+logs/
+
+# Temporary files
+tmp/
 temp_*.txt
 temp_*.json
 scratch_*.py
 patch_reviewer_feedback.py
 
-.env
-*.pyc
-.vscode/
-logs/
+# Build / test
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Generated output
 output/
-tmp/
+
+# Private project assets
+data/.schema_hash
+data/docs/
+data/inputs/
+data/output/
+data/training/
+
+# Internal Documentation work area
+readme/

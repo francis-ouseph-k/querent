@@ -39,7 +39,7 @@ No external LLM APIs.
 | RRF fusion and context budget management | 1 |
 | 7-section prompt assembly | 1 |
 | JSON-constrained SQL generation | 1 |
-| 10-step SQL validation pipeline | 1 |
+| 12-step SQL validation pipeline | 1 |
 | Retry and repair loop | 1 |
 | CLI interface with dry-run default | 1 |
 | Failure corpus logging (`:correct` mechanism) | 1 |
@@ -124,9 +124,22 @@ deliverables:
 - Preserve structural and relational context: 69 DDL objects, ~150 FK edges,
   composite keys, and JSONB schema shapes.
 
+> **⚠ Unresolved discrepancy (found during this correction pass, not fixed here):**
+> `config/settings.py` currently hardcodes `ddl_path = "data/docs/digital_evaluation_schema_v10_4_1.sql"`
+> — so this requirements doc's reference to v10.4.1 matches what the *code* actually
+> ingests today. But `data/docs/` also contains `digital_evaluation_schema_v10_5.sql`,
+> with v10.4.1 sitting in `data/docs/archive/` alongside other superseded versions —
+> the naming convention strongly suggests v10.5 is the current authoritative schema and
+> v10.4.1 is stale. If that's correct, `settings.py`'s `ddl_path` needs updating (and a
+> re-ingestion run), not just this document. If v10.4.1 is intentionally still the Phase 1
+> ingestion target for some other reason, that reasoning isn't captured anywhere and should
+> be. Either way, the object counts in §8 (69 DDL objects, ~150 FK edges, ~212 chunks) are
+> only accurate for whichever version ends up configured — re-verify them once this is
+> resolved, don't carry them forward on trust.
+
 #### 4.1.2 Semantic Chunk Generation
 
-Generate exactly 10 chunk types from `TableInventory`. Use exact `ChunkType` enum values:
+Generate 11 chunk types from `TableInventory`. Use exact `ChunkType` enum values:
 
 | ChunkType | Source | Contents | Indexed in |
 |---|---|---|---|
@@ -139,6 +152,7 @@ Generate exactly 10 chunk types from `TableInventory`. Use exact `ChunkType` enu
 | `AUDIT` | Audit table patterns | Audit and history table descriptions | Qdrant + OpenSearch |
 | `PARTITION` | Partition definitions | Partition keys, strategy, retention policy | Qdrant + OpenSearch |
 | `GLOSSARY` | data/glossary.json | Institution-specific term definitions | Qdrant + OpenSearch |
+| `BUSINESS_RULE` | Guardrail definitions | Cross-table business rules and domain mappings | Qdrant + OpenSearch |
 | `FEW_SHOT` | data/few_shot_examples.json | NL→SQL example pairs | **Qdrant only** |
 
 Each chunk carries metadata: `chunk_id`, `chunk_type`, `text`, `domain_tags`,
@@ -257,16 +271,23 @@ that appears in multiple retrieval results must appear in the prompt only once.
 
 #### 4.2.5 SQL Validation Pipeline
 
-6 sequential steps. First failing step returns error context for retry:
+12 sequential steps (`validation/core/sql_validator.py::build_default_pipeline`). First
+failing step returns error context for retry:
 
-| Step | Check | Method |
-|---|---|---|
-| 1. Syntax | PostgreSQL grammar | sqlglot parse (dialect="postgres") |
-| 2. Schema grounding | No hallucinated tables or columns | AST walk; CTE aliases excluded; column-level check via `TableInventory` |
-| 3. Safety | No DML; no Cartesian joins | AST DML node check + AST Cartesian check (not regex); blocked keyword regex as secondary |
-| 4. Security | Tenant filter present or injected | AST injection; CTE-aware; derived from DDL columns dynamically |
-| 5. Cost | EXPLAIN cost below threshold | PostgreSQL EXPLAIN; default threshold 1,000,000 |
-| 6. Timeout | Statement timeout enforced | Per-connection `statement_timeout=30000` |
+| # | Step | Check | Method |
+|---|---|---|---|
+| 1 | Syntax | PostgreSQL grammar | sqlglot parse (dialect="postgres") |
+| 2 | Placeholder | No parameter placeholders (`:qp_id`, `$1`) | AST scan — LLM must use literal values, not parameterised queries |
+| 3 | Alias | No hallucinated table aliases | AST — catches aliases the LLM invents that don't map to a declared table |
+| 4 | Schema grounding | No hallucinated tables or columns | AST walk; CTE aliases excluded; column-level check via `TableInventory` |
+| 5 | Join | No Cartesian joins | AST inspection (not regex — `FROM\s+\w+\s*,\s*\w+` false-positives on `generate_series(1, 10)`) |
+| 6 | Safety | No DML/DDL statements | AST DML/DDL node check; blocked keyword regex as secondary defence |
+| 7 | Security | Tenant filter present or injected | AST injection; CTE-aware; tenant table set derived dynamically from schema map |
+| 8 | Group-by alignment | Non-aggregated SELECT columns appear in GROUP BY | AST — rejects PostgreSQL-invalid aggregate/group mismatches |
+| 9 | Cost | EXPLAIN cost below threshold | PostgreSQL EXPLAIN; default threshold via `VALIDATION_EXPLAIN_COST_THRESHOLD`; deterministic autofix attempted on PG planner hints before rejecting |
+| 10 | Semantic | Lightweight heuristic logic checks (business-rule / phrasing alignment) | Rule-based heuristics over NL + SQL |
+| 11 | Hardcoded literal | Suspicious hardcoded integer ID literals | AST — flags IDs with no basis in the NL question |
+| 12 | Aggregation | Nested aggregates / missing GROUP BY | AST |
 
 **Critical implementation requirements:**
 - Tenant-scoped table set must be derived dynamically from the schema map at startup
@@ -282,7 +303,9 @@ that appears in multiple retrieval results must appear in the prompt only once.
 
 - On validation failure, construct a correction prompt including the original question,
   failed SQL, and specific error message from the failing validation step.
-- Maximum 2 retries (`VALIDATION_MAX_RETRIES=2`).
+- Maximum retries is tunable via `VALIDATION_MAX_RETRIES` (`config/settings.py` default: 2;
+  current `.env` override: **4** — every failed query pays for up to 5 full pipeline passes
+  at the tuned setting, not 3. Keep this doc's number in sync with `.env` if it's retuned.
 - After retry exhaustion, log failure to `failures/` and return an error to the user.
 - Track retry success rate as a production reliability metric.
 
@@ -292,6 +315,8 @@ that appears in multiple retrieval results must appear in the prompt only once.
 - Pool initialisation must use double-checked locking (thread-safe).
 - Before returning a connection to the pool on error, always call `conn.rollback()`.
 - Enforce `default_transaction_read_only=on` at the connection level.
+- Enforce `statement_timeout=30000` (30 seconds) per connection — not a pipeline
+  validation step; applied at connection setup, same layer as read-only enforcement.
 - Dry-run mode (default): validate SQL, display result, do not execute.
 - Execute mode: validate then execute; row limit enforced via AST LIMIT injection.
 
@@ -326,17 +351,24 @@ that appears in multiple retrieval results must appear in the prompt only once.
 | Query understanding (rule-based) | `generation/query_understanding.py` |
 | Execution orchestrator | `pipeline/runner.py` |
 | JSON-constrained SQL generator | `generation/sql_generator.py` |
-| 10-step validation pipeline + RetryValidator | `validation/sql_validator.py` |
-| Semantic logic heuristics | `validation/semantic_checks.py` |
+| 12-step validation pipeline + RetryValidator | `validation/core/sql_validator.py` |
+| Semantic logic heuristics | `validation/semantic/semantic_checks.py` |
 | CLI interface | `cli/interface.py` |
 | Schema drift detection | `utils/schema_versioning.py` |
-| Blocklist constants | `validation/blocklist.py` |
+| Blocklist constants | `validation/utils/blocklist.py` |
 | System prompts and templates | `generation/prompt_builder.py` |
 | JSON schema definition file | `config/sql_select.json` |
 | Ingestion entry point | `ingest.py` |
 | Application entry point | `main.py` |
 | Phase 1 requirements file | `requirements.txt` |
 | Environment configuration | `.env` |
+
+**Note:** `validation/` has grown into a multi-module package rather than the flat files
+implied above — the 12 steps in §4.2.5 are split across `validation/ast/` (syntax,
+placeholder, alias, join, safety, aggregation), `validation/schema/`, `validation/security/`,
+`validation/execution/` (cost), and `validation/semantic/` (semantic, hardcoded-literal),
+orchestrated by `validation/core/sql_validator.py`. The table above lists the primary
+entry points, not an exhaustive file list.
 
 ### 4.5 Phase 1 Non-Functional Requirements
 
@@ -589,7 +621,7 @@ candidates for a future Phase 3:
 | Design decisions (DDL-documented) | 22 |
 | Semantic chunks (post-ingestion) | ~212 |
 | Peak concurrent evaluators | 5,000 |
-| `evaluation_marks` rows at 5-year steady state | ~20 million |
-| `answer_script` rows at 5-year steady state | ~5 million |
+| High-volume core tables (5-year steady state) | ~20 million rows |
+| Supporting transactional tables (5-year steady state) | ~5 million rows |
 
 ---

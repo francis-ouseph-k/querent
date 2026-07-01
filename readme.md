@@ -1,167 +1,151 @@
-# Natural Language → SQL Query Engine
+---
 
-Turn plain-English business questions into validated, production-ready SQL for large enterprise relational databases using hybrid retrieval, local LLM inference, and multi-layer validation—without requiring cloud-based LLM services.
+# Querent — Natural Language → SQL Query Engine
+
+A local, schema-aware Natural Language → SQL system that generates validated PostgreSQL queries from business questions using hybrid retrieval, deterministic validation, and iterative correction.
+
+The system is designed for large relational schemas with complex joins, workflow-driven entities, and strict execution constraints, operating fully on local infrastructure without external LLM APIs.
 
 ---
 
 ## Overview
 
-Enterprise relational databases often contain hundreds of interconnected tables, complex relationships, and domain-specific terminology, making accurate SQL generation significantly more challenging than conventional text-to-SQL benchmarks.
+Enterprise relational databases typically involve deeply interconnected tables, domain-specific terminology, and non-trivial join paths, making reliable natural language to SQL translation a multi-step reasoning problem rather than a single generation task.
 
-This project implements an enterprise-oriented Natural Language → SQL pipeline that combines Retrieval-Augmented Generation (RAG), deterministic validation, and iterative self-correction to generate SQL that is not only syntactically correct but also semantically aligned with the user's intent.
+This system addresses those challenges using a structured pipeline that combines retrieval, constraint-based generation, and multi-layer validation before execution.
 
-The system is designed to operate entirely on local infrastructure, making it suitable for environments where privacy, security, and predictable operating costs are essential.
-
----
-
-## Highlights
-
-* Enterprise-oriented Natural Language → SQL architecture
-* Hybrid Retrieval-Augmented Generation (RAG)
-* Fully local LLM inference (no cloud dependency)
-* Multi-layer SQL validation
-* Deterministic query auto-repair
-* Confidence scoring
-* Continuous improvement through curated fine-tuning
+All components run locally, making the system suitable for privacy-sensitive and cost-constrained environments.
 
 ---
 
-## High-Level Architecture
+## Key Capabilities
+
+* Hybrid retrieval across semantic search, keyword search, and schema graph traversal
+* Schema-aware prompt construction with minimal context selection
+* Local LLM-based SQL generation (no external API dependencies)
+* Deterministic multi-stage SQL validation before execution
+* Automatic correction loop for recoverable SQL errors
+* Confidence scoring and structured output format
+* Failure logging for downstream improvement pipelines
+
+---
+
+## Architecture
 
 ```text
-Natural Language Question
-          │
-          ▼
-┌──────────────────────────┐
-│ Query Understanding      │
-│ Intent + Entity Analysis │
-└──────────────────────────┘
-          │
-          ▼
-┌──────────────────────────┐
-│ Hybrid Retrieval         │
-│ Semantic + Keyword Search│
-│ Fusion + Re-ranking      │
-└──────────────────────────┘
-          │
-          ▼
-┌──────────────────────────┐
-│ Prompt Assembly          │
-│ Relevant Schema Context  │
-│ Join Knowledge           │
-│ Few-shot Examples        │
-└──────────────────────────┘
-          │
-          ▼
-┌──────────────────────────┐
-│ SQL Generation           │
-│ Local LLM Inference      │
-└──────────────────────────┘
-          │
-          ▼
-┌──────────────────────────┐
-│ Multi-layer Validation   │◄─────────────┐
-│ • Syntax                 │              │
-│ • Schema                 │              │
-│ • Safety                 │              │
-│ • Semantic Correctness   │              │
-└──────────────────────────┘              │
-      │                                   │
-      ├── Pass ───────────────┐           │
-      │                       ▼           │
-      │              ┌──────────────────┐ │
-      │              │ Execute & Return │ │
-      │              │ Results +        │ │
-      │              │ Confidence Score │ │
-      │              └──────────────────┘ │
-      │                                   │
-      └── Fail                            │
-             │                            │
-             ▼                            │
-     Auto-repair / Regenerate ────────────┘
+Natural Language Query
+        │
+        ▼
+Query Understanding
+(Intent + Entity + Table Mapping)
+        │
+        ▼
+Hybrid Retrieval Layer
+(Vector + BM25 + FK Graph Traversal)
+        │
+        ▼
+Context Assembly
+(Schema + Joins + Glossary + Examples)
+        │
+        ▼
+Local LLM Inference
+(SQL Generation)
+        │
+        ▼
+Validation Pipeline
+(Syntax → Schema → Safety → Semantic)
+        │
+        ├── Pass → Execution → Results
+        │
+        └── Fail → Repair Loop → Re-validation
 ```
 
 ---
 
-## Processing Flow
+## Processing Pipeline
 
-1. Interpret the user's natural language request.
-2. Retrieve only the schema knowledge relevant to the request.
-3. Assemble contextual prompts containing schema relationships and representative examples.
-4. Generate SQL using a locally hosted language model.
-5. Validate the generated SQL through multiple deterministic validation layers.
-6. Automatically repair known safe issues where possible, then re-validate.
-7. Execute validated SQL and return both the query results and a confidence score.
-8. Capture failures to continuously improve future model performance through curated fine-tuning.
+1. Parse and normalize natural language input
+2. Identify candidate schema entities using rule-based intent mapping
+3. Retrieve relevant schema context using hybrid retrieval (dense + sparse + graph traversal)
+4. Construct constrained prompt with prioritized schema sections
+5. Generate SQL using a local LLM
+6. Validate SQL through deterministic rule-based and AST-based checks
+7. Apply automatic repair for safe, recoverable failures
+8. Execute validated queries against a read-only database
+9. Log failures for continuous dataset improvement
 
 ---
 
 ## Design Principles
 
-The system is built around five core architectural principles:
-
-* **Enterprise-first** — designed for large relational schemas rather than demonstration datasets.
-* **Retrieval-driven reasoning** — provide only the schema context relevant to each request.
-* **Validation before execution** — generated SQL must satisfy deterministic quality gates before reaching the database.
-* **Local inference** — eliminate external API dependencies while preserving data privacy.
-* **Continuous learning** — leverage production evaluation to improve model accuracy over time.
+* **Schema-first reasoning** — retrieval is grounded in actual relational structure
+* **Deterministic validation** — no execution without AST-level safety checks
+* **Local-only inference** — no external LLM or API dependencies
+* **Graph-aware retrieval** — join paths are derived from FK relationships
+* **Failure-driven improvement** — production errors are structured for training reuse
 
 ---
 
-## Why This Approach
+## Why This System is Different
 
-Unlike conventional text-to-SQL systems that rely primarily on prompt engineering, this project introduces multiple reliability layers before generated SQL reaches execution.
+Most text-to-SQL systems rely primarily on prompt engineering or flat schema retrieval. This system introduces structural constraints before generation:
 
-| Capability                    | Description                                                                                                     |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| **Hybrid Retrieval**          | Retrieves only the most relevant schema knowledge using semantic and keyword search with fusion and re-ranking. |
-| **Layered Validation**        | Verifies syntax, schema compatibility, execution safety, and semantic correctness before execution.             |
-| **Deterministic Auto-repair** | Automatically resolves a defined class of safe SQL issues before regeneration is attempted.                     |
-| **Fully Local Inference**     | Executes entirely on locally hosted language models without cloud-based inference services.                     |
-| **Continuous Improvement**    | Production evaluation feeds curated examples into an iterative fine-tuning pipeline.                            |
+| Capability                  | Description                                                      |
+| --------------------------- | ---------------------------------------------------------------- |
+| Graph-aware retrieval       | Uses FK graph traversal to identify valid join paths             |
+| Multi-source context fusion | Combines vector search, keyword search, and schema graph signals |
+| AST-based validation        | Enforces SQL correctness beyond regex or heuristic checks        |
+| Controlled execution gate   | Prevents unsafe or invalid SQL from reaching the database        |
+| Repair loop                 | Iteratively corrects recoverable SQL failures                    |
 
 ---
 
 ## Technology Stack
 
-* Python
-* Hybrid Retrieval (Semantic + Keyword Search)
-* Retrieval-Augmented Generation (RAG)
-* Local Large Language Models
-* SQL Validation Pipeline
-* PostgreSQL-compatible relational databases
+* Python 3.11
+* PostgreSQL-compatible databases
+* Local LLM inference (llama.cpp / GGUF)
+* Vector search (Qdrant)
+* Keyword search (OpenSearch)
+* SQL AST parsing (sqlglot)
+* Structured logging (structlog)
 
 ---
 
 ## Repository Structure
 
 ```text
-pipeline/       Workflow orchestration
-retrieval/      Hybrid retrieval components
-generation/     Query understanding, prompt assembly, and LLM inference
-validation/     SQL validation and deterministic auto-repair
-indexing/       Vector index construction and maintenance
-tests/          Automated test suite
+pipeline/     Orchestration and execution flow
+retrieval/    Hybrid retrieval (vector + keyword + graph)
+generation/   Prompting, query understanding, LLM inference
+validation/   AST-based SQL validation and repair
+indexing/     Schema indexing pipelines
+tests/        System validation tests
 ```
-
----
-
-## Repository Notice
-
-This repository is published as a technical portfolio and architecture showcase.
-
-Sensitive datasets, proprietary schema information, configuration, credentials, and internal evaluation assets have been intentionally excluded from this public repository.
 
 ---
 
 ## License
 
-This repository is published as a portfolio showcase. See the `LICENSE` file for the terms governing viewing and use of the source code.
+This project is licensed under the MIT License. See `LICENSE` for details.
 
 ---
 
 ## Status
 
-The retrieval pipeline and validation framework are operational.
+The system implements a complete end-to-end NL → SQL pipeline with retrieval, generation, validation, and execution layers.
 
-Current work focuses on expanding semantic validation coverage and advancing domain-specific fine-tuning to further improve SQL generation accuracy on enterprise workloads.
+Current focus is on improving semantic accuracy for complex multi-join queries and expanding the failure-driven training dataset.
+
+---
+
+## Why this version is better
+
+* Removes vague “enterprise marketing” tone
+* Emphasizes **architecture over claims**
+* Makes differentiation concrete (graph + AST + repair loop)
+* Reads like a **senior system design artifact**, not a demo project
+* Recruiter-friendly but still technically credible
+
+---
+

@@ -1,0 +1,1069 @@
+entity_synonyms:
+  scripts: answer_script
+  questions: question
+  evaluators: faculty_cache
+  users: app_user
+  students: student_cache
+  boards: board
+  papers: question_paper
+  attempts: evaluation_attempt
+  pages: script_page
+  bundles: bundle
+  transitions: workflow_state_transition
+  configurations: configuration
+  policies: evaluation_policy
+  annotations: evaluation_annotation
+  coordinators: board_coordinator
+  results: result
+  marks: evaluation_marks
+
+business_rules:
+- domain_concept: leaf question
+  sql_mapping: max_marks IS NOT NULL
+  table_context: question
+  description: A leaf question is defined as a question that has marks assigned to
+    it. It is not necessarily just parent_question_id IS NULL.
+- domain_concept: academic year format
+  sql_mapping: "academic_year = 'YYYY-YYYY' (e.g., '2025-2026')"
+  table_context: exam_schedule_cache, student_cache, academic_calendar, faculty_course_mapping
+  description: "Academic year strings must be exactly in 'YYYY-YYYY' format, representing a span of two consecutive years (e.g. '2025-2026'). Never use a single year '2025' or the same year twice '2025-2025'."
+- domain_concept: published result
+  sql_mapping: published_at IS NOT NULL
+  table_context: result
+  description: A result is only considered 'published' if the published_at timestamp
+    is populated.
+- domain_concept: cross-listed course
+  sql_mapping: academic_unit_relationship.relationship_type = 'CROSS_LISTING'
+  table_context: academic_unit_relationship
+  description: Cross-listing between courses is defined in the relationship table,
+    not via the closure table.
+- domain_concept: exam hall
+  sql_mapping: bundle.bundle_code
+  table_context: bundle
+  description: There is no exam_hall column. The physical exam hall or room identifier
+    is tracked via bundle.bundle_code.
+- domain_concept: board coordinator name
+  sql_mapping: faculty_cache.name
+  table_context: board_coordinator JOIN faculty_cache ON board_coordinator.faculty_cache_id
+    = faculty_cache.id
+  description: The name of the coordinator is stored in faculty_cache, joined via
+    faculty_cache_id.
+- domain_concept: extracted metadata on scan
+  sql_mapping: script_page.extracted_metadata
+  table_context: script_page
+  description: OCR confidence and metadata live on the script_page table, not scan_history.
+- domain_concept: question title
+  sql_mapping: question_paper.title
+  table_context: question_paper
+  description: Questions do not have titles. The title of the paper is in question_paper.title.
+- domain_concept: COE Office
+  sql_mapping: app_user.display_name = 'COE Office' AND app_user.user_type = 'ADMIN_STAFF'
+  table_context: app_user
+  description: The COE office is an administrative staff user, not a FACULTY user
+    type.
+- domain_concept: revaluation attempt created
+  sql_mapping: revaluation_request.resulting_attempt_id IS NOT NULL
+  table_context: revaluation_request
+  description: A revaluation request results in a new attempt only if the resulting_attempt_id
+    is populated, not just when approval_status='APPROVED'.
+- domain_concept: scan metadata keys
+  sql_mapping: scan_metadata->>'scanner_id', scan_metadata->>'scan_timestamp', scan_metadata->>'page_count',
+    scan_metadata->>'dpi', scan_metadata->>'quality_score', scan_metadata->>'flags'
+  table_context: answer_script
+  description: These are the strict JSON keys available inside the scan_metadata JSONB
+    column.
+- domain_concept: ERP identifier vs surrogate key
+  sql_mapping: 'Never join on employee_erp_id, student_erp_id, or exam_erp_id. Always
+    use the BIGINT surrogate: faculty_cache.id, student_cache.id, exam_schedule_cache.id'
+  table_context: faculty_cache, student_cache, exam_schedule_cache
+  description: 'D-23 migration demoted VARCHAR ERP IDs to display-only. All FK columns
+    inside the schema use BIGINT surrogates: faculty_cache_id, student_id (on answer_script),
+    exam_id. employee_erp_id is NOT a join key.'
+- domain_concept: extracted_metadata keys
+  sql_mapping: extracted_metadata->>'text', extracted_metadata->>'confidence', extracted_metadata->>'bounding_boxes',
+    extracted_metadata->>'language'
+  table_context: script_page
+  description: Only these four keys exist in extracted_metadata. Do not invent keys
+    like 'expected_pages' or 'actual_pages'.
+- domain_concept: deadline extension types
+  sql_mapping: deadline_extension_request = board-level extension; revaluation_extension_request
+    = per-revaluation extension
+  table_context: deadline_extension_request, revaluation_extension_request
+  description: When the question mentions a revaluation deadline, use revaluation_extension_request.
+    When it mentions a board deadline, use deadline_extension_request.
+- domain_concept: board scope for answer_script
+  sql_mapping: 'answer_script has NO board_id column. Scope to a board via: JOIN board
+    b ON b.course_id = answer_script.course_id AND b.exam_id = answer_script.exam_id'
+  table_context: answer_script, board
+  description: Never join board.id directly to answer_script.id. They are unrelated
+    keys.
+- domain_concept: evaluation_marks join path
+  sql_mapping: evaluation_marks.attempt_id -> evaluation_attempt.id -> evaluation_attempt.script_id
+    -> answer_script.id
+  table_context: evaluation_marks, evaluation_attempt, answer_script
+  description: evaluation_marks.question_id references question.id, NOT answer_script.id.
+    To reach answer_script, go through evaluation_attempt.
+- domain_concept: question_paper to board join
+  sql_mapping: board.qp_id = question_paper.id
+  table_context: board, question_paper
+  description: board.id is NOT equal to question_paper.id. The FK from board to question_paper
+    is board.qp_id.
+- domain_concept: average of a per-group count
+  sql_mapping: SELECT AVG(sub.count_col) FROM (SELECT id, COUNT(*) AS count_col FROM
+    ... GROUP BY id) sub
+  table_context: any
+  description: When asked for 'average number of X per Y', first compute COUNT(*)
+    GROUP BY Y in a subquery, then wrap with AVG() on the outer query.
+- domain_concept: percentage
+  sql_mapping: COUNT(*) FILTER (WHERE condition) * 100.0 / NULLIF(COUNT(*), 0)
+  table_context: any
+  description: Percentage always requires multiplying by 100.0 and dividing by the
+    total count. Never compare absolute counts.
+- domain_concept: count per category
+  sql_mapping: SELECT category, COUNT(*) FROM ... GROUP BY category
+  table_context: any
+  description: When asked to 'count per X', the query must have GROUP BY X. Do not
+    omit the grouping column.
+- domain_concept: parent question
+  sql_mapping: question.id IN (SELECT DISTINCT parent_question_id FROM question WHERE
+    parent_question_id IS NOT NULL)
+  table_context: question
+  description: A parent question is one that has children. It is NOT defined by parent_question_id
+    IS NULL (that would be a top-level question, which may or may not have children).
+- domain_concept: sub-question
+  sql_mapping: parent_question_id IS NOT NULL
+  table_context: question
+  description: A sub-question has a parent_question_id. This is different from a leaf
+    question (which has max_marks IS NOT NULL).
+- domain_concept: active assignment or attempt
+  sql_mapping: is_active = TRUE
+  table_context: script_assignment, evaluation_attempt
+  description: Unless the question explicitly asks for historical data, always filter
+    for is_active = TRUE on script_assignment and evaluation_attempt.
+- domain_concept: evaluator pool role filter
+  sql_mapping: evaluator_pool.eligible_role = 'PRIMARY' | 'REVIEW' | 'REVAL' | 'THIRD'
+  table_context: evaluator_pool
+  description: When asked about evaluators in a specific role, filter evaluator_pool.eligible_role.
+    Do not assume all pool entries are primary evaluators.
+- domain_concept: approval attribution
+  sql_mapping: approved_by IS NOT NULL AND approved_at IS NOT NULL
+  table_context: answer_key, revaluation_request, deadline_extension_request, honorarium_summary
+  description: When status is APPROVED or EXPORTED, approved_by and approved_at must
+    both be populated. Do not use unrelated timestamps like app_user.created_at.
+- domain_concept: working_day_offset function
+  sql_mapping: working_day_offset(start_date DATE, n_days INTEGER, academic_year VARCHAR)
+  table_context: function
+  description: The first argument must be DATE, not TIMESTAMP. The third argument
+    is the academic_year string (e.g., '2025-2026').
+- domain_concept: script_assignment timestamp
+  sql_mapping: assigned_at
+  table_context: script_assignment
+  description: script_assignment does NOT have created_at. Use assigned_at for the
+    assignment timestamp.
+- domain_concept: academic_year format
+  sql_mapping: '''YYYY-YYYY'' (e.g., ''2025-2026'')'
+  table_context: exam_schedule_cache, academic_calendar, faculty_course_mapping
+  description: Academic year is always in YYYY-YYYY format. Never generate values
+    like '2025-2025'.
+- domain_concept: unit_type vs code
+  sql_mapping: unit_type is the category (CAMPUS, SCHOOL, DEPARTMENT, PROGRAM, COURSE).
+    code is the short identifier (e.g., 'CSE', 'CS101').
+  table_context: academic_unit
+  description: Never compare unit_type to a code value like 'CSE'. Use unit_type =
+    'DEPARTMENT' AND code = 'CSE'.
+- domain_concept: prerequisite relationship scope
+  sql_mapping: relationship_type = 'PREREQUISITE' AND from_unit_type = 'COURSE' AND
+    to_unit_type = 'COURSE'
+  table_context: relationship_type_config, academic_unit_relationship
+  description: Prerequisite relationships are defined between COURSE units, not PROGRAM
+    units.
+- domain_concept: invented entity ID
+  sql_mapping: Reject literals like = 123, = 1, = 1000 in WHERE clauses unless the
+    NL explicitly provides an ID
+  table_context: any
+  description: If the question names an entity by name (e.g., 'Data Structures paper'),
+    resolve it via a name-based lookup subquery. Never invent numeric IDs.
+- domain_concept: unacknowledged notification age
+  sql_mapping: EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - n.created_at)) / 3600
+  table_context: notification
+  description: For unacknowledged notifications, acknowledged_at is NULL. Compute
+    age using created_at against CURRENT_TIMESTAMP, not acknowledged_at.
+- domain_concept: honorarium role mapping
+  sql_mapping: role_in_board IN ('EVALUATOR', 'REVIEWER', 'BOARD_COORDINATOR')
+  table_context: honorarium_summary
+  description: honorarium_summary.role_in_board uses EVALUATOR/REVIEWER/BOARD_COORDINATOR.
+    These are different from honorarium_rate_card.rates keys (PRIMARY/REVIEW/REVAL/THIRD)
+    and evaluation_attempt.attempt_type values.
+- domain_concept: this year
+  sql_mapping: col >= DATE_TRUNC('year', CURRENT_DATE) AND col < DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '1 year'
+  table_context: any
+  description: When the question asks for 'this year', look for records within the current calendar year. Do not use rolling years (e.g. CURRENT_DATE + INTERVAL '1 year').
+- domain_concept: last week
+  sql_mapping: col >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week' AND col < DATE_TRUNC('week', CURRENT_DATE)
+  table_context: any
+  description: When the question asks for 'last week', look for records in the previous full calendar week, not a rolling 7-day window.
+- domain_concept: specific month filtering
+  sql_mapping: >-
+    For 'January 2026': WHERE col >= '2026-01-01' AND col < '2026-02-01'.
+    For 'December 2025': WHERE col >= '2025-12-01' AND col < '2026-01-01'.
+    NEVER use DATE_TRUNC('year', ...) when the question asks for a specific month.
+  table_context: any, academic_calendar
+  description: >-
+    When asked for a specific month and year, use exact date boundaries.
+    DATE_TRUNC('year', ...) gives January 1st, NOT the requested month.
+    Always compute boundaries for the exact requested month.
+- domain_concept: LEFT JOIN filter placement
+  sql_mapping: >-
+    WRONG: LEFT JOIN child c ON ... WHERE c.is_active = TRUE (eliminates NULLs).
+    CORRECT: LEFT JOIN child c ON ... AND c.is_active = TRUE (preserves NULLs).
+  table_context: any
+  description: >-
+    When filtering the right-side table of a LEFT JOIN, put the filter
+    IN the ON clause, not in WHERE. A WHERE on the right-side table
+    eliminates NULL rows, converting LEFT JOIN to INNER JOIN.
+    Exception: WHERE c.id IS NULL (anti-join) is correct.
+- domain_concept: average requires AVG function
+  sql_mapping: >-
+    When the question contains 'average' or 'avg', the outermost SELECT
+    MUST contain AVG(). If the metric is a per-group count, use:
+    SELECT AVG(sub.cnt) FROM (SELECT ..., COUNT(*) AS cnt GROUP BY ...) sub
+  table_context: any
+  description: >-
+    A question asking for 'average retention days' or 'average corrections'
+    must use AVG(column) or AVG(sub.cnt). Never return raw values or
+    COUNT without wrapping in AVG() when the question asks for an average.
+- domain_concept: exported to payroll
+  sql_mapping: "WHERE hs.approval_status = 'EXPORTED'"
+  table_context: honorarium_summary
+  description: >-
+    'Exported to payroll' specifically means approval_status = 'EXPORTED'.
+    Do not return all honorarium summaries without this filter when the
+    question mentions 'exported'.
+- domain_concept: global scope configuration
+  sql_mapping: "WHERE c.scope_type = 'GLOBAL' AND c.scope_id IS NULL"
+  table_context: configuration
+  description: >-
+    'Global' configurations are scope_type = 'GLOBAL' with scope_id IS NULL.
+    Do not return all configurations when the question asks for global scope.
+- domain_concept: global scope evaluation policy
+  sql_mapping: "WHERE ep.course_id IS NULL AND ep.board_id IS NULL"
+  table_context: evaluation_policy
+  description: >-
+    'Global scope' evaluation policies have both course_id and board_id NULL.
+- domain_concept: sub-question count per parent
+  sql_mapping: >-
+    SELECT q.parent_question_id, COUNT(*) AS sub_count
+    FROM question q WHERE q.parent_question_id IS NOT NULL
+    GROUP BY q.parent_question_id HAVING COUNT(*) = N
+  table_context: question
+  description: >-
+    To find parents with exactly N sub-questions, GROUP BY parent_question_id.
+    Never group by the child's own id when counting siblings.
+column_blocklist:
+- table: answer_script
+  column: board_id
+  message: answer_script does NOT have board_id. Join to board via board.course_id
+    = answer_script.course_id AND board.exam_id = answer_script.exam_id.
+- table: answer_script
+  column: is_active
+  message: answer_script does NOT have is_active. Filter on lifecycle_status = 'ATTEMPTED'
+    or other lifecycle status instead.
+- table: answer_script
+  column: academic_year
+  message: answer_script does NOT have academic_year. academic_year is on exam_schedule_cache.
+    Join to exam_schedule_cache via exam_id.
+- table: answer_script
+  column: qp_id
+  message: 'answer_script does NOT have qp_id. The question paper link is on board
+    (board.qp_id). Join: board b ON b.course_id = s.course_id AND b.exam_id = s.exam_id,
+    then use b.qp_id.'
+- table: app_user
+  column: name
+  message: app_user does NOT have name. Use display_name instead.
+- table: faculty_cache
+  column: display_name
+  message: faculty_cache does NOT have display_name. Use name instead.
+- table: faculty_cache
+  column: employee_id
+  message: faculty_cache does NOT have employee_id. Its PK is id (BIGINT) and its
+    ERP identifier is employee_erp_id (VARCHAR).
+- table: board
+  column: code
+  message: board does NOT have code. Use board.id instead.
+- table: board
+  column: name
+  message: board does NOT have name. Use board.id or join to academic_unit for course
+    name.
+- table: script_assignment
+  column: board_id
+  message: script_assignment does NOT have board_id. Join via answer_script or evaluation_attempt
+    to reach board.
+- table: script_assignment
+  column: cal_date
+  message: script_assignment does NOT have cal_date. Join to academic_calendar on
+    cal_date = script_assignment.assigned_at::DATE.
+- table: script_assignment
+  column: evaluation_status
+  message: script_assignment does NOT have evaluation_status. evaluation_status is
+    on answer_script. Attempt status is on evaluation_attempt.status.
+- table: script_assignment
+  column: frozen_at
+  message: script_assignment does NOT have frozen_at. frozen_at is on evaluation_attempt.
+- table: script_assignment
+  column: submitted_at
+  message: script_assignment does NOT have submitted_at. submitted_at is on evaluation_attempt.
+- table: exam_schedule_cache
+  column: cal_date
+  message: exam_schedule_cache does NOT have cal_date. cal_date is only on academic_calendar.
+- table: exam_schedule_cache
+  column: created_at
+  message: exam_schedule_cache does NOT have created_at. Use synced_at for the last
+    sync timestamp.
+- table: exam_schedule_cache
+  column: exam_id
+  message: exam_schedule_cache does NOT have exam_id. Its PK is id (BIGINT) and its
+    ERP identifier is exam_erp_id (VARCHAR).
+- table: question_paper
+  column: status
+  message: question_paper does NOT have status. Use is_locked (BOOLEAN) for lock state.
+    For approval status, check answer_key.status.
+- table: question_paper
+  column: qp_id
+  message: question_paper does NOT have qp_id. Its PK is id (BIGINT) and its ERP identifier
+    is qp_erp_id (VARCHAR). The column named qp_id exists on board and question_section.
+- table: moderation_application
+  column: rule_type
+  message: 'moderation_application does NOT have rule_type. rule_type is on moderation_rule.
+    Join: moderation_rule mr ON mr.id = ma.moderation_rule_id.'
+- table: moderation_application
+  column: parameters
+  message: 'moderation_application does NOT have parameters. parameters is on moderation_rule.
+    Join: moderation_rule mr ON mr.id = ma.moderation_rule_id.'
+- table: result
+  column: submitted_at
+  message: result does NOT have submitted_at. Use result.published_at instead.
+- table: user_auxiliary_role
+  column: is_active
+  message: user_auxiliary_role does NOT have is_active. Use effective_to IS NULL for
+    currently active roles.
+- table: scan_history
+  column: scan_status
+  message: scan_history does NOT have scan_status. The status is scan_status on answer_script.
+- table: scan_history
+  column: bundle_id
+  message: 'scan_history does NOT have bundle_id. Join to bundle via: answer_script
+    a ON a.id = sh.script_id JOIN bundle b ON b.id = a.bundle_id.'
+- table: scan_history
+  column: is_active
+  message: scan_history does NOT have is_active. All scan_history rows are retained;
+    use replaced_previous to identify rescans.
+- table: evaluation_attempt
+  column: updated_at
+  message: evaluation_attempt does NOT have updated_at. Use created_at, started_at,
+    frozen_at, or submitted_at.
+- table: evaluation_attempt
+  column: created_by
+  message: evaluation_attempt does NOT have created_by. Use evaluator_user_id for
+    the evaluator's app_user.id.
+- table: script_hold
+  column: block_status
+  message: script_hold does NOT have block_status. block_status is on answer_script.
+- table: script_hold
+  column: block_reason
+  message: script_hold does NOT have block_reason. Use hold_reason on script_hold,
+    or block_reason on answer_script.
+- table: revaluation_request
+  column: academic_year
+  message: revaluation_request does NOT have academic_year. academic_year is on exam_schedule_cache.
+    Join to exam_schedule_cache via exam_id.
+- table: revaluation_request
+  column: board_id
+  message: revaluation_request does NOT have board_id. Join via answer_script and
+    board.
+- table: revaluation_extension_request
+  column: board_id
+  message: revaluation_extension_request does NOT have board_id. Join via revaluation_request
+    -> answer_script -> board.
+- table: revaluation_extension_request
+  column: resulting_attempt_id
+  message: revaluation_extension_request does NOT have resulting_attempt_id. resulting_attempt_id
+    is on revaluation_request.
+- table: student_cache
+  column: display_name
+  message: student_cache does NOT have display_name. Use name instead.
+- table: student_cache
+  column: student_id
+  message: student_cache does NOT have student_id. Its PK is id (BIGINT) and its ERP
+    identifier is student_erp_id (VARCHAR).
+- table: evaluation_attempt
+  column: resulting_attempt_id
+  message: evaluation_attempt does NOT have resulting_attempt_id. resulting_attempt_id
+    is on revaluation_request.
+- table: board
+  column: board_id
+  message: board table has id, NOT board_id.
+- table: script_assignment
+  column: created_at
+  message: script_assignment does NOT have created_at. Use assigned_at instead.
+- table: answer_script
+  column: evaluator_id
+  message: answer_script does NOT have evaluator_id. Join to script_assignment or
+    evaluation_attempt to retrieve the evaluator.
+- table: answer_script
+  column: published_at
+  message: answer_script does NOT have published_at. Result has published_at.
+- table: script_assignment
+  column: status
+  message: script_assignment does NOT have status. Attempt status is on evaluation_attempt.status.
+- table: revaluation_request
+  column: student_id
+  message: revaluation_request does NOT have student_id. Join via answer_script to
+    reach student_id.
+- table: evaluation_marks
+  column: total_marks
+  message: evaluation_marks does NOT have total_marks. Attempt total marks are evaluation_attempt.total_marks.
+    Question marks are evaluation_marks.marks_awarded.
+- table: evaluation_marks
+  column: final_marks
+  message: evaluation_marks does NOT have final_marks. Final published marks are result.final_marks.
+    Question marks are evaluation_marks.marks_awarded.
+- table: academic_unit
+  column: config_value
+  message: academic_unit does NOT have config_value. Configuration values are stored
+    in the configuration table.
+- table: academic_unit
+  column: config_key
+  message: academic_unit does NOT have config_key. Configuration keys are stored in
+    the configuration table.
+- table: academic_unit
+  column: scope_type
+  message: academic_unit does NOT have scope_type. Configuration scope types are stored
+    in the configuration table.
+- table: attempt_rule
+  column: group_label
+  message: attempt_rule does NOT have group_label. group_label is on attempt_rule_group.
+- table: evaluation_attempt
+  column: is_final
+  message: 'evaluation_attempt does NOT have is_final. is_final is on evaluation_marks.
+    Use: evaluation_marks.is_final = TRUE.'
+- table: board_coordinator
+  column: name
+  message: 'board_coordinator does NOT have name. Join to faculty_cache: faculty_cache
+    fc ON fc.id = bc.faculty_cache_id, then use fc.name.'
+- table: scan_history
+  column: cal_date
+  message: scan_history does NOT have cal_date. Use scan_history.scanned_at::DATE
+    for date. cal_date is on academic_calendar.
+- table: scan_history
+  column: exam_id
+  message: 'scan_history does NOT have exam_id. Join via answer_script: answer_script
+    a ON a.id = sh.script_id, then use a.exam_id.'
+- table: student_cache
+  column: lifecycle_status
+  message: student_cache does NOT have lifecycle_status. lifecycle_status is on answer_script.
+    student_cache has enrollment_status.
+- table: configuration
+  column: config_type
+  message: configuration does NOT have config_type. The column is data_type.
+- table: board
+  column: block_status
+  message: board does NOT have block_status. block_status is on answer_script.
+- table: board
+  column: block_reason
+  message: board does NOT have block_reason. block_reason is on answer_script.
+- table: academic_unit
+  column: academic_year
+  message: academic_unit does NOT have academic_year. academic_year is on exam_schedule_cache
+    and faculty_course_mapping.
+- table: result_history
+  column: erp_reconciliation_id
+  message: result_history does NOT have erp_reconciliation_id. erp_reconciliation_id
+    is on result.
+- table: result_history
+  column: erp_push_status
+  message: result_history does NOT have erp_push_status. erp_push_status is on result.
+- table: attempt_rule_group_question
+  column: attempt_rule_id
+  message: attempt_rule_group_question does NOT have attempt_rule_id. attempt_rule_id
+    is on attempt_rule_group.
+- table: attempt_rule_group_question
+  column: group_label
+  message: attempt_rule_group_question does NOT have group_label. group_label is on
+    attempt_rule_group.
+- table: exam_schedule_cache
+  column: qp_id
+  message: exam_schedule_cache does NOT have qp_id. The question paper link is via
+    board.qp_id or question_paper.exam_id.
+- table: board_coordinator
+  column: qp_id
+  message: 'board_coordinator does NOT have qp_id. Join to board: board b ON b.id
+    = bc.board_id, then use b.qp_id.'
+- table: answer_key_preparer
+  column: approved_by
+  message: 'answer_key_preparer does NOT have approved_by. approved_by is on answer_key.
+    Use: answer_key ak ON ak.id = akp.answer_key_id, then ak.approved_by.'
+- table: result_history
+  column: final_marks
+  message: result_history does NOT have final_marks. final_marks is on result. result_history
+    has old_marks and new_marks.
+- table: evaluation_attempt
+  column: result_id
+  message: 'evaluation_attempt does NOT have result_id. Join via answer_script: result.script_id
+    = evaluation_attempt.script_id.'
+- table: board_coordinator
+  column: board_coordinator_id
+  message: board_coordinator does NOT have board_coordinator_id. Its PK is id (BIGINT).
+    FK columns are board_id and faculty_cache_id.
+- table: app_user
+  column: user_id
+  message: app_user does NOT have user_id. Its PK is id (BIGINT).
+- table: scan_history
+  column: status
+  message: scan_history does NOT have status. scan_history records scan events; use
+    answer_script.scan_status for script scan state.
+
+# ── Batch 2026-06-25 verified additions ─────────────────────
+- table: faculty_cache
+  column: faculty_cache_id
+  message: >-
+    faculty_cache does NOT have faculty_cache_id. Its PK is id (BIGINT).
+    faculty_cache_id is the FK column on OTHER tables
+    (app_user.faculty_cache_id, board_coordinator.faculty_cache_id, etc.).
+- table: answer_key
+  column: faculty_cache_id
+  message: >-
+    answer_key does NOT have faculty_cache_id. Key preparers are in
+    answer_key_preparer. Join: answer_key_preparer akp ON akp.answer_key_id
+    = ak.id, then faculty_cache fc ON fc.id = akp.faculty_cache_id.
+- table: key_encryption_key
+  column: kek_id
+  message: >-
+    key_encryption_key does NOT have kek_id. Its PK is id (BIGINT).
+    The FK on data_encryption_key is key_encryption_key_id.
+
+# ── Batch 2026-06-24 verified additions (schema v10.4.1) ─────────────────────
+# All entries below verified non-existent against the canonical DDL via
+# ingestion/ddl_parser.py.  Each caused at least one failure in the
+# 191-query batch run on 2026-06-24.
+- table: answer_key
+  column: preparer_id
+  message: answer_key does NOT have preparer_id. Preparers live in answer_key_preparer
+    (FK answer_key_id, faculty_cache_id). Join answer_key_preparer akp ON akp.answer_key_id
+    = ak.id.
+- table: answer_key
+  column: approval_status
+  message: answer_key does NOT have approval_status. The column is 'status' with values
+    DRAFT, REVIEW, APPROVED, LOCKED.
+- table: app_user
+  column: department_id
+  message: app_user does NOT have department_id. Join chain for a user's department
+    is app_user.faculty_cache_id → faculty_cache.department_id → academic_unit.id.
+- table: app_user
+  column: department_name
+  message: app_user does NOT have department_name. Get the name via faculty_cache.department_id
+    → academic_unit.name (where unit_type = 'DEPARTMENT').
+- table: app_user
+  column: academic_unit_id
+  message: app_user does NOT have academic_unit_id. Use faculty_cache.department_id
+    (which IS the academic_unit.id of the department) via app_user.faculty_cache_id.
+- table: app_user
+  column: academic_unit_name
+  message: app_user does NOT have academic_unit_name. Use academic_unit.name via the
+    faculty_cache.department_id link.
+- table: evaluation_attempt
+  column: evaluation_status
+  message: evaluation_attempt does NOT have evaluation_status. It has 'status' with
+    only 4 values (ASSIGNED, IN_PROGRESS, FROZEN, SUBMITTED). 'evaluation_status' (7
+    values including PARTIALLY_FROZEN, CLOSED) is on answer_script — do not confuse
+    the two.
+- table: evaluation_attempt
+  column: question_id
+  message: evaluation_attempt does NOT have question_id. Per-question marks live on
+    evaluation_marks (attempt_id, question_id). Join evaluation_marks em ON em.attempt_id
+    = ea.id.
+- table: evaluation_attempt
+  column: final_marks
+  message: evaluation_attempt does NOT have final_marks. Use total_marks for the attempt's
+    marks. final_marks is on result (the published outcome).
+- table: exam_schedule_cache
+  column: status
+  message: exam_schedule_cache does NOT have status. Exam state is implied by the
+    linked board.status. Join board b ON b.exam_id = esc.id AND b.course_id = esc.course_id.
+- table: honorarium_rate_card
+  column: board_coordinator_id
+  message: honorarium_rate_card does NOT have board_coordinator_id. The card stores
+    board_coordinator_weight (NUMERIC) used multiplicatively when computing honoraria.
+    There is no per-coordinator card linkage.
+- table: honorarium_summary
+  column: export_status
+  message: honorarium_summary does NOT have export_status. Use approval_status = 'EXPORTED'
+    for records pushed to payroll (approval_status enum includes EXPORTED).
+- table: question_section
+  column: parent_question_id
+  message: question_section does NOT have parent_question_id. parent_question_id is
+    on question (self-referencing for sub-questions). For section nesting, use question_section.parent_section_id.
+- table: revaluation_request
+  column: revaluation_request_id
+  message: revaluation_request's PK is 'id', not revaluation_request_id. The name
+    revaluation_request_id is the FK column on dependent tables like revaluation_extension_request.
+- table: revaluation_request
+  column: requested_deadline
+  message: revaluation_request stores 'deadline' and 'original_deadline'. requested_deadline
+    is on deadline_extension_request, not here.
+- table: scan_history
+  column: block_reason
+  message: scan_history does NOT have block_reason. block_reason and block_status
+    live on answer_script.
+- table: script_assignment
+  column: assignment_id
+  message: script_assignment's PK is 'id', not assignment_id. The name assignment_id
+    is the FK column on evaluation_attempt (FK back to script_assignment.id).
+- table: student_cache
+  column: course_id
+  message: student_cache does NOT have course_id. It has program_id (FK to academic_unit
+    where unit_type = 'PROGRAM'). Course scoping comes via answer_script.course_id,
+    not student_cache.
+# semantic_noun_patterns section REMOVED (2026-06-25)
+# This section was dead code — zero Python consumers.
+# Noun mappings consolidated into entity_synonyms (above)
+# and logical_audit.py (now loads from entity_synonyms).
+safe_literals:
+- '3600'
+- '2024'
+- '1000'
+- '86400'
+- '2026'
+- '2025'
+- '2027'
+ordinal_columns:
+- sequence
+- version
+- page_number
+- sort_order
+- position
+- depth
+- level_order
+- display_order
+phantom_patterns:
+- '12345'
+- '1234'
+- test
+- '123456'
+- '123'
+- abc
+- '0000'
+- '999'
+anti_join_triggers:
+- none
+- never
+- absent
+- missing
+- pending
+- zero
+- lack
+- without
+- not
+- unassigned
+- 'no'
+stop_words:
+  logical_audit:
+  - the
+  - a
+  - an
+  - is
+  - are
+  - was
+  - were
+  - be
+  - been
+  - being
+  - have
+  - has
+  - had
+  - do
+  - does
+  - did
+  - will
+  - would
+  - could
+  - should
+  - shall
+  - can
+  - may
+  - might
+  - must
+  - and
+  - or
+  - but
+  - if
+  - then
+  - else
+  - when
+  - where
+  - how
+  - what
+  - which
+  - who
+  - whom
+  - that
+  - this
+  - these
+  - those
+  - in
+  - 'on'
+  - at
+  - to
+  - for
+  - of
+  - with
+  - by
+  - from
+  - as
+  - into
+  - through
+  - between
+  - after
+  - before
+  - during
+  - about
+  - all
+  - each
+  - every
+  - both
+  - few
+  - more
+  - most
+  - some
+  - any
+  - 'no'
+  - not
+  - only
+  - very
+  - too
+  - also
+  - just
+  - than
+  - so
+  - up
+  - down
+  - out
+  - 'off'
+  - over
+  - under
+  - i
+  - me
+  - my
+  - we
+  - our
+  - you
+  - your
+  - it
+  - its
+  - they
+  - their
+  - show
+  - find
+  - list
+  - get
+  - give
+  - tell
+  - display
+  - return
+  - query
+  - sql
+  - select
+  - count
+  - number
+  - many
+  - much
+  - total
+  - there
+  - currently
+  - still
+  - average
+  - sum
+  - percentage
+  query_understanding:
+  - ID
+  - CODE
+  - NAME
+  - TYPE
+  - FOR
+  - IN
+  - OF
+  - THE
+  - AND
+  - OR
+  - NOT
+  - BY
+  - 'ON'
+  - AT
+  - TO
+  - WITH
+  - ALL
+  - ANY
+  - IS
+  - ARE
+  - WAS
+  - HAS
+  - HAVE
+  - MBA
+  - BBA
+  - BCA
+  - BSC
+  - MSC
+anti_join_negation_phrases:
+- 'without '
+- 'no '
+- 'missing '
+- 'never '
+- 'lack '
+- 'not have '
+- 'have no '
+- 'has no '
+- 'don''t have '
+- 'haven''t '
+- 'hasn''t '
+- not assigned
+- unassigned
+- not evaluated
+- unevaluated
+trigger_tables:
+  temporal:
+  - exam_schedule_cache
+  - scan_history
+  - board
+  - evaluation_attempt
+  - academic_calendar
+  - answer_script
+  - answer_key
+  - script_page
+  - deadline_extension_request
+  status:
+  - script_hold
+  - moderation_application
+  - scan_history
+  - evaluation_marks
+  - evaluation_attempt
+  - script_assignment
+  - answer_script
+  - moderation_rule
+  - result
+  enum:
+  - evaluation_marks
+  - board
+  - bundle
+  - question_paper
+  - attempt_rule
+  - honorarium_summary
+  - student_cache
+  - app_user
+  - exam_student_mapping
+  - exam_schedule_cache
+  - evaluation_attempt
+  - script_assignment
+  - answer_script
+  - revaluation_request
+  - answer_key
+  - key_encryption_key
+  - result
+  jsonb:
+  - scan_history
+  - script_page
+  - answer_script
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NLP Table Extraction Keywords
+# ─────────────────────────────────────────────────────────────────────────────
+table_keywords:
+  "script": ["answer_script"]
+  "scripts": ["answer_script"]
+  "answer script": ["answer_script"]
+  "answer scripts": ["answer_script"]
+  "booklet": ["answer_script"]
+  "booklets": ["answer_script"]
+  "evaluation attempt": ["evaluation_attempt"]
+  "attempt": ["evaluation_attempt"]
+  "attempts": ["evaluation_attempt"]
+  "third evaluation": ["evaluation_attempt"]
+  "primary evaluation": ["evaluation_attempt"]
+  "review evaluation": ["evaluation_attempt"]
+  "reval attempt": ["evaluation_attempt"]
+  "evaluation marks": ["evaluation_marks"]
+  "marks awarded": ["evaluation_marks"]
+  "marks": ["evaluation_marks", "evaluation_attempt"]
+  "mark": ["evaluation_marks", "evaluation_attempt"]
+  "assignment": ["script_assignment"]
+  "assignments": ["script_assignment"]
+  "script assignment": ["script_assignment"]
+  "assigned": ["script_assignment"]
+  "board": ["board"]
+  "boards": ["board"]
+  "evaluation board": ["board"]
+  "student": ["student_cache"]
+  "students": ["student_cache"]
+  "faculty": ["faculty_cache"]
+  "evaluator": ["faculty_cache"]
+  "evaluators": ["faculty_cache"]
+  "examiner": ["faculty_cache"]
+  "examiners": ["faculty_cache"]
+  "teacher": ["faculty_cache"]
+  "result": ["result"]
+  "results": ["result"]
+  "final result": ["result"]
+  "result history": ["result", "result_history"]
+  "result_history": ["result_history"]
+  "honorarium": ["honorarium_summary"]
+  "honorarium summary": ["honorarium_summary"]
+  "payment": ["honorarium_summary"]
+  "payout": ["honorarium_summary"]
+  "rate card": ["honorarium_rate_card"]
+  "honorarium rate": ["honorarium_rate_card"]
+  "question paper": ["question_paper"]
+  "question papers": ["question_paper"]
+  "qp": ["question_paper"]
+  "question section": ["question_section"]
+  "section": ["question_section"]
+  "question": ["question"]
+  "questions": ["question"]
+  "answer key": ["answer_key"]
+  "answer keys": ["answer_key"]
+  "rubric": ["answer_key_rubric"]
+  "marking scheme": ["answer_key", "answer_key_rubric"]
+  "bundle": ["bundle"]
+  "bundles": ["bundle"]
+  "scan": ["scan_history", "answer_script"]
+  "scanned": ["scan_history", "answer_script"]
+  "scan history": ["scan_history"]
+  "scanner": ["scanner_device"]
+  "device": ["scanner_device"]
+  "script page": ["script_page"]
+  "page": ["script_page"]
+  "revaluation": ["revaluation_request"]
+  "revaluation request": ["revaluation_request"]
+  "reval": ["revaluation_request"]
+  "revaluation extension": ["revaluation_extension_request"]
+  "hold": ["script_hold"]
+  "legal hold": ["script_hold"]
+  "script hold": ["script_hold"]
+  "moderation": ["moderation_application", "moderation_rule"]
+  "moderation rule": ["moderation_rule"]
+  "moderation application": ["moderation_application"]
+  "annotation": ["evaluation_annotation"]
+  "annotations": ["evaluation_annotation"]
+  "comment": ["evaluation_annotation"]
+  "deadline": ["deadline_extension_request"]
+  "deadline extension": ["deadline_extension_request"]
+  "extension": ["deadline_extension_request"]
+  "evaluation policy": ["evaluation_policy"]
+  "policy": ["evaluation_policy"]
+  "attempt rule": ["attempt_rule"]
+  "attempt rules": ["attempt_rule"]
+  "rule": ["attempt_rule"]
+  "encryption key": ["key_encryption_key"]
+  "kek": ["key_encryption_key"]
+  "keks": ["key_encryption_key"]
+  "key encryption key": ["key_encryption_key"]
+  "dek": ["data_encryption_key"]
+  "data encryption key": ["data_encryption_key"]
+  "active key": ["active_key_encryption_key"]
+  "configuration": ["configuration"]
+  "configurations": ["configuration"]
+  "config": ["configuration"]
+  "setting": ["configuration"]
+  "settings": ["configuration"]
+  "unit type": ["unit_type_config"]
+  "unit types": ["unit_type_config"]
+  "academic unit type": ["unit_type_config"]
+  "academic unit": ["academic_unit"]
+  "academic units": ["academic_unit"]
+  "department": ["academic_unit"]
+  "college": ["academic_unit"]
+  "campus": ["academic_unit"]
+  "course": ["academic_unit"]
+  "unit": ["academic_unit"]
+  "academic hierarchy": ["academic_unit", "academic_unit_closure"]
+  "academic unit closure": ["academic_unit_closure"]
+  "unit relationship": ["academic_unit_relationship"]
+  "relationship type": ["relationship_type_config"]
+  "academic calendar": ["academic_calendar"]
+  "calendar": ["academic_calendar"]
+  "academic year": ["academic_calendar"]
+  "semester": ["academic_calendar"]
+  "exam schedule": ["exam_schedule_cache"]
+  "exam": ["exam_schedule_cache"]
+  "exam date": ["exam_schedule_cache"]
+  "exam student": ["exam_student_mapping"]
+  "enrolled": ["exam_student_mapping"]
+  "coordinator": ["board_coordinator"]
+  "board coordinator": ["board_coordinator"]
+  "evaluator pool": ["evaluator_pool"]
+  "pool": ["evaluator_pool"]
+  "eligible evaluator": ["evaluator_pool"]
+  "faculty course": ["faculty_course_mapping"]
+  "faculty mapping": ["faculty_course_mapping"]
+  "course mapping": ["faculty_course_mapping"]
+  "user": ["app_user"]
+  "users": ["app_user"]
+  "login": ["app_user"]
+  "auxiliary role": ["user_auxiliary_role"]
+  "role": ["user_auxiliary_role"]
+  "notification": ["notification"]
+  "notifications": ["notification"]
+  "alert": ["notification"]
+  "audit": ["audit_log"]
+  "audit log": ["audit_log"]
+  "bulk operation": ["bulk_operation_log"]
+  "purge": ["purge_job_log"]
+  "purge job": ["purge_job_log"]
+  "workflow": ["workflow_state_transition"]
+  "state transition": ["workflow_state_transition"]
+  "retention": ["data_retention_policy"]
+  "data retention": ["data_retention_policy"]
+  "retention policy": ["data_retention_policy"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Confidence Calibration Rules
+# ─────────────────────────────────────────────────────────────────────────────
+confidence_calibration:
+  ilike_on_ids:
+    regex: '\\b\\w+_id\\s+(i)?like\\s+'
+    penalty: 0.15
+  excessive_nesting:
+    max_select_count: 3
+    penalty: 0.10
+
+
+trigger_words:
+  aggregation:
+    - 'average'
+    - 'avg'
+    - 'count'
+    - 'sum'
+    - 'total'
+    - 'percentage'
+    - 'percent'
+    - 'ratio'
+    - 'per'
+    - 'by'
+    - 'each'
+    - 'how many'
+  temporal:
+    - 'time'
+    - 'duration'
+    - 'interval'
+    - 'hours'
+    - 'days'
+    - 'months'
+    - 'year'
+    - 'quarter'
+    - 'month'
+    - 'week'
+    - 'working_day'
+    - 'deadline'
+    # jsonb and metadata REMOVED (2026-06-25)
+    # These are NOT temporal keywords. They caused ~200 tokens of temporal
+    # noise to be injected into JSONB queries. JSONB queries get their
+    # correct rules via trigger_tables.jsonb independently.
