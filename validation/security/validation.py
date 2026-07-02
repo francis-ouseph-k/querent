@@ -1,3 +1,16 @@
+"""
+validation/security/validation.py
+─────────────────────────────────
+SecurityTransformer (pipeline step 7, reports `security`).
+
+The only step that REWRITES the SQL rather than just judging it. When a tenant
+context is present (board_id / course_id, or an RLS variable), it injects the
+appropriate scoping predicate into the query so a user can only see their own
+rows, writing the result to ctx.working_sql for later steps to validate. The
+actual AST surgery lives in tenant_injector.py; this class decides when to apply
+it and handles the no-tenant-context case by passing through unchanged.
+"""
+
 import re
 import sqlglot.expressions as exp
 from ..core.context import ValidationContext

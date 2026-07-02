@@ -230,7 +230,7 @@ class SQLGenerator:
             payload = {
                 "messages": messages,
                 "max_tokens": kwargs.get("max_tokens", 512),
-                "temperature": kwargs.get("temperature", 0.2),
+                "temperature": kwargs.get("temperature", settings.llm.temperature),
                 "frequency_penalty": settings.llm.frequency_penalty,  # Pass frequency penalty to prevent repetition loops (e.g. repeating same SQL clauses)
                 "presence_penalty": settings.llm.presence_penalty,    # Pass presence penalty to encourage vocabulary/concept diversity
             }

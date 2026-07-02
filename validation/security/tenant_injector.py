@@ -1,7 +1,19 @@
 
 """
 validation/security/tenant_injector.py
-────────────────────────────
+──────────────────────────────────────
+Tenant-filter injection helpers used by the SecurityTransformer (step 7).
+
+    has_eq_predicate(...)   is the tenant column already constrained? (avoid
+                            injecting a duplicate/again)
+    inject_where(...)       AST-level insertion of `alias.tenant_col = value` into
+                            each SELECT scope, qualified to the correct table alias
+
+CTE- and scope-aware: the predicate is attached at the right SELECT so it filters
+the base rows rather than a post-aggregation result. Reads the sqlglot FROM node
+under both `from` (<=26.x) and `from_` (>=30.x) so scope detection survives a
+driver upgrade. Falls back to an unqualified predicate only when alias resolution
+fails.
 """
 
 import sqlglot

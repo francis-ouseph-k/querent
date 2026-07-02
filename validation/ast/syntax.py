@@ -1,3 +1,26 @@
+"""
+validation/ast/syntax.py
+────────────────────────
+AST-level structural validators — the first three pipeline steps.
+
+    SyntaxValidator       (step 1, reports `syntax`)
+        Parses the SQL with sqlglot (PostgreSQL 16 dialect). Empty or
+        unparseable SQL fails here; the parsed AST is stored on the context so
+        later steps do not re-parse.
+
+    PlaceholderValidator  (step 2, reports `placeholder`)
+        Rejects leftover bind parameters (:name, $N). Generated SQL must be
+        literal — a placeholder means the model left the query half-built.
+
+    AliasValidator        (step 3, reports `schema`)
+        Catches the common hallucination where an alias is used (in SELECT/ON/
+        WHERE) but never declared in a FROM/JOIN — i.e. a forgotten join or a
+        wrong join order. Declared aliases include base tables, CTEs, and
+        derived-table (subquery) aliases; the last of these must be collected
+        explicitly because `FROM (SELECT ...) x` is an exp.Subquery, not an
+        exp.Table.
+"""
+
 import re
 import sqlglot.expressions as exp
 from typing import Any
@@ -149,6 +172,18 @@ class AliasValidator(BaseValidationStep):
             for tbl in stmt.find_all(exp.Table):
                 if tbl.name and tbl.name.lower() not in cte_names:
                     declared_aliases.add((tbl.alias or tbl.name).lower())
+
+            # 2b. Derived-table aliases: `FROM (SELECT ...) rh` is an exp.Subquery,
+            # NOT an exp.Table, so step 2 misses `rh`. Without this, a valid
+            # reference like AVG(rh.count) is wrongly reported as an undeclared
+            # alias (false positive observed on Q12). Also covers lateral/derived
+            # aliases carried on a TableAlias node.
+            for sub in stmt.find_all(exp.Subquery):
+                if sub.alias:
+                    declared_aliases.add(sub.alias.lower())
+            for ta in stmt.find_all(exp.TableAlias):
+                if ta.name:
+                    declared_aliases.add(ta.name.lower())
                     
             # 3. Check every column reference in the query (e.g., 'table_alias.column_name').
             for col in stmt.find_all(exp.Column):

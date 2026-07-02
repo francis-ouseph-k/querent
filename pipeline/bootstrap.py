@@ -1,3 +1,21 @@
+"""
+pipeline/bootstrap.py
+─────────────────────
+Pipeline assembly and the schema-version gate.
+
+    check_schema_version(strict)  compares the current DDL hash against the hash
+                                  the vector index / FK graph were built from. On
+                                  drift it warns, or aborts when strict — a
+                                  benchmark run on a stale index is invalid.
+    load_tables()                 parse the DDL into the {table: TableInventory} map
+    load_graph()                  load the persisted FK graph (networkx)
+    create_runner(strict)         wire tables + graph + the 12-step validation
+                                  pipeline into a ready PipelineRunner
+
+This is the composition root: the place where the concrete objects are built and
+handed to the runner. Everything downstream receives them by injection.
+"""
+
 import json
 import sys
 from pathlib import Path

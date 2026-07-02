@@ -1,3 +1,18 @@
+"""
+validation/core/base.py
+───────────────────────
+BaseValidationStep — the contract every validation step implements.
+
+Each step exposes run(ctx) -> ValidationResult and may override before_run /
+after_run hooks. The SQLValidator holds an ordered list of these and executes
+them in sequence, stopping at the first failure. Keeping the interface this thin
+is what lets the 12-step pipeline be declared as a plain list in
+build_default_pipeline() and reordered or extended without touching the runner.
+
+A step returns passed=True to continue, or passed=False with a step label and a
+correction message that the retry loop feeds back to the model.
+"""
+
 from .context import ValidationContext
 from models.schema import ValidationResult
 

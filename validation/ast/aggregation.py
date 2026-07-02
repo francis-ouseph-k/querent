@@ -1,3 +1,20 @@
+"""
+validation/ast/aggregation.py
+─────────────────────────────
+Aggregate-shape validators.
+
+    GroupByAlignmentValidator  (pipeline step 8, reports `groupby`)
+        Every non-aggregated column in the SELECT list must appear in GROUP BY.
+        Catches the classic "column must appear in the GROUP BY clause" error
+        before it reaches PostgreSQL.
+
+    AggregationValidator       (pipeline step 12, reports `aggregation`)
+        Rejects illegal aggregate structure — chiefly nested aggregates such as
+        AVG(COUNT(*)) — while correctly allowing an aggregate inside a window
+        function. Helpers _node_contains_aggregate / _node_inside_window do the
+        AST distinction so a legitimate `COUNT(*) OVER (...)` is not flagged.
+"""
+
 import sqlglot.expressions as exp
 from typing import Any
 

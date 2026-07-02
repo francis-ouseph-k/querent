@@ -1,3 +1,16 @@
+"""
+validation/execution/cost.py
+────────────────────────────
+CostValidator (pipeline step 9, reports `cost`).
+
+Runs `EXPLAIN` and compares PostgreSQL's estimated total cost against
+settings.validation.explain_cost_threshold. A query whose estimate blows past the
+threshold usually means a missing filter (a full-table or cross-product scan), so
+the failure message nudges the model to add a scoping predicate (board_id,
+exam_id, ...). Skipped gracefully when no database connection is configured, so
+the rest of the pipeline still runs offline.
+"""
+
 import time
 import psycopg2
 from typing import Any

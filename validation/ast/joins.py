@@ -1,3 +1,16 @@
+"""
+validation/ast/joins.py
+───────────────────────
+JoinValidator (pipeline step 5, reports `safety`).
+
+Catches Cartesian products — a JOIN with no ON/USING clause — which silently
+multiply rows and corrupt every downstream aggregate. It is FK-graph aware: the
+graph loaded at bootstrap lets it reason about whether a join path is legitimate
+rather than only checking for a missing ON clause. Reported under the `safety`
+label because an accidental cross join is a correctness hazard, not a cosmetic
+issue.
+"""
+
 import re
 import sqlglot.errors
 import sqlglot.expressions as exp

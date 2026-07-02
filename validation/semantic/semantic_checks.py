@@ -1,6 +1,6 @@
 """
 validation/semantic/semantic_checks.py
-──────────────────────────────────────    
+──────────────────────────────
 Semantic heuristic checks and hardcoded-literal detection for SQL validation.
 
 Contains Step 7 (12 semantic checks) and Step 8 (hardcoded literal IDs).
@@ -61,6 +61,43 @@ def _predicate_has_literal_counterpart(col: "exp.Column") -> bool:
         has_col = any(True for _ in sibling.find_all(exp.Column))
         return has_lit and not has_col
     return False
+
+
+# ── Advisory (non-fatal) semantic checks ─────────────────────────────────────
+# These NL↔SQL heuristics are synonym/encoding-blind: they compare surface
+# keywords in the question against surface tokens in the SQL, so they reject
+# CORRECT queries whenever the model uses a synonym or a structural encoding
+# rather than the literal keyword. Run-3 evidence:
+#   * semantic_unprompted_enum_filter  — Q56: "already expired" correctly encoded
+#     as status = 'EXPIRED', but the check only looks for the word "status".
+#   * semantic_missing_scope_filter    — Q148: "global scope" correctly encoded as
+#     course_id IS NULL AND board_id IS NULL, but the check demands the word "global".
+#   * semantic_unprompted_filter / semantic_noun_missing — same failure mode.
+# Demoted to advisory: they still log (useful signal for corpus review) but do NOT
+# fail the query. To restore any as fatal, remove its event name from this set.
+_ADVISORY_SEMANTIC_EVENTS: set[str] = {
+    "semantic_noun_missing",
+    "semantic_unprompted_filter",
+    "semantic_unprompted_enum_filter",
+    "semantic_missing_scope_filter",
+}
+
+
+def _advisory_or_fail(event: str, message: str, sql: str) -> ValidationResult | None:
+    """
+    Return a failing ValidationResult for `event`, or None when the check is
+    configured advisory-only (log-and-continue). Centralises the strict/advisory
+    policy so it is one edit to change, not a scattered set of behaviours.
+    """
+    if event in _ADVISORY_SEMANTIC_EVENTS:
+        logger.info(
+            component="sql_validator",
+            event=f"{event}_advisory",
+            note="synonym/encoding-blind check demoted to advisory; not failing",
+            detail=(message or "")[:100],
+        )
+        return None
+    return ValidationResult(passed=False, step="semantic", message=message, sql=sql)
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -259,14 +296,15 @@ class SemanticValidator(BaseValidationStep):
                         missing_noun=noun,
                         query_preview=original_query[:60],
                     )
-                    return ValidationResult(
-                        passed=False, step="semantic",
-                        message=(
-                            f"The question mentions '{noun}', but the SQL does not seem to query "
-                            f"any related tables or columns. Ensure you are joining the correct tables."
-                        ),
-                        sql=sql,
+                    _adv = _advisory_or_fail(
+                        "semantic_noun_missing",
+                        f"The question mentions '{noun}', but the SQL does not seem to query "
+                        f"any related tables or columns. Ensure you are joining the correct tables.",
+                        sql,
                     )
+                    if _adv is not None:
+                        return _adv
+                    continue
 
         # ── Check 7: "per/by" without GROUP BY ───────────────────────────────
         per_by_patterns = [' per ', ' by ']
@@ -741,15 +779,15 @@ class SemanticValidator(BaseValidationStep):
                                         event="semantic_unprompted_filter",
                                         column=col_name
                                     )
-                                    return ValidationResult(
-                                        passed=False, step="semantic",
-                                        message=(
-                                            f"SQL filters on '{col_name}' but the question does not mention it. "
-                                            f"Do not apply defensive filters like '{col_name}' unless explicitly "
-                                            f"justified by the question (e.g., asking for 'final', 'approved', etc.)."
-                                        ),
-                                        sql=sql,
+                                    _adv = _advisory_or_fail(
+                                        "semantic_unprompted_filter",
+                                        f"SQL filters on '{col_name}' but the question does not mention it. "
+                                        f"Do not apply defensive filters like '{col_name}' unless explicitly "
+                                        f"justified by the question (e.g., asking for 'final', 'approved', etc.).",
+                                        sql,
                                     )
+                                    if _adv is not None:
+                                        return _adv
         except Exception:
             pass
 
@@ -930,20 +968,20 @@ class SemanticValidator(BaseValidationStep):
                         column=col_name,
                         value=val_raw,
                     )
-                    return ValidationResult(
-                        passed=False, step="semantic",
-                        message=(
-                            f"SQL filters {target}.{col_name} = '{val_raw}' "
-                            f"but the question does not mention '{val_raw}' "
-                            f"(or any close paraphrase).  This is a "
-                            f"defensive filter not supported by the user's "
-                            f"intent — remove it, or surface it as a "
-                            f"clarification.  Allowed values for "
-                            f"{target}.{col_name}: "
-                            f"{sorted(allowed)}."
-                        ),
-                        sql=sql,
+                    _adv = _advisory_or_fail(
+                        "semantic_unprompted_enum_filter",
+                        f"SQL filters {target}.{col_name} = '{val_raw}' "
+                        f"but the question does not mention '{val_raw}' "
+                        f"(or any close paraphrase).  This is a "
+                        f"defensive filter not supported by the user's "
+                        f"intent — remove it, or surface it as a "
+                        f"clarification.  Allowed values for "
+                        f"{target}.{col_name}: {sorted(allowed)}.",
+                        sql,
                     )
+                    if _adv is not None:
+                        return _adv
+                    continue
 
         # ── Check 19: LEFT JOIN + WHERE nullification ─────────────────
         # Catches: LEFT JOIN ... WHERE right_alias.col = value
@@ -1071,15 +1109,16 @@ class SemanticValidator(BaseValidationStep):
                             event="semantic_missing_scope_filter",
                             keyword=keyword,
                         )
-                        return ValidationResult(
-                            passed=False, step="semantic",
-                            message=(
-                                f"The question mentions '{keyword}' but the SQL has no "
-                                f"corresponding filter (expected {spec['sql_check']} in the query). "
-                                f"Add the appropriate WHERE clause to scope the results."
-                            ),
-                            sql=sql,
+                        _adv = _advisory_or_fail(
+                            "semantic_missing_scope_filter",
+                            f"The question mentions '{keyword}' but the SQL has no "
+                            f"corresponding filter (expected {spec['sql_check']} in the query). "
+                            f"Add the appropriate WHERE clause to scope the results.",
+                            sql,
                         )
+                        if _adv is not None:
+                            return _adv
+                        continue
 
         # ── Check 22: HAVING on "list all" questions ───────────────────────
         # When the question says "list all" or "show all", a HAVING COUNT > 1

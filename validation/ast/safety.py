@@ -1,3 +1,15 @@
+"""
+validation/ast/safety.py
+────────────────────────
+SafetyValidator (pipeline step 6, reports `safety`).
+
+Hard guarantee that the generated statement is read-only: it inspects the AST for
+any non-SELECT (INSERT/UPDATE/DELETE/DDL) and blocks it, backed by a
+blocked-keyword regex as a second line of defence. This is the boundary that makes
+it safe to execute model-authored SQL against the database at all — nothing past
+this point can mutate data.
+"""
+
 import re
 import sqlglot.errors
 import sqlglot.expressions as exp

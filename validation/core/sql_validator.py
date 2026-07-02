@@ -1,5 +1,5 @@
 """
-validation/core/sql_validator.py
+validation/sql_validator.py
 ────────────────────────────
 10-step SQL validation pipeline orchestrator.
 """

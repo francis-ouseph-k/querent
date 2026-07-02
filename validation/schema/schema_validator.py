@@ -1,7 +1,21 @@
 """
 validation/schema/schema_validator.py
 ─────────────────────────────────────
+SchemaValidator (pipeline step 4, reports `schema`) — the schema-grounding
+orchestrator. It does not check anything itself; it runs the three schema
+sub-checks in dependency order and returns the first failure:
+
+    1. validate_tables  (tables.py)   do the referenced tables exist? (also
+                                      populates alias/table maps on the context)
+    2. validate_columns (columns.py)  does every column exist on a table that is
+                                      in that column's SELECT scope?
+    3. validate_types   (types.py)    are comparisons type-compatible and are
+                                      literal values legal for CHECK-enum columns?
+
+This is the single most important correctness gate: it is where phantom columns
+and wrong-table references are caught before execution.
 """
+
 from ..core.context import ValidationContext
 from ..core.base import BaseValidationStep
 from models.schema import ValidationResult

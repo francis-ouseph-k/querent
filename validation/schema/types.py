@@ -1,7 +1,17 @@
 """
 validation/schema/types.py
 ──────────────────────────
+validate_types — the type/enum sub-check of Schema validation (step 4, reports
+`schema`). Runs after tables and columns are confirmed to exist.
+
+Checks that comparisons are type-sensible (e.g. not comparing a text column to an
+integer literal) and, most usefully, that a literal compared against a column with
+a CHECK constraint is one of the allowed values — so `status = 'ONGOING'` fails
+when the enum only permits {'OPEN','CLOSED',...}. Enum membership is derived from
+the CHECK constraints captured by the DDL parser, so it stays in sync with the
+schema without a hand-maintained list.
 """
+
 import sqlglot.expressions as exp
 from ..core.context import ValidationContext
 from models.schema import ValidationResult
