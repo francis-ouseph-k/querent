@@ -46,7 +46,8 @@ def inject_where(sql: str, col_name: str, value: int, schema_map: dict) -> str |
 
         def _tables_and_aliases_in_scope(select_node: exp.Select) -> list[tuple[str, str]]:
             result = []
-            from_node = select_node.args.get("from")
+            # sqlglot stores FROM under "from" (<=26.x) or "from_" (>=30.x).
+            from_node = select_node.args.get("from") or select_node.args.get("from_")
             if from_node:
                 for tbl in from_node.find_all(exp.Table):
                     canon = tbl.name.lower()

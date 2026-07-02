@@ -1,3 +1,7 @@
+"""
+validation/schema/columns.py
+────────────────────────────
+"""
 import sqlglot.expressions as exp
 from ..core.context import ValidationContext
 from models.schema import ValidationResult
@@ -6,9 +10,84 @@ from validation.utils.blocklist import COLUMN_BLOCKLIST as _COLUMN_BLOCKLIST
 
 logger = get_logger(__name__)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-SELECT scope resolution
+# ─────────────────────────────────────────────────────────────────────────────
+# FIX (scope-blind ambiguity, Q1/Q2/Q20/Q54): the previous implementation resolved
+# every unqualified column against ctx.sql_tables — the UNION of every table in the
+# whole statement — and only auto-resolved a bare column when the *entire statement*
+# had exactly one table. Any unqualified column inside an IN/EXISTS/scalar subquery
+# whose inner SELECT sqlglot does NOT wrap in exp.Subquery was therefore judged
+# against all statement tables, producing bogus "Ambiguous column" / "unaliased"
+# errors on correct SQL. This version resolves each column against its OWN enclosing
+# SELECT scope (inner shadows outer, correlated refs fall back to outer scopes),
+# which matches SQL name-resolution semantics.
+
+def _local_scope(select_node):
+    """
+    (alias_map, tables) for the tables declared directly in this SELECT's
+    FROM + JOINs. Derived tables (subquery in FROM) contribute only their
+    alias — their inner columns are validated in their own scope.
+    """
+    alias_map: dict[str, str] = {}
+    tables: set[str] = set()
+    derived: set[str] = set()
+
+    containers = []
+    # sqlglot stores FROM under "from" (<=26.x) or "from_" (>=30.x). Support both.
+    from_node = select_node.args.get("from") or select_node.args.get("from_")
+    if from_node is not None:
+        containers.append(from_node)
+    containers.extend(select_node.args.get("joins", []) or [])
+
+    for container in containers:
+        # Only the direct table/derived-table target of the FROM/JOIN, not
+        # tables nested inside subqueries (those are separate scopes).
+        this = getattr(container, "this", container)
+        if isinstance(this, exp.Table):
+            name = (this.name or "").lower()
+            alias = (this.alias or "").lower()
+            if name:
+                tables.add(name)
+                alias_map[name] = name
+            if alias:
+                alias_map[alias] = name
+        elif isinstance(this, exp.Subquery):
+            alias = (this.alias or "").lower()
+            if alias:
+                derived.add(alias)
+        else:
+            # Fallback: pull any direct Table children (unusual join shapes)
+            for tbl in (this.find_all(exp.Table) if hasattr(this, "find_all") else []):
+                if tbl.find_ancestor(exp.Subquery) is not None:
+                    continue
+                name = (tbl.name or "").lower()
+                alias = (tbl.alias or "").lower()
+                if name:
+                    tables.add(name)
+                    alias_map[name] = name
+                if alias:
+                    alias_map[alias] = name
+    return alias_map, tables, derived
+
+
+def _scope_chain(col_node):
+    """Enclosing SELECT then its ancestor SELECTs (inner-first) for correlated refs."""
+    chain = []
+    node = col_node
+    while node is not None:
+        sel = node.find_ancestor(exp.Select)
+        if sel is None:
+            break
+        chain.append(sel)
+        node = sel.parent
+    return chain
+
+
 def validate_columns(ctx: ValidationContext) -> ValidationResult | None:
     """
-    Performs column-level existence checks by walking column nodes in the AST.
+    Column-level existence / ambiguity checks, resolved per-SELECT scope.
     """
     col_errors: list[str] = []
     sql = ctx.working_sql or ctx.sql
@@ -20,27 +99,17 @@ def validate_columns(ctx: ValidationContext) -> ValidationResult | None:
             if stmt is None:
                 continue
 
-            cte_names = set()
-            for cte in stmt.find_all(exp.CTE):
-                if cte.alias:
-                    cte_names.add(cte.alias.lower())
+            cte_names = {c.alias.lower() for c in stmt.find_all(exp.CTE) if c.alias}
+            projection_aliases = {a.alias.lower() for a in stmt.find_all(exp.Alias) if a.alias}
 
-            derived_table_aliases = set()
-            for subq in stmt.find_all(exp.Subquery):
-                alias = subq.alias
-                if alias:
-                    derived_table_aliases.add(alias.lower())
+            # Precompute local scope per SELECT once.
+            scope_cache: dict[int, tuple] = {}
 
-            projection_aliases = set()
-            for a in stmt.find_all(exp.Alias):
-                if a.alias:
-                    projection_aliases.add(a.alias.lower())
-
-            inner_subquery_col_ids: set[int] = set()
-            for subq in stmt.find_all(exp.Subquery):
-                if subq.alias:
-                    for inner_col in subq.find_all(exp.Column):
-                        inner_subquery_col_ids.add(id(inner_col))
+            def scope_for(select_node):
+                key = id(select_node)
+                if key not in scope_cache:
+                    scope_cache[key] = _local_scope(select_node)
+                return scope_cache[key]
 
             for col_node in stmt.find_all(exp.Column):
                 col_name = (col_node.name or "").lower()
@@ -48,57 +117,83 @@ def validate_columns(ctx: ValidationContext) -> ValidationResult | None:
 
                 if not col_name or col_name == "*":
                     continue
-                if id(col_node) in inner_subquery_col_ids:
-                    continue
-                if tbl_part in cte_names:
-                    continue
-                if tbl_part in derived_table_aliases:
-                    continue
-                if not tbl_part and col_name in projection_aliases:
-                    continue
 
-                resolved_table: str | None = None
+                chain = _scope_chain(col_node)
+
+                # ── Qualified reference: resolve alias inner→outer ──────────
                 if tbl_part:
-                    resolved_table = ctx.alias_map.get(tbl_part)
-                    if not resolved_table and tbl_part in ctx.sql_tables:
-                        resolved_table = tbl_part
-                    
-                    if not resolved_table:
+                    if tbl_part in cte_names:
+                        continue
+                    resolved_table = None
+                    for sel in chain:
+                        amap, _tables, derived = scope_for(sel)
+                        if tbl_part in derived:
+                            resolved_table = "__derived__"
+                            break
+                        if tbl_part in amap:
+                            resolved_table = amap[tbl_part]
+                            break
+                    if resolved_table == "__derived__":
+                        continue
+                    if resolved_table is None:
                         return ValidationResult(
                             passed=False, step="schema",
-                            message=f"Unknown table or alias '{tbl_part}' referenced in '{tbl_part}.{col_name}'. Ensure it is declared in the FROM/JOIN clause.",
-                            sql=sql
+                            message=f"Unknown table or alias '{tbl_part}' referenced in "
+                                    f"'{tbl_part}.{col_name}'. Ensure it is declared in the "
+                                    f"FROM/JOIN clause.",
+                            sql=sql,
                         )
-                elif len(ctx.sql_tables - cte_names) == 1:
-                    remaining_real_tables = list(ctx.sql_tables - cte_names)
-                    resolved_table = remaining_real_tables[0]
+                    _blocklist_or_column(resolved_table, col_name, ctx, sql, col_errors)
+                    res = _blocklist_check(resolved_table, col_name, ctx, sql)
+                    if res:
+                        return res
+                    continue
 
-                if resolved_table and (resolved_table, col_name) in _COLUMN_BLOCKLIST:
+                # ── Bare (unqualified) reference ───────────────────────────
+                if col_name in projection_aliases:
+                    continue  # references a SELECT-list alias (Q50)
+
+                enclosing = chain[0] if chain else None
+                if enclosing is None:
+                    continue
+                _amap, local_tables, _derived = scope_for(enclosing)
+                local_tables = local_tables - cte_names
+
+                local_hits = [
+                    t for t in local_tables
+                    if t in ctx.schema_map
+                    and hasattr(ctx.schema_map[t], "columns")
+                    and col_name in ctx.schema_map[t].columns
+                ]
+
+                if len(local_hits) == 1:
+                    res = _blocklist_check(local_hits[0], col_name, ctx, sql)
+                    if res:
+                        return res
+                    continue
+                if len(local_hits) > 1:
                     return ValidationResult(
-                        passed=False,
-                        step="schema",
-                        message=f"Column validation failed: {_COLUMN_BLOCKLIST[(resolved_table, col_name)]}",
+                        passed=False, step="schema",
+                        message=f"Ambiguous column reference: '{col_name}'. It exists in "
+                                f"multiple tables ({', '.join(sorted(local_hits))}). You must "
+                                f"qualify it with a table alias.",
                         sql=sql,
                     )
 
-                if resolved_table and resolved_table in ctx.schema_map:
-                    inv = ctx.schema_map[resolved_table]
-                    if hasattr(inv, "columns") and col_name not in inv.columns:
-                        col_errors.append(f"{resolved_table}.{col_name}")
-                elif not resolved_table:
-                    real_tables = ctx.sql_tables - cte_names
-                    possible_tables = []
-                    for t in real_tables:
-                        if t in ctx.schema_map and hasattr(ctx.schema_map[t], "columns") and col_name in ctx.schema_map[t].columns:
-                            possible_tables.append(t)
-                    if len(possible_tables) > 1:
-                        return ValidationResult(
-                            passed=False, step="schema",
-                            message=f"Ambiguous column reference: '{col_name}'. It exists in multiple tables ({', '.join(possible_tables)}). You must qualify it with a table alias.",
-                            sql=sql
-                        )
-                    elif len(possible_tables) == 0 and len(real_tables) > 0:
-                        col_errors.append(f"unaliased.{col_name}")
+                # Not found in local scope — try outer scopes (correlated ref).
+                outer_hits = []
+                for sel in chain[1:]:
+                    _oa, otables, _od = scope_for(sel)
+                    for t in (otables - cte_names):
+                        if (t in ctx.schema_map
+                                and hasattr(ctx.schema_map[t], "columns")
+                                and col_name in ctx.schema_map[t].columns):
+                            outer_hits.append(t)
+                if len(outer_hits) >= 1:
+                    continue  # correlated reference resolves to an outer table
+
+                if local_tables:
+                    col_errors.append(f"unaliased.{col_name}")
 
     except Exception as exc:
         logger.warning(
@@ -118,3 +213,20 @@ def validate_columns(ctx: ValidationContext) -> ValidationResult | None:
         )
 
     return None
+
+
+def _blocklist_check(resolved_table, col_name, ctx, sql):
+    if (resolved_table, col_name) in _COLUMN_BLOCKLIST:
+        return ValidationResult(
+            passed=False, step="schema",
+            message=f"Column validation failed: {_COLUMN_BLOCKLIST[(resolved_table, col_name)]}",
+            sql=sql,
+        )
+    return None
+
+
+def _blocklist_or_column(resolved_table, col_name, ctx, sql, col_errors):
+    if resolved_table in ctx.schema_map:
+        inv = ctx.schema_map[resolved_table]
+        if hasattr(inv, "columns") and col_name not in inv.columns:
+            col_errors.append(f"{resolved_table}.{col_name}")

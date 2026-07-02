@@ -1,6 +1,6 @@
 """
-validation/blocklist.py
-────────────────────────
+validation/utils/blocklist.py
+─────────────────────────────
 Column blocklist and type-compatibility constants for SQL validation.
 
 This module contains:

@@ -107,6 +107,7 @@ from retrieval.reranker import CrossEncoderReranker
 from utils.logging_config import get_logger
 from validation.core.sql_validator import RetryValidator, SQLValidator
 from validation.semantic.logical_audit import run_logical_audit
+from validation.utils.autofix import attempt_tautological_autofix
 
 logger = get_logger(__name__)
 
@@ -620,13 +621,19 @@ class PipelineRunner:
                     retries += additional_retries
 
         if not val_result.passed:
+            # FIX: log the SQL that ACTUALLY failed. validate_with_retry may have
+            # rewritten `generated.sql` across correction passes; val_result.sql
+            # holds the final failing string that the error message refers to.
+            # Logging generated.sql here recorded a clean original alongside an
+            # error about a different (corrected) query -- confusing to debug and
+            # corrupting the Phase 2 failure corpus.
             return self._failure_result(
                 nl_query       = nl_query,
                 error          = f"Validation failed ({val_result.step}): {val_result.message}",
                 parsed_intent  = parsed.intent.value,
                 timings        = timings,
                 retrieval_meta = retrieval_meta,
-                failed_sql     = generated.sql,
+                failed_sql     = val_result.sql or generated.sql,
                 retries        = retries,
                 request_id     = request_id,
             )
@@ -656,6 +663,80 @@ class PipelineRunner:
             generated.confidence = max(0.0, round(
                 generated.confidence - audit.confidence_penalty, 2
             ))
+
+        # ── Step 5.8b: Hard-fail handling (NEW, 2026-07-01) ────────────────
+        # Some logical_audit checks (currently L4 anti-join polarity, L5
+        # tautological aggregation) are deterministic -- there is no false-
+        # positive risk once they fire, unlike the softer heuristic checks.
+        # Previously ALL audit findings, including these, only reduced
+        # confidence_penalty, which a batch run of confirmed-wrong queries
+        # showed was insufficient: e.g. Q33 (anti-join reversed) displayed
+        # confidence 0.8 after a 0.10 penalty from a 0.9 raw score, still
+        # "green" and still labeled Success. audit.hard_fail=True routes
+        # these through a real correction-or-block path instead of a
+        # confidence adjustment on an otherwise-Success result.
+        if audit.hard_fail:
+            is_l5 = any(w.startswith("[L5]") for w in audit.warnings)
+            fixed_sql = None
+            fix_desc = None
+
+            if is_l5:
+                fixed_sql, fix_desc = attempt_tautological_autofix(validated_sql)
+                if fixed_sql is not None:
+                    re_val = self.validator.validate(
+                        sql            = fixed_sql,
+                        tables_used    = generated.tables_used,
+                        user_context   = user_context,
+                        original_query = query_for_pipeline,
+                    )
+                    if re_val.passed:
+                        re_audit = run_logical_audit(
+                            nl_query    = query_for_pipeline,
+                            sql         = re_val.sql or fixed_sql,
+                            intent      = parsed.intent.value,
+                            tables_used = generated.tables_used,
+                        )
+                        if not re_audit.hard_fail:
+                            validated_sql = re_val.sql or fixed_sql
+                            audit = re_audit
+                            logger.info(
+                                component="pipeline",
+                                event="hard_fail_autofix_accepted",
+                                check="L5",
+                                fix_description=fix_desc,
+                            )
+                        else:
+                            fixed_sql = None  # re-audit still flags it -- don't trust it
+                    else:
+                        fixed_sql = None  # rewritten SQL failed real structural re-validation
+
+            if fixed_sql is None:
+                # No autofix available (L4) or autofix failed re-validation
+                # (L5). Do not return this as Success -- block it here,
+                # same as any other validation-step failure, rather than
+                # let it fall through with a merely-reduced confidence
+                # score. This does not claim the underlying question gets
+                # answered on this attempt -- only that the pipeline stops
+                # claiming it did.
+                logger.warning(
+                    component="pipeline",
+                    event="hard_fail_blocked",
+                    warnings=audit.warnings,
+                    autofix_attempted=is_l5,
+                )
+                return self._failure_result(
+                    nl_query       = nl_query,
+                    error          = (
+                        "Validation failed (logical_audit): "
+                        + "; ".join(audit.warnings)
+                    ),
+                    parsed_intent  = parsed.intent.value,
+                    timings        = timings,
+                    retrieval_meta = retrieval_meta,
+                    failed_sql     = validated_sql,
+                    retries        = retries,
+                    request_id     = request_id,
+                )
 
         # NEW: log requirement_coverage even when no warnings fired —
         # gives observability into queries where the parser found a

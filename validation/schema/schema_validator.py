@@ -1,3 +1,7 @@
+"""
+validation/schema/schema_validator.py
+─────────────────────────────────────
+"""
 from ..core.context import ValidationContext
 from ..core.base import BaseValidationStep
 from models.schema import ValidationResult

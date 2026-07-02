@@ -1,3 +1,7 @@
+"""
+validation/schema/types.py
+──────────────────────────
+"""
 import sqlglot.expressions as exp
 from ..core.context import ValidationContext
 from models.schema import ValidationResult

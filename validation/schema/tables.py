@@ -1,3 +1,7 @@
+"""
+validation/schema/tables.py
+───────────────────────────
+"""
 import sqlglot.expressions as exp
 from ..core.context import ValidationContext
 from models.schema import ValidationResult
@@ -16,7 +20,23 @@ def validate_tables(ctx: ValidationContext) -> ValidationResult | None:
     sql = ctx.working_sql or ctx.sql
 
     # Step A: Validate table names in the pre-extracted tables_used list.
-    unknown_tables = [t for t in tables_used if t not in schema_map]
+    # FIX (Q28): the LLM sometimes emits aliased expressions in tables_used,
+    # e.g. "faculty_cache AS fc_p" or "faculty_cache fc". Normalise each entry
+    # to the bare table name (strip any alias, lowercase, trim) before the
+    # existence check, so a correct table is not reported as hallucinated.
+    def _bare_table(entry: str) -> str:
+        s = (entry or "").strip().strip('"').strip()
+        low = s.lower()
+        if " as " in low:                      # "faculty_cache AS fc_p"
+            s = s[:low.index(" as ")].strip()
+        else:
+            parts = s.split()                  # "faculty_cache fc"
+            if len(parts) == 2:
+                s = parts[0]
+        return s.strip('"').strip().lower()
+
+    normalised_used = [(_bare_table(t), t) for t in tables_used]
+    unknown_tables = [orig for bare, orig in normalised_used if bare not in schema_map]
     if unknown_tables:
         return ValidationResult(
             passed=False,

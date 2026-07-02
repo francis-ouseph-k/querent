@@ -554,14 +554,26 @@ class SemanticValidator(BaseValidationStep):
             pass
 
         # ── Check 16: Zero-Group / LEFT JOIN ───────────────
-        per_x_triggers = [' per ', ' for each ', ' every ', ' all ']
+        # FIX (Q32/Q37 over-fire): the previous trigger list included bare
+        # ' every ' and ' all ', so plain detail-listing queries ("show ...
+        # for every script", "... for each script that received moderation")
+        # were forced to LEFT JOIN even though they do no per-entity counting.
+        # Now this only fires when BOTH hold:
+        #   (a) the phrasing is a per-entity metric ('per' / 'for each'), and
+        #   (b) the SQL actually contains an aggregate (COUNT/SUM/AVG/...),
+        #       i.e. a zero-count row could genuinely be dropped by INNER JOIN.
+        per_x_triggers = [' per ', ' for each ']
         zero_group_exclude = [' with ', ' that have ', ' assigned to ']
 
         padded_query = f" {query_lower} "
         asks_per_x = any(p in padded_query for p in per_x_triggers) or 'including those with none' in query_lower
         has_exclusion = any(p in padded_query for p in zero_group_exclude)
 
-        if asks_per_x and not has_exclusion:
+        sql_has_aggregate = bool(
+            re.search(r'\b(count|sum|avg|min|max)\s*\(', sql_lower)
+        )
+
+        if asks_per_x and not has_exclusion and sql_has_aggregate:
             # 2026-06-25 fix: use regex with \s+ to tolerate variable whitespace.
             # Previous string-match `'left join' in sql_lower` failed on
             # 'LEFT   JOIN' (indentation pretty-printing) and caused a false
@@ -925,6 +937,13 @@ class SemanticValidator(BaseValidationStep):
                 if left_join_aliases:
                     # Walk WHERE clause for references to LEFT JOIN aliases
                     for where in ast.find_all(exp.Where):
+                        # FIX (Q16): a genuine WHERE filter is a direct child of a
+                        # SELECT. sqlglot also represents the WHERE inside an
+                        # aggregate FILTER clause -- COUNT(*) FILTER (WHERE ...) --
+                        # as an exp.Where whose parent is exp.Filter. That inner
+                        # WHERE does NOT nullify a LEFT JOIN; skip it.
+                        if not isinstance(where.parent, exp.Select):
+                            continue
                         for col in where.find_all(exp.Column):
                             col_table = (col.table or '').lower()
                             if col_table in left_join_aliases:
@@ -1072,28 +1091,50 @@ class HardcodedLiteralValidator(BaseValidationStep):
                 return ValidationResult(passed=True, step="hardcoded", sql=sql)
             
             # [NEW] L8 Literal Detector Enhancement: Block hardcoded filters in outer joins
-            # Hardcoding a filter in a LEFT JOIN's ON clause (e.g. ON a.id = b.id AND b.status = 'ACTIVE')
+            # Hardcoding a *filter* in a LEFT JOIN's ON clause (e.g. ON a.id = b.id AND b.status = 'ACTIVE')
             # breaks the outer join semantics, effectively turning it into an INNER JOIN.
+            #
+            # FIX (Q45 false positive): a literal in a LEFT JOIN's ON clause is
+            # NOT always wrong -- it is the CORRECT, required pattern for a
+            # conditional outer join (keep unmatched left rows, e.g. "was the DEK
+            # re-wrapped" -> LEFT JOIN audit_log ON ... AND action = 'DEK_REWRAP').
+            # Moving such a literal to WHERE would wrongly drop the unmatched rows.
+            # Following the same NL-aware design as Check 23, only fail when the
+            # literal value actually appears in the user's question -- i.e. the
+            # user asked to FILTER on it, so it belongs in WHERE. Literals that do
+            # not appear in the NL are treated as legitimate join-scoping predicates.
+            nl_lower = (original_query or "").lower()
             for join in ast.find_all(exp.Join):
                 side = getattr(join, 'side', None) or ''
                 if isinstance(side, str) and side.upper() == 'LEFT':
                     on_clause = join.args.get('on')
                     if on_clause:
-                        # If we find ANY literal (string, date, or number) inside the ON clause, flag it.
-                        # The LLM should place literal filters in the WHERE clause instead.
                         for literal in on_clause.find_all(exp.Literal):
+                            lit_val = str(literal.this).strip().lower()
+                            if not lit_val:
+                                continue
+                            if lit_val not in nl_lower:
+                                # Legitimate conditional-join predicate -- keep it.
+                                logger.info(
+                                    component="sql_validator",
+                                    event="left_join_on_literal_allowed",
+                                    literal=literal.this,
+                                    note="literal not present in NL question; treated as conditional join scope",
+                                )
+                                continue
                             logger.warning(
                                 component="sql_validator",
                                 event="hardcoded_literal_in_left_join",
                                 literal=literal.this,
-                                query_preview=original_query[:60],
+                                query_preview=nl_lower[:60],
                             )
                             return ValidationResult(
                                 passed=False, step="hardcoded_literals",
                                 message=(
-                                    f"SQL contains a hardcoded literal '{literal.this}' inside a LEFT JOIN's ON clause. "
-                                    f"This breaks LEFT JOIN semantics by acting like an INNER JOIN. "
-                                    f"Move literal filters (strings, dates, numbers) to the WHERE clause."
+                                    f"SQL contains a hardcoded filter literal '{literal.this}' inside a "
+                                    f"LEFT JOIN's ON clause. Because the question asks to filter on this "
+                                    f"value, it acts like an INNER JOIN here and drops unmatched rows. "
+                                    f"Move it to the WHERE clause."
                                 ),
                                 sql=sql,
                             )
@@ -1154,5 +1195,3 @@ class HardcodedLiteralValidator(BaseValidationStep):
             pass
 
         return ValidationResult(passed=True, step="hardcoded", sql=sql)
-
-

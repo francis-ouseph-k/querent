@@ -1,6 +1,6 @@
 """
-validation/logical_audit.py
-────────────────────────────
+validation/semantic/logical_audit.py
+────────────────────────────────────
 Lightweight NL↔SQL alignment checks that run AFTER structural validation passes.
 
 PIPELINE POSITION:
@@ -75,6 +75,32 @@ class AuditResult:
     confidence_penalty: float = 0.0
     requirement_coverage: float | None = None
     coverage_misses: list[str] = field(default_factory=list)
+    hard_fail: bool = False
+    """
+    NEW (2026-07-01). True when a check fired that is deterministically
+    always wrong -- not a soft heuristic signal. Previously EVERY L-check
+    (including L4 anti-join polarity and L5 tautological aggregation) only
+    ever reduced confidence_penalty, capped by the caller at whatever the
+    LLM's raw self-reported confidence happened to be. Empirically this
+    meant confirmed-wrong queries still displayed as "Success" with
+    comfortably high confidence (e.g. Q33 in batch-run-output-20260630:
+    L4 fired, penalty 0.10, raw confidence 0.9 -> displayed 0.8, still
+    "green" -- the bug was detected and then silently absorbed).
+
+    pipeline/runner.py treats hard_fail=True as a genuine validation
+    failure (same as a structural validation step failing) rather than a
+    confidence adjustment on an otherwise-Success result. For checks with
+    a deterministic autofix (currently: L5 tautological aggregation via
+    validation/utils/autofix.py::attempt_tautological_autofix), the fix is
+    attempted and re-validated before falling through to failure. For
+    checks with no deterministic autofix (L4 anti-join polarity -- fixing
+    it requires knowing *which* table to negate, which is a semantic
+    judgment call, not a mechanical transform), there is no autofix
+    attempt: the query is blocked outright rather than silently mislabeled.
+    This does not guarantee the underlying question gets answered
+    correctly on this attempt; it guarantees the pipeline stops claiming
+    it did.
+    """
 
     def add_warning(self, check_id: str, message: str, penalty: float = 0.05):
         """Append a warning and accumulate its confidence penalty."""
@@ -434,6 +460,17 @@ def _check_anti_join_polarity(nl: str, sql: str, result: AuditResult) -> None:
             "The query may return wrong results by including rather than excluding.",
             penalty=0.10,
         )
+        # 2026-07-01: promoted to hard_fail. This detection (presence/absence
+        # of an anti-join pattern given NL negation) is reliable; what's NOT
+        # reliable is assuming the LLM's retry will fix it correctly -- Q55
+        # in batch-run-output-20260630 shows the model reproducing the
+        # identical wrong anti-join across two separate retry attempts.
+        # No deterministic autofix exists here (fixing it requires knowing
+        # which table to negate -- semantic, not mechanical), so this stops
+        # short of claiming the retry succeeds. It only guarantees the
+        # query is never silently labeled Success while the pattern is
+        # missing.
+        result.hard_fail = True
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -456,38 +493,88 @@ def _check_tautological_aggregation(sql: str, result: AuditResult) -> None:
     """
     L5: Detect patterns that produce meaningless results.
 
-    Currently detects:
-      - COUNT(DISTINCT x) ... GROUP BY x → always returns 1 per group
+    Detects:
+      - COUNT(DISTINCT x) ... GROUP BY x        -> always returns 1 per group
+      - AVG(x) / SUM(x) ... GROUP BY x          -> always equals x itself
+        (2026-07-01: previously listed as 'not yet implemented' -- this was
+        the exact gap that let Q120 (AVG(retention_days) GROUP BY
+        retention_days) through as a false 'Success' in batch-run-output-
+        20260630_201335.)
 
-    Future candidates (not yet implemented):
-      - SUM(x) ... GROUP BY x (single-table) → always = x itself
-      - AVG(page_number) → averaging ordinals, not counts
-      - self-referencing subtraction (col_a - col_a)
+    FIX (2026-07-01): the original version checked `col_name in group_cols`,
+    a bare Python substring test against the raw GROUP BY text. This false-
+    positived on Q27: COUNT(DISTINCT qs.id) flagged as tautological because
+    the literal string "id" is a substring of "qp.id" elsewhere in the
+    GROUP BY clause, even though qp.id and qs.id are unrelated columns on
+    unrelated tables. Replaced with column-list parsing + exact match on
+    the qualified (table, column) pair where a table qualifier is present,
+    falling back to bare-name match only when neither side is qualified.
 
-    Penalty: 0.10 (high — always a semantic error).
+    Penalty: 0.10 (high). ALSO sets result.hard_fail = True -- unlike other
+    L-checks, a confirmed tautological aggregation is deterministically
+    always wrong (no false-positive risk once the AST-adjacent match above
+    is exact), so it is promoted from a soft confidence penalty to a hard
+    block in pipeline/runner.py, with a deterministic autofix attempted
+    first (see validation/utils/autofix.py::attempt_tautological_autofix).
     """
     sql_low = _sql_lower(sql)
 
-    # Extract COUNT(DISTINCT col) expressions from the SQL
-    # Matches both "count(distinct q.id)" and "count(distinct id)"
-    count_distinct = re.findall(r'count\s*\(\s*distinct\s+(\w+\.\w+|\w+)\s*\)', sql_low)
-
-    # Extract GROUP BY column list
     group_by_match = re.search(r'group\s+by\s+(.+?)(?:\s+order|\s+having|\s+limit|$)', sql_low)
+    if not group_by_match:
+        return
 
-    if count_distinct and group_by_match:
-        group_cols = group_by_match.group(1)
-        for col in count_distinct:
-            # Strip table alias: "q.id" → "id" for matching against GROUP BY
-            col_name = col.split('.')[-1] if '.' in col else col
-            # If the COUNT(DISTINCT) column is also in GROUP BY → tautology
-            if col_name in group_cols:
+    # Parse GROUP BY into individual (table, column) pairs -- exact tokens,
+    # not a raw string to substring-match against.
+    group_cols = []
+    for raw in group_by_match.group(1).split(','):
+        raw = raw.strip()
+        if not raw:
+            continue
+        if '.' in raw:
+            tbl, col = raw.split('.', 1)
+            group_cols.append((tbl.strip(), col.strip()))
+        else:
+            group_cols.append((None, raw))
+
+    def _col_in_group_by(tbl: str | None, col: str) -> bool:
+        for gtbl, gcol in group_cols:
+            if gcol != col:
+                continue
+            # Exact qualified match, or unqualified match on both sides only
+            # (never match a qualified GROUP BY column against a bare name
+            # from a different table -- that's the Q27 false-positive class).
+            if gtbl == tbl or (gtbl is None and tbl is None):
+                return True
+        return False
+
+    # COUNT(DISTINCT col)
+    for m in re.finditer(r'count\s*\(\s*distinct\s+(?:(\w+)\.)?(\w+)\s*\)', sql_low):
+        tbl, col = m.group(1), m.group(2)
+        if _col_in_group_by(tbl, col):
+            ref = f"{tbl}.{col}" if tbl else col
+            result.add_warning(
+                "L5",
+                f"COUNT(DISTINCT {ref}) with GROUP BY {ref} always produces 1. "
+                f"This is a tautological aggregation.",
+                penalty=0.10,
+            )
+            result.hard_fail = True
+
+    # AVG(col) / SUM(col) -- single-table self-tautology
+    for fn in ("avg", "sum"):
+        for m in re.finditer(rf'{fn}\s*\(\s*(?:(\w+)\.)?(\w+)\s*\)', sql_low):
+            tbl, col = m.group(1), m.group(2)
+            if _col_in_group_by(tbl, col):
+                ref = f"{tbl}.{col}" if tbl else col
                 result.add_warning(
                     "L5",
-                    f"COUNT(DISTINCT {col}) with GROUP BY {col_name} always produces 1. "
-                    f"This is likely a tautological aggregation.",
+                    f"{fn.upper()}({ref}) with GROUP BY {ref} is tautological -- "
+                    f"each group contains rows with identical {col}, so "
+                    f"{fn.upper()} within the group just returns that value back. "
+                    f"This does not compute a real aggregate across the matching rows.",
                     penalty=0.10,
                 )
+                result.hard_fail = True
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

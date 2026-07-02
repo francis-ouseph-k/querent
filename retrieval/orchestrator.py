@@ -455,19 +455,25 @@ def _apply_context_budget(
     selected:  list[SemanticChunk] = []
     deferred:  list[SemanticChunk] = []
 
-    # Pass 1: fill quota slots
+    # Pass 1: fill quota slots.
+    # FIX (B1 budget overflow): the per-tier quotas sum to more than `available`
+    # (0.40 + 0.35 + 0.10 + 1.00 = 1.85x), and each admit-check only looked at
+    # its own tier. That let Pass 1 select up to ~1.85x the budget, silently
+    # blowing the configured token budget and defeating the "lost in the middle"
+    # ordering. Enforce a single global running total across all tiers.
+    pass1_used = 0
     for chunk in remaining:
         tok  = _count_tokens(chunk.text)
         tier = _tier(chunk.chunk_type)
-        if tier_used[tier] + tok <= tier_quotas[tier]:
+        if tier_used[tier] + tok <= tier_quotas[tier] and pass1_used + tok <= available:
             selected.append(chunk)
             tier_used[tier] += tok
+            pass1_used += tok
         else:
             deferred.append(chunk)
 
     # Pass 2: fill remaining budget — iterate ALL deferred, never break early
-    pass1_tokens = sum(_count_tokens(c.text) for c in selected)
-    leftover     = available - pass1_tokens
+    leftover = available - pass1_used
 
     for chunk in deferred:
         tok = _count_tokens(chunk.text)
