@@ -351,7 +351,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "--strict-version-check",
         action="store_true",
-        help="Make schema version drift mismatch fatal",
+        default=True,
+        help="Make schema version drift fatal (DEFAULT). A benchmark run on a "
+             "stale vector index / FK graph produces invalid results.",
+    )
+    parser.add_argument(
+        "--allow-stale-index",
+        dest="strict_version_check",
+        action="store_false",
+        help="Override: run even if the index is stale vs the current DDL. "
+             "Only for quick smoke tests -- results are NOT trustworthy.",
     )
     args = parser.parse_args()
 

@@ -1,3 +1,9 @@
+
+"""
+validation/security/tenant_injector.py
+────────────────────────────
+"""
+
 import sqlglot
 import sqlglot.expressions as exp
 import re

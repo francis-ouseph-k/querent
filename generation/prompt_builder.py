@@ -188,6 +188,52 @@ _JSONB_TRIGGER_TABLES: frozenset[str] = frozenset(HEURISTICS.get('trigger_tables
 
 _CORRECTION_PROMPT_FOOTER: list[str] = _PROMPTS.get("correction_prompt_footer", [])
 
+
+def _authoritative_columns_block(error_message: str, tables) -> list[str]:
+    """
+    Given a validator error and the live schema inventory (`tables`: name ->
+    object with a `.columns` collection), return correction-prompt lines that
+    list the EXACT columns of every table named in the error. Empty list if the
+    error names no known table or no inventory is available.
+    """
+    if not error_message or not tables:
+        return []
+
+    inv_by_name = {str(k).lower(): v for k, v in tables.items()}
+    err = error_message.lower()
+    found: list[str] = []
+
+    # 1) explicit "table.column" tokens in the error
+    for m in re.findall(r"\b([a-z_]+)\.[a-z_]+", err):
+        if m in inv_by_name and m not in found:
+            found.append(m)
+    # 2) any known table name mentioned verbatim (e.g. "<t> does NOT have <c>")
+    if not found:
+        for name in inv_by_name:
+            if re.search(rf"\b{re.escape(name)}\b", err):
+                found.append(name)
+
+    lines: list[str] = []
+    for name in found[:4]:
+        inv = inv_by_name.get(name)
+        cols = getattr(inv, "columns", None)
+        if not cols:
+            continue
+        col_list = ", ".join(sorted(cols))
+        lines.append(f"  {name}: {col_list}")
+
+    if not lines:
+        return []
+
+    return [
+        "AUTHORITATIVE COLUMNS — the failed SQL referenced a column that does "
+        "NOT exist. Use ONLY the columns listed below for these tables, and no "
+        "others. Do not invent columns; if a value is not here, derive it or "
+        "join to the correct table:",
+        *lines,
+    ]
+
+
 # ── JOIN recipe block ────────────────────────────────────────────────────────
 # Pre-tested multi-table JOIN patterns.
 _JOIN_RECIPES: dict[str, tuple[set[str], str]] = {
@@ -746,6 +792,20 @@ class PromptBuilder:
                 f"Error: {error_message}",
                 "",
             ]
+
+            # ── Authoritative columns for the error table(s) (NEW) ───────────
+            # The dominant Phase-1 failure mode is column hallucination: the
+            # model invents columns (configuration.global_value, academic_unit.
+            # display_name, script_page.page_count, ...) and then repeats the
+            # SAME error across all retries because re-retrieval returns the
+            # same chunks. Inject the EXACT, live column list for the table(s)
+            # named in the error, straight from the schema inventory, right next
+            # to the error. This is deterministic ground truth adjacent to the
+            # mistake -- far more reliable than hoping retrieval surfaces it.
+            auth_block = _authoritative_columns_block(error_message, tables)
+            if auth_block:
+                correction_lines.extend(auth_block)
+                correction_lines.append("")
 
             if label_filters:
                 correction_lines.append("IDENTIFIER CORRECTION:")

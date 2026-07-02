@@ -27,6 +27,42 @@ from ..core.context import ValidationContext
 logger = get_logger(__name__)
 
 
+def _predicate_has_literal_counterpart(col: "exp.Column") -> bool:
+    """
+    True when `col` participates in a comparison whose OTHER operand is a
+    literal (col = 'X', col IN ('A','B'), col > 5, col LIKE '%x%'). False when
+    the counterpart is another column (a join key / correlated reference), which
+    does NOT nullify an outer join.
+    """
+    parent = col.parent
+    if parent is None:
+        return False
+    # IN (...) list of literals
+    if isinstance(parent, exp.In):
+        exprs = parent.args.get("expressions") or []
+        return any(isinstance(e, exp.Literal) for e in exprs) and not any(
+            isinstance(e, exp.Column) for e in exprs
+        )
+    # Binary comparisons expose .left / .right
+    left = getattr(parent, "left", None)
+    right = getattr(parent, "right", None)
+    if left is None and right is None:
+        return False
+    sibling = right if left is col else left
+    if sibling is None:
+        return False
+    if isinstance(sibling, exp.Column):
+        return False
+    # Literal directly, or an expression whose leaves are literals (no columns)
+    if isinstance(sibling, exp.Literal):
+        return True
+    if hasattr(sibling, "find_all"):
+        has_lit = any(True for _ in sibling.find_all(exp.Literal))
+        has_col = any(True for _ in sibling.find_all(exp.Column))
+        return has_lit and not has_col
+    return False
+
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 # Ordinal/sequential columns that should not be averaged directly.
@@ -954,6 +990,14 @@ class SemanticValidator(BaseValidationStep):
                                 # Skip NOT (col IS NULL) too
                                 grandparent = getattr(parent, 'parent', None)
                                 if isinstance(grandparent, exp.Not) and isinstance(parent, exp.Is):
+                                    continue
+                                # FIX (Q126): a LEFT JOIN is only nullified when the
+                                # left column is filtered against a LITERAL value
+                                # (e.g. WHERE hs.status = 'PENDING'). When the column
+                                # is compared to ANOTHER COLUMN -- e.g. a correlated
+                                # join key inside NOT EXISTS (WHERE q2.parent = q.id) --
+                                # NULL rows are not eliminated and the pattern is fine.
+                                if not _predicate_has_literal_counterpart(col):
                                     continue
                                 col_name = (col.name or '').lower()
                                 logger.warning(

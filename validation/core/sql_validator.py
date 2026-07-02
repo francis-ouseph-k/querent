@@ -1,5 +1,5 @@
 """
-validation/sql_validator.py
+validation/core/sql_validator.py
 ────────────────────────────
 10-step SQL validation pipeline orchestrator.
 """
@@ -218,6 +218,14 @@ class RetryValidator:
         result  = self.validator.validate(sql, tables_used, user_context, original_query=original_query)
         retries = 0
 
+        # Track the error signature so we can stop early when a correction makes
+        # no progress. Re-retrieval on retry often returns the same chunks, so a
+        # schema/semantic error can repeat verbatim for every remaining attempt
+        # (observed: 48 queries hitting max retries with an identical message).
+        # Bailing on the first identical repeat saves ~75% of failure latency and
+        # stops the Phase-2 failure corpus filling with duplicate dead-ends.
+        last_error_sig = (result.step, result.message) if not result.passed else None
+
         # Loop to correct/repair failed SQL candidate strings based on validation step failures.
         # This acts as a feedback loop between the validator (providing error diagnostics) and the generator (fixing errors).
         while not result.passed and retries < max_retries:
@@ -282,5 +290,19 @@ class RetryValidator:
             # Validate the corrected SQL candidate again.
             # This loops back to check if the new query passes all validation steps.
             result = self.validator.validate(sql, tables_used, user_context, original_query=original_query)
+
+            # Stall detection: if the correction reproduced the exact same error,
+            # further identical retries will not help -- stop and return.
+            new_sig = (result.step, result.message) if not result.passed else None
+            if new_sig is not None and new_sig == last_error_sig:
+                logger.info(
+                    component="retry_validator",
+                    event="retry_stalled",
+                    attempt=retries,
+                    step=result.step,
+                    note="identical error reproduced; aborting retries early",
+                )
+                break
+            last_error_sig = new_sig
 
         return result, retries
