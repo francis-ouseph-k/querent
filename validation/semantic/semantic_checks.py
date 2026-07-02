@@ -1,6 +1,6 @@
 """
-validation/semantic_checks.py
-──────────────────────────────
+validation/semantic/semantic_checks.py
+──────────────────────────────────────    
 Semantic heuristic checks and hardcoded-literal detection for SQL validation.
 
 Contains Step 7 (12 semantic checks) and Step 8 (hardcoded literal IDs).
@@ -1148,7 +1148,20 @@ class HardcodedLiteralValidator(BaseValidationStep):
             # user asked to FILTER on it, so it belongs in WHERE. Literals that do
             # not appear in the NL are treated as legitimate join-scoping predicates.
             nl_lower = (original_query or "").lower()
-            for join in ast.find_all(exp.Join):
+            # FIX (Q27 regression): a literal in a LEFT JOIN's ON clause is the
+            # REQUIRED idiom for conditional aggregation -- "count the APPROVED
+            # answer keys per paper, including papers with zero" must read
+            # LEFT JOIN answer_key ak ON ak.qp_id = qp.id AND ak.status = 'APPROVED'
+            # so that zero-match parents survive. Moving 'APPROVED' to WHERE would
+            # drop those parents. The earlier NL-aware rule wrongly fired here
+            # because 'approved' appears in the question. When the statement
+            # contains an aggregate (COUNT/SUM/AVG/MIN/MAX), treat every
+            # LEFT-JOIN-ON literal as legitimate conditional-aggregation scope and
+            # skip this check entirely.
+            has_aggregate = bool(ast.find(exp.AggFunc)) or bool(
+                re.search(r'\b(count|sum|avg|min|max)\s*\(', (sql or '').lower())
+            )
+            for join in ([] if has_aggregate else ast.find_all(exp.Join)):
                 side = getattr(join, 'side', None) or ''
                 if isinstance(side, str) and side.upper() == 'LEFT':
                     on_clause = join.args.get('on')
