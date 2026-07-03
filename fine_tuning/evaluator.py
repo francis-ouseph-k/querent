@@ -255,6 +255,11 @@ def _generate_sql(
     # fall through to the regex fallback unnecessarily. 512 matches the
     # budget used elsewhere for generation at inference time
     # (generation/prompt_builder.py / sql_generator.py).
+    temperature: float | None = None,
+    # Generation temperature. None -> read settings.llm.temperature (the single
+    # source of truth used across the codebase). 0 (the recommended default for
+    # evaluation) means greedy/deterministic decoding so fine-tuning eval numbers
+    # are reproducible run-to-run. Was previously hard-coded to 0.1.
 ) -> tuple[str, float]:
     """
     Generate SQL for a single NL question using the fine-tuned model.
@@ -270,16 +275,25 @@ def _generate_sql(
 
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
+    # Resolve temperature from the single source of truth when not given.
+    eval_temp = settings.llm.temperature if temperature is None else temperature
+
+    # HuggingFace only applies `temperature` when `do_sample=True`; under greedy
+    # decoding it is ignored (and warns). So switch modes on the value: temp 0
+    # -> deterministic greedy (reproducible), temp > 0 -> sampling at that temp.
+    gen_kwargs: dict[str, Any] = dict(
+        max_new_tokens = max_new_tokens,
+        pad_token_id   = tokenizer.pad_token_id,
+        eos_token_id   = tokenizer.eos_token_id,
+    )
+    if eval_temp and eval_temp > 0:
+        gen_kwargs.update(do_sample=True, temperature=eval_temp)
+    else:
+        gen_kwargs.update(do_sample=False)  # greedy — reproducible evaluation
+
     t0 = time.perf_counter()
     with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens = max_new_tokens,
-            temperature    = 0.1,
-            do_sample      = False,
-            pad_token_id   = tokenizer.pad_token_id,
-            eos_token_id   = tokenizer.eos_token_id,
-        )
+        outputs = model.generate(**inputs, **gen_kwargs)
     latency_ms = (time.perf_counter() - t0) * 1000
 
     # Decode only the generated tokens (not the prompt)
