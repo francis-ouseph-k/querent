@@ -8,9 +8,38 @@ runs each through PipelineRunner sequentially,
 writes results to data/output/batch-run-output-<timestamp>.jsonl.
 
 Usage (from project root nl_to_sql/):
-    python batch_run.py
-    python batch_run.py --dry-run      # skip DB execution
-    python batch_run.py --start 50     # resume from QNum 50
+    python batch_run.py                    # DETERMINISTIC benchmark (temperature 0)
+    python batch_run.py --sampled          # use configured LLM_TEMPERATURE instead
+    python batch_run.py --temperature 0.0  # explicit (this is the default)
+    python batch_run.py --dry-run          # skip DB execution
+    python batch_run.py --start 50         # resume from QNum 50
+    python batch_run.py --allow-stale-index# run even if the index is stale (smoke test)
+
+DETERMINISM & TEMPERATURE  (why this matters for a benchmark)
+─────────────────────────────────────────────────────────────
+Generation temperature has ONE source of truth: settings.llm.temperature
+(config/settings.py, default 0.2, overridable via the LLM_TEMPERATURE env var).
+Every generation call reads that value — the generator never hard-codes a
+temperature (see generation/sql_generator.py, all three inference paths). Because of
+that single source, overriding the setting here propagates everywhere automatically;
+there is no per-call plumbing to change.
+
+At temperature 0.2 the sampler is stochastic, so the SAME question can produce
+different SQL on different runs. Boundary (High-complexity) queries then flip
+pass/fail run-to-run, and a ±6-10% swing appears in the pass rate that is pure
+sampling noise, not a real change — making it impossible to tell whether a code
+change helped. For a benchmark we therefore force GREEDY decoding (temperature 0) by
+default. A startup log line `deterministic_eval_mode temperature=0.0 was=0.2`
+confirms it is active; if you do NOT see that line, this override did not run.
+
+Caveat: temperature 0 is greedy decoding, which is near-deterministic, not a hard
+guarantee of bit-identical output — GPU floating-point reductions are non-associative,
+so a rare token can still differ. It removes the sampling noise, which is the point.
+Pass --sampled to evaluate at the configured production temperature instead.
+
+(One place still hard-codes a temperature: fine_tuning/evaluator.py sets 0.1 for the
+Phase-2 evaluation harness. Point it at settings/0.0 before relying on fine-tuning
+eval numbers. Not relevant to Phase-1 batch runs.)
 
 Output format (one JSON line per question):
     {
@@ -65,10 +94,29 @@ from pipeline.bootstrap import create_runner
 
 # ── Main batch logic ───────────────────────────────────────────────────────────
 
-def run_batch(dry_run: bool = False, start_from: int = 1, strict_version_check: bool = False) -> None:
+# ── DETERMINISM (1/5): new `eval_temperature` parameter ─────────────────────────
+#   None  -> leave settings.llm.temperature untouched (use configured/env value)
+#   float -> force this temperature for the whole run (default 0.0 = greedy)
+def run_batch(dry_run: bool = False, start_from: int = 1, strict_version_check: bool = False,
+              eval_temperature: float | None = 0.0) -> None:
 
     if strict_version_check:
         settings.strict_version_check = True
+
+    # ── DETERMINISM (2/5): force greedy decoding for a reproducible benchmark ──
+    # Override the single source of truth BEFORE the pipeline is built, so every
+    # downstream generation call picks it up automatically. Logs `deterministic_
+    # eval_mode` so you can confirm from the console that it took effect.
+    if eval_temperature is not None:
+        prev = settings.llm.temperature
+        settings.llm.temperature = eval_temperature
+        logger.info(
+            component=COMPONENT,
+            event="deterministic_eval_mode",
+            temperature=eval_temperature,
+            was=prev,
+            note="greedy decoding for a reproducible benchmark; use --sampled to override",
+        )
 
     # Enforce strict version check if enabled
     from pipeline.bootstrap import check_schema_version
@@ -362,6 +410,32 @@ if __name__ == "__main__":
         help="Override: run even if the index is stale vs the current DDL. "
              "Only for quick smoke tests -- results are NOT trustworthy.",
     )
+    # ── DETERMINISM (3/5): --temperature (default 0.0 = deterministic benchmark) ──
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Generation temperature for this benchmark (DEFAULT 0.0 = deterministic/"
+             "greedy). Overrides LLM_TEMPERATURE so runs are reproducible.",
+    )
+    # ── DETERMINISM (4/5): --sampled opts OUT of the override (use configured temp) ─
+    parser.add_argument(
+        "--sampled",
+        dest="deterministic",
+        action="store_false",
+        help="Evaluate with the configured production temperature (LLM_TEMPERATURE) "
+             "instead of forcing greedy decoding. Results become non-reproducible.",
+    )
+    parser.set_defaults(deterministic=True)
     args = parser.parse_args()
 
-    run_batch(dry_run=args.dry_run, start_from=args.start, strict_version_check=args.strict_version_check)
+    # ── DETERMINISM (5/5): pass the resolved temperature into run_batch ──────────
+    #   deterministic (default) -> use args.temperature (0.0)
+    #   --sampled               -> None (leave settings.llm.temperature as configured)
+    _eval_temp = args.temperature if args.deterministic else None
+    run_batch(
+        dry_run=args.dry_run,
+        start_from=args.start,
+        strict_version_check=args.strict_version_check,
+        eval_temperature=_eval_temp,
+    )
