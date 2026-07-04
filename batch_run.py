@@ -3,7 +3,7 @@ batch_run.py
 ────────────
 Batch runner for NL-to-SQL pipeline evaluation.
 
-Reads questions from data/inputs/user-queries-batch.jsonl,
+Reads questions from data/inputs/benchmark-test-set.jsonl,
 runs each through PipelineRunner sequentially,
 writes results to data/output/batch-run-output-<timestamp>.jsonl.
 
@@ -71,7 +71,7 @@ from utils.logging_config import configure_logging, get_logger
 configure_logging(settings.log_dir)
 logger = get_logger(__name__)
 
-INPUT_PATH = Path("data/inputs/user-queries-batch.jsonl")
+INPUT_PATH = Path("data/inputs/benchmark-test-set.jsonl")
 OUTPUT_DIR = Path("data/output")
 
 COMPONENT = "batch_run"

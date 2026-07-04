@@ -115,10 +115,10 @@ from utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-HF_MODEL_DIR  = Path("models/hf/Qwen2.5-Coder-3B-Instruct")
-ADAPTER_DIR   = Path("models/adapters")
-EVAL_DATA     = Path("data/fine_tuning_eval.jsonl")
-BASELINE_PATH = Path("data/eval_baseline.json")
+HF_MODEL_DIR  = Path(settings.fine_tuning.hf_model_dir)   # FT_HF_MODEL_DIR (.env)
+ADAPTER_DIR   = Path(settings.fine_tuning.adapter_dir)    # FT_ADAPTER_DIR  (.env)
+EVAL_DATA     = Path(settings.fine_tuning.eval_data)      # FT_EVAL_DATA    (.env)
+BASELINE_PATH = Path(settings.fine_tuning.baseline_path)  # FT_BASELINE_PATH(.env)
 RESULTS_DIR   = Path("data")
 
 # ── Regression thresholds ─────────────────────────────────────────────────────

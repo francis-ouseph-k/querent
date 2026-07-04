@@ -123,6 +123,7 @@ import json
 from pathlib import Path
 
 from utils.logging_config import get_logger
+from config.settings import settings
 
 logger = get_logger(__name__)
 
@@ -132,10 +133,14 @@ logger = get_logger(__name__)
 # improvement or run-to-run noise.
 DEFAULT_SEED = 42
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
-HF_MODEL_DIR  = Path("models/hf/Qwen2.5-Coder-3B-Instruct")
-ADAPTER_DIR   = Path("models/adapters")
-TRAIN_DATA    = Path("data/fine_tuning_train.jsonl")
+# ── Paths (env-overridable via config/settings.py → .env, prefix FT_) ─────────
+# Defaults live in FineTuningSettings. Override in <project root>/.env:
+#   FT_ADAPTER_DIR=../models/adapters        (README sibling layout)
+#   FT_HF_MODEL_DIR=../models/hf/Qwen2.5-Coder-3B-Instruct
+#   FT_TRAIN_DATA=data/fine_tuning_train.jsonl
+HF_MODEL_DIR  = Path(settings.fine_tuning.hf_model_dir)
+ADAPTER_DIR   = Path(settings.fine_tuning.adapter_dir)
+TRAIN_DATA    = Path(settings.fine_tuning.train_data)
 
 # ── Default hyperparameters ───────────────────────────────────────────────────
 # These are tuned for an 8 GB GPU with gradient checkpointing enabled.
@@ -149,21 +154,30 @@ LEARNING_RATE      = 2e-4
 NUM_EPOCHS         = 3
 BATCH_SIZE         = 2      # per-device batch size
 GRAD_ACCUM_STEPS   = 8      # effective batch = 16
-MAX_SEQ_LENGTH     = 2048   # token ceiling per training example
+MAX_SEQ_LENGTH     = 4096   # token ceiling per training example
                             # REVIEW FIX (#4): was 1024 — Phase 1 inference prompts run
                             # 2,000-4,000+ tokens once schema/workflow/glossary/join/
                             # few-shot context is included (budget ~10,200 effective
                             # tokens). 1024 silently truncated every training example,
                             # cutting off schema context or even the SQL output —
                             # a severe train/inference distribution mismatch.
-                            # 2048 is a starting point, not a verified ceiling for this
-                            # GPU. Watch VRAM after the first few steps (nvidia-smi or
+                            # REVISED: 2048 still truncated the long tail — the same
+                            # schema-context prompts that hit 2,000-4,000+ tokens at
+                            # INFERENCE were being cut at 2,048 during TRAINING, so the
+                            # model never saw the full context it must condition on at
+                            # serve time. Raised to 4096 to cover the realistic upper
+                            # band. This raises VRAM/step time; gradient_checkpointing is
+                            # already enabled (SFTConfig) to offset it, and BATCH_SIZE is
+                            # small (2). If OOM on 8 GB, drop BATCH_SIZE to 1 and raise
+                            # GRAD_ACCUM_STEPS to 16 to hold the effective batch at 16.
+                            # 4096 is a budget, not a verified ceiling for this GPU.
+                            # Watch VRAM after the first few steps (nvidia-smi or
                             # torch.cuda.memory_summary()); reduce --batch-size to 1
-                            # first if you OOM, since dropping below 2048 reintroduces
-                            # truncation. If your enriched corpus needs more than 2048
-                            # routinely, consider truncating schema_context in
-                            # data_pipeline.py to match this budget instead of raising
-                            # it further — keeps training and inference budgets aligned.
+                            # first if you OOM, since dropping below the inference-side
+                            # prompt length reintroduces truncation. If your enriched
+                            # corpus routinely exceeds 4096, cap schema_context in
+                            # data_pipeline.py to this budget rather than raising it
+                            # further — keeps the training and inference budgets aligned.
 WARMUP_RATIO       = 0.03
 LR_SCHEDULER       = "cosine"
 SAVE_STEPS         = 50     # save checkpoint every N steps
@@ -349,13 +363,20 @@ def train(
         )
     else:
         gpu_name = torch.cuda.get_device_name(0)
-        vram_gb  = torch.cuda.get_device_properties(0).total_memory / 1e9
-        print(f"\n✓  GPU: {gpu_name} ({vram_gb:.1f} GB VRAM)")
-        if vram_gb < 7.5:
+        # Report FREE VRAM, not total. total_memory ignores whatever is already
+        # resident — a running llama-server can hold 4-6 GB, so a card that
+        # reports "8 GB total" may have only 2 GB free and will OOM on load.
+        # mem_get_info() returns (free, total) in bytes.
+        free_bytes, total_bytes = torch.cuda.mem_get_info(0)
+        vram_gb      = total_bytes / 1e9
+        free_vram_gb = free_bytes  / 1e9
+        print(f"\n✓  GPU: {gpu_name} ({vram_gb:.1f} GB total, {free_vram_gb:.1f} GB free)")
+        if free_vram_gb < 7.5:
             print(
-                f"⚠  WARNING: Only {vram_gb:.1f} GB VRAM detected.\n"
+                f"⚠  WARNING: Only {free_vram_gb:.1f} GB VRAM free.\n"
                 # [BLACKWELL-SAFE] bf16 full-precision base model footprint:
                 "   bf16 LoRA requires ~7–8 GB. Training may OOM.\n"
+                "   Stop llama-server (or any other GPU process) to free VRAM.\n"
                 # [LEGACY] NF4 footprint was lower (~4–5 GB for the base model),
                 # so this threshold was less likely to trigger on Ampere/Turing.
                 "   Try reducing --batch-size to 1.\n"
@@ -519,6 +540,22 @@ def train(
         save_steps                  = SAVE_STEPS,
         save_total_limit            = 2,
         seed                        = seed,  # REVIEW FIX (#9): reproducible shuffling
+        # Explicit gradient clipping. TRL defaults this to 1.0, but LoRA on a
+        # small corpus is prone to occasional gradient spikes — pinning it makes
+        # the run reproducible regardless of the TRL version's default.
+        max_grad_norm               = 1.0,
+        # Checkpoint selection. With load_best_model_at_end=False (current), the
+        # run keeps the LAST checkpoint. EarlyStoppingCallback (added at trainer
+        # construction below) still halts the run when eval_loss stops improving —
+        # it just doesn't roll back to the best-eval_loss checkpoint afterwards.
+        # To instead restore the best checkpoint, set this True (requires the
+        # eval/save strategies below to both be "steps", which they are).
+        # metric_for_best_model / greater_is_better only take effect when this
+        # is True, but are left set so flipping the flag needs no other change.
+        load_best_model_at_end      = False,
+        metric_for_best_model       = "eval_loss",
+        greater_is_better           = False,
+        save_strategy               = "steps",
         #
         # REVIEW FIX (#5): TRL's SFTTrainer can default to packing=True in
         # some versions when dataset_text_field is set, concatenating
@@ -563,12 +600,21 @@ def train(
     )
 
     # ── 7. Train ──────────────────────────────────────────────────────────────
+    # Early stopping: halt when eval_loss (on the dev split held out above) has
+    # not improved for `patience` consecutive evals — saves GPU hours once the
+    # model stops improving. With load_best_model_at_end=False (see SFTConfig)
+    # the LAST checkpoint is kept; set that flag True to restore the best-eval_loss
+    # checkpoint instead. EarlyStoppingCallback lives in transformers; SFTTrainer
+    # (from trl) subclasses the HF Trainer, so the callback machinery is shared.
+    from transformers import EarlyStoppingCallback
+
     trainer = SFTTrainer(
         model          = model,
         train_dataset  = dataset,
         eval_dataset   = dev_dataset,  # REVIEW FIX (#8)
         args           = training_args,
         tokenizer      = tokenizer,
+        callbacks      = [EarlyStoppingCallback(early_stopping_patience=3)],
     )
 
     print(f"\nStarting training — {epochs} epochs…")

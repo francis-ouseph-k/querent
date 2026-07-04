@@ -55,6 +55,7 @@ import sys
 from pathlib import Path
 
 from utils.logging_config import get_logger
+from config.settings import settings
 
 logger = get_logger(__name__)
 
@@ -69,13 +70,16 @@ _LLAMA_PRECOMPILED = Path(
         r"D:\work\CONFIDENTAIL\KREUPASANAM\digital-evaluation_ai\llama-precompiled",
     )
 )
-_HF_MODEL_DIR = Path(
-    os.environ.get("HF_MODEL_DIR", "models/hf/Qwen2.5-Coder-3B-Instruct")
-)
-
-_ADAPTER_DIR    = Path("models/adapters")
-_MERGED_DIR     = Path("models/merged")
-_OUTPUT_DIR     = Path("models/qwen")
+# ── Model paths (env-overridable via config/settings.py → .env, prefix FT_) ───
+# Sourced from settings.fine_tuning so export writes/reads the SAME locations
+# trainer.py uses. Previously _HF_MODEL_DIR read the bare HF_MODEL_DIR env var
+# and the others were hardcoded to "models/..." — if trainer wrote the adapter
+# to FT_ADAPTER_DIR=../models/adapters, export looked in models/adapters and
+# failed to find it. FT_* now drives both.
+_HF_MODEL_DIR = Path(settings.fine_tuning.hf_model_dir)        # FT_HF_MODEL_DIR
+_ADAPTER_DIR    = Path(settings.fine_tuning.adapter_dir)       # FT_ADAPTER_DIR
+_MERGED_DIR     = Path(settings.fine_tuning.merged_dir)        # FT_MERGED_DIR
+_OUTPUT_DIR     = Path(settings.fine_tuning.gguf_output_dir)   # FT_GGUF_OUTPUT_DIR
 
 _CONVERT_SCRIPT = _LLAMA_CPP_SOURCE  / "convert_hf_to_gguf.py"
 _QUANTIZE_BIN   = _LLAMA_PRECOMPILED / "llama-quantize.exe"

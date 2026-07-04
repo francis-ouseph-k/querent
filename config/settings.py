@@ -256,6 +256,30 @@ class MCPSettings(BaseSettings):
     corpus_drive_folder_id: str = ""    
 
 
+class FineTuningSettings(BaseSettings):
+    # Phase-2 fine-tuning paths. All overridable via .env with the FT_ prefix:
+    #   FT_ADAPTER_DIR, FT_HF_MODEL_DIR, FT_TRAIN_DATA
+    # NOTE: defaults match the current hardcoded values in trainer.py, which
+    # write INSIDE the project root ("models/..."). The README documents the
+    # sibling layout "../models/..." (models kept outside the repo). If you
+    # follow the README layout, set in .env:
+    #   FT_ADAPTER_DIR=../models/adapters
+    #   FT_HF_MODEL_DIR=../models/hf/Qwen2.5-Coder-3B-Instruct
+    model_config = SettingsConfigDict(
+        env_prefix="FT_",
+        env_file=ENV_FILE,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+    adapter_dir:  str = "models/adapters"                     # LoRA adapter output root
+    hf_model_dir: str = "models/hf/Qwen2.5-Coder-3B-Instruct" # HF base model (training)
+    train_data:   str = "data/fine_tuning_train.jsonl"        # trainer input file
+    eval_data:    str = "data/fine_tuning_eval.jsonl"         # evaluator input (if used)
+    baseline_path: str = "data/eval_baseline.json"            # evaluator baseline metrics
+    merged_dir:   str = "models/merged"                       # export: merged HF model
+    gguf_output_dir: str = "models/qwen"                      # export: final GGUF output
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,
@@ -273,6 +297,7 @@ class Settings(BaseSettings):
     retrieval:  RetrievalSettings  = Field(default_factory=RetrievalSettings)
     validation: ValidationSettings = Field(default_factory=ValidationSettings)
     mcp:        MCPSettings        = Field(default_factory=MCPSettings)
+    fine_tuning: FineTuningSettings = Field(default_factory=FineTuningSettings)
 
     # ── Paths ──────────────────────────────────────────────────────────────
     ddl_path:              str = "data/docs/digital_evaluation_schema_v10_4_1.sql"
