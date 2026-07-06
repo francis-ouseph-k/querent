@@ -1,63 +1,143 @@
-# ── Retrieval / token counting ────────────────────────────────────────────────
-# FIX #17 — tiktoken was used in retrieval/orchestrator.py for accurate token
-# counting in the context budget manager but was missing from requirements.txt.
-# Without it the code silently fell back to len(text)//4 which is inaccurate
-# for non-ASCII text and code, causing context budget miscalculations.
-tiktoken>=0.6.0
+---
 
-# ── Core ────────────────────────────────────────────────────────────────────
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
-python-dotenv>=1.0.0
+# Querent — Natural Language → SQL Query Engine
 
-# ── DDL / SQL parsing ────────────────────────────────────────────────────────
-# sqlparse>=0.4.4
-# L1: sqlparse is not imported in Phase 1 or Phase 2 — all SQL parsing uses sqlglot.
-# Kept here as a placeholder in case a simpler tokeniser is needed for a future
-# component (e.g. a lightweight CLI formatter).  Uncomment if needed.
-#sqlglot>=20.0.0
-sqlglot>=26.1.2
+A local, schema-aware Natural Language → SQL system that generates validated PostgreSQL queries from business questions using hybrid retrieval, deterministic validation, and iterative correction.
 
-# ── Graph ────────────────────────────────────────────────────────────────────
-networkx>=3.2.0
+The system is designed for large relational schemas with complex joins, workflow-driven entities, and strict execution constraints, operating fully on local infrastructure without external LLM APIs.
 
-# ── Embeddings ──────────────────────────────────────────────────────────────
-sentence-transformers>=2.3.0   # BGE-small-en-v1.5 + cross-encoder reranker
+---
 
-# ── Vector store ────────────────────────────────────────────────────────────
-qdrant-client>=1.7.0
+## Overview
 
-# ── Search ──────────────────────────────────────────────────────────────────
-opensearch-py>=2.4.0
+Enterprise relational databases typically involve deeply interconnected tables, domain-specific terminology, and non-trivial join paths, making reliable natural language to SQL translation a multi-step reasoning problem rather than a single generation task.
 
-# ── LLM inference ───────────────────────────────────────────────────────────
-llama-cpp-python>=0.2.50       # llama.cpp Python bindings
+This system addresses those challenges using a structured pipeline that combines retrieval, constraint-based generation, and multi-layer validation before execution.
 
-# ── Database ────────────────────────────────────────────────────────────────
-psycopg2-binary>=2.9.9
-# asyncpg>=0.29.0
-# L1: asyncpg is not imported anywhere in Phase 1 or Phase 2.  Only psycopg2
-# is used for DB access (ThreadedConnectionPool + cursor).  Kept here as a
-# placeholder in case an async FastAPI layer (Phase 3 roadmap) is added.
-# Uncomment when adding the async API layer.
+All components run locally, making the system suitable for privacy-sensitive and cost-constrained environments.
 
+---
 
-# ── CLI ─────────────────────────────────────────────────────────────────────
-rich>=13.7.0                   # terminal formatting / tables
-prompt_toolkit>=3.0.43         # readline-style input with history
+## Key Capabilities
 
-# ── Logging / observability ──────────────────────────────────────────────────
-structlog>=24.1.0
+* Hybrid retrieval across semantic search, keyword search, and schema graph traversal
+* Schema-aware prompt construction with minimal context selection
+* Local LLM-based SQL generation (no external API dependencies)
+* Deterministic multi-stage SQL validation before execution
+* Automatic correction loop for recoverable SQL errors
+* Confidence scoring and structured output format
+* Failure logging for downstream improvement pipelines
 
-# ── Utilities ───────────────────────────────────────────────────────────────
-httpx>=0.26.0
-# L1: httpx is not directly imported in Phase 1 (qdrant-client and opensearch-py
-# use it internally on some install variants).  Kept explicit for env stability.
-# tenacity>=8.2.3
-# L1: tenacity is not imported anywhere — retry logic is manual in RetryValidator.
-# Kept here for future use if the retry loop is refactored to use decorators.
+---
 
-# ── MCP ───────────────────────────────────────────────────────────────
-mcp>=1.27,<2
-fastmcp>=3.2,<4
-uvicorn>=0.30
+## Architecture
+
+```text
+Natural Language Query
+        │
+        ▼
+Query Understanding
+(Intent + Entity + Table Mapping)
+        │
+        ▼
+Hybrid Retrieval Layer
+(Vector + BM25 + FK Graph Traversal)
+        │
+        ▼
+Context Assembly
+(Schema + Joins + Glossary + Examples)
+        │
+        ▼
+Local LLM Inference
+(SQL Generation)
+        │
+        ▼
+Validation Pipeline
+(Syntax → Schema → Safety → Semantic)
+        │
+        ├── Pass → Execution → Results
+        │
+        └── Fail → Repair Loop → Re-validation
+```
+
+---
+
+## Processing Pipeline
+
+1. Parse and normalize natural language input
+2. Identify candidate schema entities using rule-based intent mapping
+3. Retrieve relevant schema context using hybrid retrieval (dense + sparse + graph traversal)
+4. Construct constrained prompt with prioritized schema sections
+5. Generate SQL using a local LLM
+6. Validate SQL through deterministic rule-based and AST-based checks
+7. Apply automatic repair for safe, recoverable failures
+8. Execute validated queries against a read-only database
+9. Log failures for continuous dataset improvement
+
+---
+
+## Design Principles
+
+* **Schema-first reasoning** — retrieval is grounded in actual relational structure
+* **Deterministic validation** — no execution without AST-level safety checks
+* **Local-only inference** — no external LLM or API dependencies
+* **Graph-aware retrieval** — join paths are derived from FK relationships
+* **Failure-driven improvement** — production errors are structured for training reuse
+
+---
+
+## Why This System is Different
+
+Most text-to-SQL systems rely primarily on prompt engineering or flat schema retrieval. This system introduces structural constraints before generation:
+
+| Capability                  | Description                                                      |
+| --------------------------- | ---------------------------------------------------------------- |
+| Graph-aware retrieval       | Uses FK graph traversal to identify valid join paths             |
+| Multi-source context fusion | Combines vector search, keyword search, and schema graph signals |
+| AST-based validation        | Enforces SQL correctness beyond regex or heuristic checks        |
+| Controlled execution gate   | Prevents unsafe or invalid SQL from reaching the database        |
+| Repair loop                 | Iteratively corrects recoverable SQL failures                    |
+
+---
+
+## Technology Stack
+
+* Python 3.11
+* PostgreSQL-compatible databases
+* Local LLM inference (llama.cpp / GGUF)
+* Vector search (Qdrant)
+* Keyword search (OpenSearch)
+* SQL AST parsing (sqlglot)
+* Structured logging (structlog)
+
+---
+
+## Repository Structure
+
+```text
+pipeline/     Orchestration and execution flow
+retrieval/    Hybrid retrieval (vector + keyword + graph)
+generation/   Prompting, query understanding, LLM inference
+validation/   AST-based SQL validation and repair
+indexing/     Schema indexing pipelines
+fine_tuning/  Optional local fine-tuning and A/B benchmark comparison
+tests/        System validation tests
+```
+
+---
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE` for details.
+
+---
+
+## Status
+
+The system implements a complete end-to-end NL → SQL pipeline with retrieval, generation, validation, and execution layers.
+
+An optional local fine-tuning loop adapts the model to the target schema and query patterns; a candidate model is accepted only after a controlled A/B benchmark against the base model on a fixed held-out question set.
+
+Current focus is on improving semantic accuracy for complex multi-join queries and expanding the failure-driven training dataset.
+
+---
