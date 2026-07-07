@@ -154,17 +154,11 @@ LEARNING_RATE      = 2e-4
 NUM_EPOCHS         = 3
 BATCH_SIZE         = 1      # per-device batch size (8 GB: batch 1 is the safe default)
 GRAD_ACCUM_STEPS   = 16     # effective batch = 16 (was 2*8; now 1*16)
-MAX_SEQ_LENGTH     = 2048   # token ceiling per training example.
-                            # 8 GB VRAM + bf16 3B base caps realistic seq here.
-                            # Rows are pre-fitted to this by fine_tuning.fit_context
-                            # (schema head trimmed, question + JSON output preserved),
-                            # so this ceiling no longer silently drops labels the way
-                            # a raw 4096 cap did on ~11k-token rows. Raise to 3072 only
-                            # after watching nvidia-smi headroom on the first 20 steps;
-                            # if you raise it, re-run fit_context with the same --max-seq
-                            # so training length and the fitted corpus stay in lock-step.
-                            # [PREV] 4096 — never fit on 8 GB and, combined with ~11k-token
-                            # rows, right-truncated every question + SQL label.
+MAX_SEQ_LENGTH     = 1024   # token ceiling per training example.
+                            # 8 GB VRAM: seq 2048 spilled to shared RAM (~12 min/step)
+                            # and eval materialised 9 GB logits. 1024 keeps activations
+                            # + logits on-card. Re-run fit_context with --max-seq 1024
+                            # whenever you change this so corpus and ceiling stay aligned.
 WARMUP_RATIO       = 0.03
 LR_SCHEDULER       = "cosine"
 SAVE_STEPS         = 50     # save checkpoint every N steps
@@ -310,6 +304,11 @@ def train(
     # ── Lazy imports — only needed during training ────────────────────────────
     try:
         import torch
+        # TF32: harmless on Blackwell. Speeds any residual fp32 matmul paths.
+        # Small effect here (training is bf16, so most matmuls are already bf16),
+        # but zero downside to training quality.
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
         from transformers import (
             AutoModelForCausalLM,
             AutoTokenizer,
@@ -478,12 +477,11 @@ def train(
         bias             = "none",
         task_type        = TaskType.CAUSAL_LM,
     )
-    # Commeted out on runtime error
-    # model = get_peft_model(model, lora_config)
-    # model.print_trainable_parameters()
     model = get_peft_model(model, lora_config)
-    # LoRA + gradient_checkpointing: checkpointed forward runs on embeddings that
-    # don't require grad → autograd finds no path to LoRA params → backward dies.
+    # LoRA + gradient_checkpointing: the checkpointed forward runs on input
+    # embeddings that don't require grad, so autograd finds no path to the LoRA
+    # params and backward dies with "element 0 ... does not require grad".
+    # This hook re-enables grad flow through the frozen embeddings.
     model.enable_input_require_grads()
     model.print_trainable_parameters()
 
@@ -507,7 +505,8 @@ def train(
         per_device_train_batch_size = batch_size,
         gradient_accumulation_steps = GRAD_ACCUM_STEPS,
         gradient_checkpointing      = True,
-        # Ad this to fix runtime errors
+        # Non-reentrant checkpointing plays correctly with PEFT/LoRA grad flow;
+        # the default reentrant path is what triggers the no-grad backward error.
         gradient_checkpointing_kwargs = {"use_reentrant": False},
         #
         # ── Optimizer — must match the active model-load path ────────────────
@@ -547,9 +546,26 @@ def train(
         # eval/save strategies below to both be "steps", which they are).
         # metric_for_best_model / greater_is_better only take effect when this
         # is True, but are left set so flipping the flag needs no other change.
-        load_best_model_at_end      = True,   # was False — EarlyStoppingCallback requires it
-        metric_for_best_model       = "eval_loss",
-        greater_is_better           = False,
+        #
+        # ── [8GB-DISABLED] in-loop eval + best-checkpoint restore ────────────
+        # WHY DISABLED: in-loop eval runs a full forward whose LM loss
+        # materialises logits [1, seq, 151936] upcast to fp32 — a ~9 GB spike
+        # even at seq 2048 on top of the 6 GB bf16 base. On an 8 GB card this
+        # OOMs, and because eval fires BEFORE the checkpoint save it takes the
+        # step down with it (no resume point written). Confirmed: v1 run died
+        # at step 50 in evaluation_loop → shift_logits.contiguous().
+        # These three lines (load_best + metric + greater_is_better) require
+        # in-loop eval, so they are off together with eval_strategy below.
+        # TO RESTORE (GPU with >=16 GB, or if you shrink eval to a few short
+        # rows): uncomment the block, set eval_strategy="steps", and re-add the
+        # EarlyStoppingCallback at trainer construction (step 7).
+        # load_best_model_at_end      = True,          # [8GB-DISABLED]
+        # metric_for_best_model       = "eval_loss",   # [8GB-DISABLED]
+        # greater_is_better           = False,         # [8GB-DISABLED]
+        #
+        # [8GB-SAFE] keep the LAST checkpoint; validate post-hoc via
+        # evaluator.py / batch_run (RESULT-2) instead of in-loop eval_loss.
+        load_best_model_at_end      = False,
         save_strategy               = "steps",
         #
         # REVIEW FIX (#5): TRL's SFTTrainer can default to packing=True in
@@ -562,10 +578,13 @@ def train(
         # mid-sequence, training on malformed prompt boundaries.
         packing                      = False,
         #
-        # REVIEW FIX (#8): enable periodic eval_loss reporting against the
-        # dev split held out above, so overfitting is visible during the run
-        # rather than only after evaluator.py finishes post-hoc.
-        eval_strategy                = "steps",
+        # REVIEW FIX (#8): eval_loss reporting against the dev split held out
+        # above. ── [8GB-DISABLED] ── see the load_best_model_at_end note above:
+        # in-loop eval OOMs on 8 GB (9 GB fp32-logit spike). Kept off; the
+        # dev_dataset is still built and passed to SFTTrainer so re-enabling is
+        # a one-line flip back to "steps".
+        # eval_strategy              = "steps",   # [8GB-DISABLED] OOMs on 8 GB
+        eval_strategy                = "no",     # [8GB-SAFE]
         eval_steps                   = SAVE_STEPS,
         #
         # ── Precision flags — must match the model load dtype above ──────────
@@ -590,6 +609,9 @@ def train(
         #
         max_seq_length              = MAX_SEQ_LENGTH,
         dataset_text_field          = "text",
+        dataloader_pin_memory       = True,   # default under CUDA; explicit for version-stability
+        # dataloader_num_workers left at 0: Windows spawn overhead + 452 tiny
+        # pre-tokenised rows means workers>0 would slow startup, not speed it.
         report_to                   = "none",
         run_name                    = f"fine_tuning-{version}",
     )
@@ -633,7 +655,14 @@ def train(
         args           = training_args,
         tokenizer      = tokenizer,
         data_collator  = completion_collator,  # completion-only loss masking
-        callbacks      = [EarlyStoppingCallback(early_stopping_patience=3)],
+        # ── [8GB-DISABLED] EarlyStoppingCallback ─────────────────────────────
+        # WHY DISABLED: EarlyStopping halts on eval_loss, which requires in-loop
+        # eval — off on 8 GB (see SFTConfig note). With load_best_model_at_end
+        # also False, the TRL/HF assertion
+        #   "EarlyStoppingCallback requires load_best_model_at_end = True"
+        # would fire on train start anyway. Restore both together on a bigger GPU.
+        # callbacks    = [EarlyStoppingCallback(early_stopping_patience=3)],  # [8GB-DISABLED]
+        callbacks      = [],   # [8GB-SAFE] no in-loop eval → no early stop
     )
 
     print(f"\nStarting training — {epochs} epochs…")
