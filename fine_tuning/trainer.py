@@ -144,7 +144,7 @@ TRAIN_DATA    = Path(settings.fine_tuning.train_data)
 
 # ── Default hyperparameters ───────────────────────────────────────────────────
 # These are tuned for an 8 GB GPU with gradient checkpointing enabled.
-# Effective batch size = BATCH_SIZE * GRAD_ACCUM_STEPS = 2 * 8 = 16
+# Effective batch size = BATCH_SIZE * GRAD_ACCUM_STEPS = 1 * 16 = 16
 # These values are shared between the legacy and Blackwell-safe paths.
 LORA_RANK          = 16
 LORA_ALPHA         = 32
@@ -152,32 +152,19 @@ LORA_DROPOUT       = 0.05
 LORA_TARGET_MODULES = ["q_proj", "v_proj", "k_proj", "o_proj"]
 LEARNING_RATE      = 2e-4
 NUM_EPOCHS         = 3
-BATCH_SIZE         = 2      # per-device batch size
-GRAD_ACCUM_STEPS   = 8      # effective batch = 16
-MAX_SEQ_LENGTH     = 4096   # token ceiling per training example
-                            # REVIEW FIX (#4): was 1024 — Phase 1 inference prompts run
-                            # 2,000-4,000+ tokens once schema/workflow/glossary/join/
-                            # few-shot context is included (budget ~10,200 effective
-                            # tokens). 1024 silently truncated every training example,
-                            # cutting off schema context or even the SQL output —
-                            # a severe train/inference distribution mismatch.
-                            # REVISED: 2048 still truncated the long tail — the same
-                            # schema-context prompts that hit 2,000-4,000+ tokens at
-                            # INFERENCE were being cut at 2,048 during TRAINING, so the
-                            # model never saw the full context it must condition on at
-                            # serve time. Raised to 4096 to cover the realistic upper
-                            # band. This raises VRAM/step time; gradient_checkpointing is
-                            # already enabled (SFTConfig) to offset it, and BATCH_SIZE is
-                            # small (2). If OOM on 8 GB, drop BATCH_SIZE to 1 and raise
-                            # GRAD_ACCUM_STEPS to 16 to hold the effective batch at 16.
-                            # 4096 is a budget, not a verified ceiling for this GPU.
-                            # Watch VRAM after the first few steps (nvidia-smi or
-                            # torch.cuda.memory_summary()); reduce --batch-size to 1
-                            # first if you OOM, since dropping below the inference-side
-                            # prompt length reintroduces truncation. If your enriched
-                            # corpus routinely exceeds 4096, cap schema_context in
-                            # data_pipeline.py to this budget rather than raising it
-                            # further — keeps the training and inference budgets aligned.
+BATCH_SIZE         = 1      # per-device batch size (8 GB: batch 1 is the safe default)
+GRAD_ACCUM_STEPS   = 16     # effective batch = 16 (was 2*8; now 1*16)
+MAX_SEQ_LENGTH     = 2048   # token ceiling per training example.
+                            # 8 GB VRAM + bf16 3B base caps realistic seq here.
+                            # Rows are pre-fitted to this by fine_tuning.fit_context
+                            # (schema head trimmed, question + JSON output preserved),
+                            # so this ceiling no longer silently drops labels the way
+                            # a raw 4096 cap did on ~11k-token rows. Raise to 3072 only
+                            # after watching nvidia-smi headroom on the first 20 steps;
+                            # if you raise it, re-run fit_context with the same --max-seq
+                            # so training length and the fitted corpus stay in lock-step.
+                            # [PREV] 4096 — never fit on 8 GB and, combined with ~11k-token
+                            # rows, right-truncated every question + SQL label.
 WARMUP_RATIO       = 0.03
 LR_SCHEDULER       = "cosine"
 SAVE_STEPS         = 50     # save checkpoint every N steps
@@ -491,7 +478,13 @@ def train(
         bias             = "none",
         task_type        = TaskType.CAUSAL_LM,
     )
+    # Commeted out on runtime error
+    # model = get_peft_model(model, lora_config)
+    # model.print_trainable_parameters()
     model = get_peft_model(model, lora_config)
+    # LoRA + gradient_checkpointing: checkpointed forward runs on embeddings that
+    # don't require grad → autograd finds no path to LoRA params → backward dies.
+    model.enable_input_require_grads()
     model.print_trainable_parameters()
 
     # ── 5. Load dataset ───────────────────────────────────────────────────────
@@ -514,6 +507,8 @@ def train(
         per_device_train_batch_size = batch_size,
         gradient_accumulation_steps = GRAD_ACCUM_STEPS,
         gradient_checkpointing      = True,
+        # Ad this to fix runtime errors
+        gradient_checkpointing_kwargs = {"use_reentrant": False},
         #
         # ── Optimizer — must match the active model-load path ────────────────
         #
@@ -552,7 +547,7 @@ def train(
         # eval/save strategies below to both be "steps", which they are).
         # metric_for_best_model / greater_is_better only take effect when this
         # is True, but are left set so flipping the flag needs no other change.
-        load_best_model_at_end      = False,
+        load_best_model_at_end      = True,   # was False — EarlyStoppingCallback requires it
         metric_for_best_model       = "eval_loss",
         greater_is_better           = False,
         save_strategy               = "steps",
@@ -608,12 +603,36 @@ def train(
     # (from trl) subclasses the HF Trainer, so the callback machinery is shared.
     from transformers import EarlyStoppingCallback
 
+    # ── Completion-only masking ───────────────────────────────────────────────
+    # Without this, SFTTrainer computes loss over the ENTIRE sequence — the
+    # ~2k-token schema head + system prompt included — so the SQL/JSON label
+    # (a few hundred tokens) contributes almost none of the gradient and the
+    # model is trained to regurgitate schema dumps. DataCollatorForCompletionOnlyLM
+    # masks every token before the assistant turn, so loss lands ONLY on the JSON
+    # the model must actually produce at serve time.
+    #
+    # The response template must match how ChatML frames the assistant turn in
+    # _build_prompt: "<|im_start|>assistant\n". We pass it as TOKEN IDS (not a
+    # string) because <|im_start|> is a special token; id-matching avoids the
+    # mid-sequence whitespace/merge mismatch that makes the string form silently
+    # fail to find the template (which would mask the WHOLE sequence → zero loss).
+    from trl import DataCollatorForCompletionOnlyLM
+
+    response_template_ids = tokenizer.encode(
+        "<|im_start|>assistant\n", add_special_tokens=False
+    )
+    completion_collator = DataCollatorForCompletionOnlyLM(
+        response_template = response_template_ids,
+        tokenizer         = tokenizer,
+    )
+
     trainer = SFTTrainer(
         model          = model,
         train_dataset  = dataset,
         eval_dataset   = dev_dataset,  # REVIEW FIX (#8)
         args           = training_args,
         tokenizer      = tokenizer,
+        data_collator  = completion_collator,  # completion-only loss masking
         callbacks      = [EarlyStoppingCallback(early_stopping_patience=3)],
     )
 
