@@ -1,5 +1,3 @@
----
-
 # Querent — Natural Language → SQL Query Engine
 
 A local, schema-aware Natural Language → SQL system that generates validated PostgreSQL queries from business questions using hybrid retrieval, deterministic validation, and iterative correction.
@@ -20,9 +18,10 @@ All components run locally, making the system suitable for privacy-sensitive and
 
 ## Key Capabilities
 
-* Hybrid retrieval across semantic search, keyword search, and schema graph traversal
-* Schema-aware prompt construction with minimal context selection
+* Hybrid retrieval fusing semantic search, keyword search, and schema-graph traversal, combined via Reciprocal Rank Fusion (RRF) and refined with cross-encoder reranking
+* Schema-aware prompt construction with minimal, prioritized context selection
 * Local LLM-based SQL generation (no external API dependencies)
+* Optional local LoRA fine-tuning (Qwen2.5-Coder-3B) for schema-specialised generation, leaving the base model weights unmodified
 * Deterministic multi-stage SQL validation before execution
 * Automatic correction loop for recoverable SQL errors
 * Confidence scoring and structured output format
@@ -41,7 +40,7 @@ Query Understanding
         │
         ▼
 Hybrid Retrieval Layer
-(Vector + BM25 + FK Graph Traversal)
+(Vector + BM25 + FK Graph → RRF fusion → Cross-Encoder Rerank)
         │
         ▼
 Context Assembly
@@ -66,7 +65,7 @@ Validation Pipeline
 
 1. Parse and normalize natural language input
 2. Identify candidate schema entities using rule-based intent mapping
-3. Retrieve relevant schema context using hybrid retrieval (dense + sparse + graph traversal)
+3. Retrieve relevant schema context using hybrid retrieval (dense + sparse + graph traversal), fuse with RRF, and rerank with a cross-encoder
 4. Construct constrained prompt with prioritized schema sections
 5. Generate SQL using a local LLM
 6. Validate SQL through deterministic rule-based and AST-based checks
@@ -93,10 +92,11 @@ Most text-to-SQL systems rely primarily on prompt engineering or flat schema ret
 | Capability                  | Description                                                      |
 | --------------------------- | ---------------------------------------------------------------- |
 | Graph-aware retrieval       | Uses FK graph traversal to identify valid join paths             |
-| Multi-source context fusion | Combines vector search, keyword search, and schema graph signals |
+| Multi-source context fusion | Combines vector search, keyword search, and schema graph signals via RRF, then cross-encoder reranking |
 | AST-based validation        | Enforces SQL correctness beyond regex or heuristic checks        |
 | Controlled execution gate   | Prevents unsafe or invalid SQL from reaching the database        |
 | Repair loop                 | Iteratively corrects recoverable SQL failures                    |
+| Local specialisation        | Optional LoRA fine-tuning adapts a local model to the target schema without retraining or modifying the base model |
 
 ---
 
@@ -107,7 +107,9 @@ Most text-to-SQL systems rely primarily on prompt engineering or flat schema ret
 * Local LLM inference (llama.cpp / GGUF)
 * Vector search (Qdrant)
 * Keyword search (OpenSearch)
+* Cross-encoder reranking (sentence-transformers)
 * SQL AST parsing (sqlglot)
+* Parameter-efficient fine-tuning (PEFT / LoRA, TRL)
 * Structured logging (structlog)
 
 ---
@@ -115,12 +117,19 @@ Most text-to-SQL systems rely primarily on prompt engineering or flat schema ret
 ## Repository Structure
 
 ```text
-pipeline/     Orchestration and execution flow
-retrieval/    Hybrid retrieval (vector + keyword + graph)
-generation/   Prompting, query understanding, LLM inference
-validation/   AST-based SQL validation and repair
-indexing/     Schema indexing pipelines
-tests/        System validation tests
+pipeline/      Orchestration and execution flow
+retrieval/     Hybrid retrieval (vector + keyword + graph), RRF fusion, reranking
+generation/    Prompting, query understanding, LLM inference
+validation/    AST-based SQL validation and repair
+               ├── ast/        Syntax-level checks
+               ├── schema/     Table / column / type validation
+               ├── semantic/   Logical and semantic audits
+               └── security/   Safety and execution-gate checks
+indexing/      Schema indexing pipelines
+ingestion/     Schema and metadata ingestion
+fine_tuning/   Optional local LoRA fine-tuning (data prep, trainer, export)
+config/        Runtime configuration
+tests/         System validation tests
 ```
 
 ---
@@ -136,16 +145,3 @@ This project is licensed under the MIT License. See `LICENSE` for details.
 The system implements a complete end-to-end NL → SQL pipeline with retrieval, generation, validation, and execution layers.
 
 Current focus is on improving semantic accuracy for complex multi-join queries and expanding the failure-driven training dataset.
-
----
-
-## Why this version is better
-
-* Removes vague “enterprise marketing” tone
-* Emphasizes **architecture over claims**
-* Makes differentiation concrete (graph + AST + repair loop)
-* Reads like a **senior system design artifact**, not a demo project
-* Recruiter-friendly but still technically credible
-
----
-

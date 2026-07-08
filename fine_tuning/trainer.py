@@ -640,6 +640,42 @@ def train(
     # fail to find the template (which would mask the WHOLE sequence → zero loss).
     from trl import DataCollatorForCompletionOnlyLM
 
+    # ── VRAM telemetry ────────────────────────────────────────────────────────
+    # Logs GPU memory each logging step and around evaluation. On an 8 GB card
+    # this is the difference between "it crashed" and "it crashed allocating
+    # 9.2 GB at the first eval" — the peak counters survive the step that OOMs,
+    # so the last printed line points straight at the culprit.
+    from transformers import TrainerCallback
+
+    class VRAMMonitorCallback(TrainerCallback):
+        _GB = 1024 ** 3
+
+        def _log(self, tag: str):
+            if not torch.cuda.is_available():
+                return
+            a  = torch.cuda.memory_allocated()     / self._GB   # live tensors
+            r  = torch.cuda.memory_reserved()      / self._GB   # cached by allocator
+            pa = torch.cuda.max_memory_allocated() / self._GB   # peak live (since reset)
+            pr = torch.cuda.max_memory_reserved()  / self._GB   # peak reserved
+            free, total = torch.cuda.mem_get_info(0)
+            print(
+                f"[VRAM {tag}] alloc {a:.2f} / reserved {r:.2f} | "
+                f"peak_alloc {pa:.2f} / peak_reserved {pr:.2f} | "
+                f"free {free/self._GB:.2f} of {total/self._GB:.2f} GB"
+            )
+
+        def on_step_end(self, args, state, control, **kwargs):
+            # Only print on logging steps to avoid flooding stdout.
+            if state.global_step % args.logging_steps == 0:
+                self._log(f"step {state.global_step}")
+            # Reset peak each step so peak_alloc reflects THIS step's high-water
+            # mark, not the whole run — makes a single spiking step obvious.
+            if torch.cuda.is_available():
+                torch.cuda.reset_peak_memory_stats()
+
+        def on_evaluate(self, args, state, control, **kwargs):
+            self._log(f"eval @ step {state.global_step}")
+
     response_template_ids = tokenizer.encode(
         "<|im_start|>assistant\n", add_special_tokens=False
     )
@@ -662,7 +698,7 @@ def train(
         #   "EarlyStoppingCallback requires load_best_model_at_end = True"
         # would fire on train start anyway. Restore both together on a bigger GPU.
         # callbacks    = [EarlyStoppingCallback(early_stopping_patience=3)],  # [8GB-DISABLED]
-        callbacks      = [],   # [8GB-SAFE] no in-loop eval → no early stop
+        callbacks      = [VRAMMonitorCallback()],   # per-step GPU memory telemetry
     )
 
     print(f"\nStarting training — {epochs} epochs…")
