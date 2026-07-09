@@ -124,6 +124,7 @@ from pathlib import Path
 
 from utils.logging_config import get_logger
 from config.settings import settings
+from fine_tuning.preprocess.pipeline import run as run_preprocess, PreprocessConfig
 
 logger = get_logger(__name__)
 
@@ -184,7 +185,11 @@ def _check_prerequisites() -> None:
     if not TRAIN_DATA.exists():
         errors.append(
             f"Training data not found at {TRAIN_DATA}\n"
-            "  Run:  python fine_tuning/data_pipeline.py"
+            "  Preprocessing does NOT run automatically before training.\n"
+            "  Build the cleaned corpus first, either:\n"
+            "    python -m fine_tuning.preprocess.pipeline --force        (standalone build)\n"
+            "    python -m fine_tuning.trainer --version vN --preprocess  (build + train)\n"
+            "  then re-run training."
         )
 
     if errors:
@@ -749,7 +754,42 @@ if __name__ == "__main__":
                              "(e.g. models/adapters/fine_tuning-v1/checkpoints/checkpoint-150)")
     parser.add_argument("--seed",       type=int,   default=DEFAULT_SEED,
                         help=f"Random seed for reproducibility (default: {DEFAULT_SEED})")
+    parser.add_argument("--preprocess", action="store_true",
+                        help="Build the cleaned training corpus BEFORE training. Runs retrieval "
+                             "(needs Qdrant + OpenSearch up) and loads the tokenizer. DEFAULT: OFF "
+                             "— the trainer loads the existing artifact as-is and does NO "
+                             "preprocessing, so it never competes with training for RAM/VRAM.")
+    parser.add_argument("--max-seq", type=int, default=MAX_SEQ_LENGTH,
+                        help="Token budget used when fitting rows during --preprocess "
+                             "(must match training; default MAX_SEQ_LENGTH).")
     args = parser.parse_args()
+
+    # Preprocessing is OFF by default. It runs ONLY with --preprocess; otherwise the trainer
+    # loads the existing artifact (fit.jsonl) unchanged. No implicit/auto rebuild exists in
+    # this path — this is deliberate so preprocessing never contends with fine-tuning for the
+    # 8 GB GPU / RAM (Qdrant, OpenSearch, llama-server can all be shut down before training).
+    if args.preprocess:
+        run_preprocess(PreprocessConfig(
+            force   = True,          # explicit request → always (re)build the artifact
+            max_seq = args.max_seq,
+        ))
+        # Preprocessing just held the retriever stack (Qdrant/OpenSearch) + tokenizer in memory.
+        # Pause so the user can free that memory before the GPU-heavy training begins.
+        print(
+            "\n...fit.jsonl has been generated successfully.\n"
+            "Please shut down the Llama inference server, Qdrant, OpenSearch, and any other "
+            "unnecessary processes to free maximum RAM and GPU memory.\n"
+            "Continue with fine-tuning? (Y/N): ",
+            end="",
+        )
+        try:
+            answer = input().strip().lower()
+        except EOFError:
+            answer = ""
+        if answer != "y":
+            print("\nAborting before fine-tuning — no 'Y' received. "
+                  "fit.jsonl is ready; re-run WITHOUT --preprocess to train.")
+            raise SystemExit(0)
 
     _check_prerequisites()
     train(

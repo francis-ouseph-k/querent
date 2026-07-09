@@ -524,7 +524,8 @@ def export(
         "  To deploy, stop the running llama-server, then start it on the new GGUF:\n\n"
         f"    {server_bin} \\\n"
         f"      -m {q4_gguf} \\\n"
-        f"      -c 8192 -ngl 99 --port 8080\n\n"
+        # f"      -c 8192 -ngl 99 --port 8080\n\n"
+        f"      -c 32768 -ngl 99 --port 8080 --chat-template chatml\n\n"
         "  Phase-1 system resumes with zero code changes.\n"
         "  Keep the OLD gguf until you have verified a sample of queries.\n"
     )
