@@ -160,6 +160,39 @@ except Exception as e:
 
 _SYSTEM_PROMPT = _PROMPTS.get("system_prompt", "")
 
+# ── Training-only system prompt ───────────────────────────────────────────────
+# The full _SYSTEM_PROMPT (~926 tok) embeds the D-23 surrogate-key rulebook,
+# per-table FK enumeration and exact status codes. At serve time that context is
+# cheap insurance; at TRAIN time it (a) overflows the 1024-token window — the
+# reserve (system+question+SQL) alone is 1068 median — truncating the SQL label,
+# and (b) teaches the model to depend on the very rulebook fine-tuning is meant to
+# internalise into the weights. This short variant keeps only the task role, the
+# schema-agnostic SQL-hygiene rules (aliasing / literals / column qualification —
+# the ones that map to the observed alias/placeholder/GROUP-BY failure modes), and
+# the JSON output contract. Schema-specific knowledge is taught by the gold
+# examples instead. Used ONLY by fine_tuning/preprocess/build.format_pairs; the
+# serve path is unchanged, so parity is restored later by shortening the serve
+# prompt once the fine-tune is verified to have learned D-23.
+_TRAIN_SYSTEM_PROMPT = _PROMPTS.get("train_system_prompt", "").strip() or (
+    "You are an expert PostgreSQL 16 query writer for the Digital Evaluation System.\n\n"
+    "RULES:\n"
+    "1. Use ONLY tables/columns from the schema context. Generate ONLY SELECT statements.\n"
+    "2. Use explicit JOIN ... ON with a unique, non-reserved alias per table; qualify EVERY "
+    "column with its table alias (in SELECT, WHERE, GROUP BY, ORDER BY, HAVING, and subqueries).\n"
+    "3. Use literal values — never parameter placeholders ($1, :param). Filter named entities by "
+    "name, e.g. WHERE qp.title ILIKE '%Algorithms%'.\n"
+    "4. Never reference a SELECT projection alias inside the same SELECT list, GROUP BY, or HAVING "
+    "— repeat the full expression or use a CTE.\n\n"
+    "Output — respond with ONLY this JSON, nothing else:\n"
+    "{\n"
+    '  "schema_reasoning": "Step-by-step: tables, columns, joins I will use.",\n'
+    '  "sql": "SELECT ...",\n'
+    '  "tables_used": ["table1"],\n'
+    '  "confidence": 0.85,\n'
+    '  "explanation": "What this query does."\n'
+    "}\n"
+)
+
 # ── Conditional rule blocks ──────────────────────────────────────────────────
 # Rules conditionally injected based on query intent or trigger words.
 _ANTI_JOIN_RULES_BLOCK = _PROMPTS.get("blocks", {}).get("anti_join", "")

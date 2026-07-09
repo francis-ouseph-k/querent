@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,18 @@ from config.settings import settings
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _fmt_hms(seconds: float) -> str:
+    """Format a duration like batch_run: '1h 44m 11s' / '7m 39s' / '45s'."""
+    seconds = int(max(0, seconds))
+    h, rem = divmod(seconds, 3600)
+    m, s   = divmod(rem, 60)
+    if h:
+        return f"{h}h {m}m {s}s"
+    if m:
+        return f"{m}m {s}s"
+    return f"{s}s"
 
 # Section headers that indicate retrieval actually injected context (for EMPTY-CTX flagging)
 _RETRIEVED_HEADERS = (
@@ -147,11 +160,20 @@ def _build_schema_context(nl_query: str, retriever, query_understanding) -> str:
 
 def format_pairs(pairs: list[dict[str, Any]], retriever, query_understanding) -> tuple[list[dict], list[int]]:
     """Enrich each pair with retrieved schema context → ChatML record. Returns (rows, empty_ctx_lines)."""
-    from generation.prompt_builder import _SYSTEM_PROMPT
+    # Train on the SHORT system prompt, not the full serve-time rulebook: the full
+    # prompt overflows the training window and trains a dependence on the rulebook
+    # fine-tuning should internalise. See prompt_builder._TRAIN_SYSTEM_PROMPT.
+    from generation.prompt_builder import _TRAIN_SYSTEM_PROMPT as _SYSTEM_PROMPT
 
     rows: list[dict[str, Any]] = []
     empty_ctx: list[int] = []
-    for p in pairs:
+    total      = len(pairs)
+    loop_start = time.perf_counter()
+    # Retrieval (Qdrant + OpenSearch + FK graph) runs once PER PAIR here — this is
+    # the expensive stage of a --force rebuild. Trace like batch_run so a 1–2h run
+    # shows Q#, %, elapsed and ETA instead of sitting silent.
+    print(f"[preprocess] formatting {total} pairs (live retrieval per pair)…", flush=True)
+    for i, p in enumerate(pairs):
         schema_context = (_build_schema_context(p["nl_query"], retriever, query_understanding)
                           if retriever is not None else "")
         user_parts: list[str] = []
@@ -167,9 +189,23 @@ def format_pairs(pairs: list[dict[str, Any]], retriever, query_understanding) ->
             "source":      p.get("source", "curated"),
             "timestamp":   datetime.now(timezone.utc).isoformat(),
         }
-        if retriever is not None and not any(h in rec["instruction"] for h in _RETRIEVED_HEADERS):
+        no_ctx = retriever is not None and not any(h in rec["instruction"] for h in _RETRIEVED_HEADERS)
+        if no_ctx:
             empty_ctx.append(p.get("line_no", 0))
         rows.append(rec)
+
+        # ── Progress line (batch_run-style: Q#, %, elapsed, ETA) ──────────────
+        done    = i + 1
+        elapsed = time.perf_counter() - loop_start
+        eta     = (elapsed / done) * (total - done)
+        pct     = 100.0 * done / total
+        print(
+            f"  Q{done:>3}/{total} ({pct:4.1f}%) | "
+            f"Elapsed: {_fmt_hms(elapsed)} | ETA: {_fmt_hms(eta)} | "
+            f"empty_ctx {len(empty_ctx)} | "
+            f"{p['nl_query'][:60]}",
+            flush=True,
+        )
     logger.info(component="preprocess.build", event="format_complete",
                 rows=len(rows), empty_context=len(empty_ctx))
     return rows, empty_ctx

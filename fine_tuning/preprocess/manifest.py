@@ -31,7 +31,7 @@ from typing import Any
 # Bump when the preprocessing LOGIC changes in a way that alters output even
 # though inputs/config are unchanged (e.g. a new gate rule). This forces a
 # rebuild for everyone without them having to touch config.
-GENERATOR_VERSION = "2.0.0"
+GENERATOR_VERSION = "2.1.0"   # 2.1.0: training uses short _TRAIN_SYSTEM_PROMPT (was full serve prompt)
 
 
 def _sha256_file(path: Path) -> str:

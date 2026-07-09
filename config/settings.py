@@ -273,7 +273,10 @@ class FineTuningSettings(BaseSettings):
     )
     adapter_dir:  str = "models/adapters"                     # LoRA adapter output root
     hf_model_dir: str = "models/hf/Qwen2.5-Coder-3B-Instruct" # HF base model (training)
-    train_data:   str = "data/fine_tuning_train.jsonl"        # trainer input file
+    train_data:   str = "data/fine_tuning_train.fit.jsonl"   # trainer input file (FITTED corpus)
+    # NOTE: this is the token-fitted artifact, not the raw 554-row formatted file.
+    # Both the preprocessor (PreprocessConfig.artifact) and the trainer (TRAIN_DATA)
+    # derive from this single setting, so they always agree on the same file.
     eval_data:    str = "data/fine_tuning_eval.jsonl"         # evaluator input (if used)
     baseline_path: str = "data/eval_baseline.json"            # evaluator baseline metrics
     merged_dir:   str = "models/merged"                       # export: merged HF model

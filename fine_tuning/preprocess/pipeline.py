@@ -102,6 +102,9 @@ def run(cfg: PreprocessConfig) -> Path:
     n_gate = len(pairs)
 
     # 4. format (retrieval → ChatML) — the expensive stage
+    print(f"\n[preprocess] stage 4/6: retrieval + format "
+          f"({n_gate} pairs, live retrieval per pair — this is the slow part)…", flush=True)
+    
     if cfg.skip_retrieval:
         logger.warning(component="preprocess.pipeline", event="skip_retrieval",
                        note="EMPTY schema context — train/serve mismatch; smoke test only")

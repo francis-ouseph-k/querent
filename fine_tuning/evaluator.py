@@ -127,6 +127,27 @@ RESULTS_DIR   = Path("data")
 _REGRESSION_TOLERANCE = 0.03   # 3 percentage points
 
 
+def _fmt_hms(seconds: float) -> str:
+    """Format a duration like batch_run: '1h 44m 11s' / '7m 39s' / '45s'."""
+    seconds = int(max(0, seconds))
+    h, rem = divmod(seconds, 3600)
+    m, s   = divmod(rem, 60)
+    if h:
+        return f"{h}h {m}m {s}s"
+    if m:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
+def _eval_question(instruction: str) -> str:
+    """Pull the NL question out of the ChatML instruction (after the marker)."""
+    marker = "=== QUESTION ==="
+    if marker in instruction:
+        tail = instruction.split(marker, 1)[1].strip()
+        return tail.splitlines()[0].strip() if tail else instruction[:60]
+    return instruction.replace("\n", " ")[:60]
+
+
 def _load_eval_pairs(eval_path: Path) -> list[dict[str, Any]]:
     pairs = []
     for line in eval_path.read_text(encoding="utf-8").splitlines():
@@ -590,6 +611,20 @@ def evaluate(
 
     baseline = _load_baseline(BASELINE_PATH)
 
+    # ── Resolve the eval system prompt (PARITY DECISION) ──────────────────────
+    # The eval file's frozen `input` field is NOT trusted for the system prompt,
+    # because pipeline.run() never regenerates fine_tuning_eval.jsonl and would
+    # otherwise leave a stale prompt in it. We enforce the prompt here instead.
+    #
+    # Production truth: the model is SERVED with the full _SYSTEM_PROMPT, so we
+    # evaluate against that — this deliberately MEASURES the parity gap of a
+    # short-prompt-trained adapter running under the full serve prompt.
+    #
+    # If you later shorten the serve prompt to match training, switch the import
+    # below to _TRAIN_SYSTEM_PROMPT so eval continues to mirror serve.
+    from generation.prompt_builder import _SYSTEM_PROMPT as EVAL_SYSTEM_PROMPT
+    # from generation.prompt_builder import _TRAIN_SYSTEM_PROMPT as EVAL_SYSTEM_PROMPT
+
     # ── Load model ────────────────────────────────────────────────────────────
     model, tokenizer = _load_model_and_tokenizer(adapter_path)
 
@@ -618,15 +653,17 @@ def evaluate(
             _generate_sql(
                 model, tokenizer,
                 warmup_pair["instruction"],
-                warmup_pair["input"],
+                EVAL_SYSTEM_PROMPT,
             )
         print("✓  GPU warm.\n")
 
-    print(f"Evaluating {len(eval_pairs)} pairs…")
+    total      = len(eval_pairs)
+    loop_start = time.perf_counter()
+    print(f"Evaluating {total} pairs…")
 
     for i, pair in enumerate(eval_pairs):
         instruction   = pair["instruction"]
-        system_prompt = pair["input"]
+        system_prompt = EVAL_SYSTEM_PROMPT   # enforced parity, not the frozen file value
         expected_sql  = pair["output"]
 
         raw_output, latency_ms = _generate_sql(model, tokenizer, instruction, system_prompt)
@@ -663,8 +700,21 @@ def evaluate(
             "latency_ms":     round(latency_ms, 1),
         })
 
-        if (i + 1) % 10 == 0:
-            print(f"  {i + 1}/{len(eval_pairs)} evaluated…")
+        # ── Progress line (batch_run-style: Q#, %, elapsed, ETA + live counts) ──
+        done    = i + 1
+        elapsed = time.perf_counter() - loop_start
+        eta     = (elapsed / done) * (total - done)
+        pct     = 100.0 * done / total
+        n_syn   = sum(r["syntax_pass"] for r in results)
+        n_hf    = sum(r["no_halluc"]   for r in results)
+        n_exec  = sum(r["exec_valid"]  for r in results)
+        n_exact = sum(r["exact_match"] for r in results)
+        print(
+            f"  Q{done:>3}/{total} ({pct:4.1f}%) | "
+            f"Elapsed: {_fmt_hms(elapsed)} | ETA: {_fmt_hms(eta)} | "
+            f"syntax {n_syn} hf {n_hf} exec {n_exec} exact {n_exact} | "
+            f"{_eval_question(instruction)[:55]}"
+        )
 
     # H4 fix: close the shared DB connection after the loop
     if eval_conn is not None:

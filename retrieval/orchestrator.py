@@ -79,6 +79,14 @@ _CHUNK_PRIORITY: dict[ChunkType, int] = {
 # M-1 fix: aligned tokenizer to Qwen2.5, so 1.0 = no safety reduction needed.
 _TOKEN_BUDGET_SAFETY_FACTOR = 1.0
 
+# Hard cap on the NUMBER of chunks handed to the prompt, applied AFTER the token
+# budget. The 7 000-token budget alone let ~32 chunks through on some queries,
+# burying the 1–2 relevant tables among ~30 others and driving column
+# hallucination on the 3B model (e.g. single-table Q9/Q19 hallucinated columns).
+# The cap NEVER drops mandatory entity chunks or critical join chunks
+# (FK_MAP / WORKFLOW / BUSINESS_RULE) — see _apply_context_budget. Tune empirically.
+_MAX_CONTEXT_CHUNKS = 14
+
 
 class RetrievalOrchestrator:
     """
@@ -210,6 +218,23 @@ class RetrievalOrchestrator:
                 ordered_chunks.insert(0, chunk)
                 ordered_chunks_scores[chunk.chunk_id] = 999.0
                 seen_ids.add(chunk.chunk_id)
+
+        # ── Step 6b: Relative score floor — drop long-tail noise ──────────
+        # RRF scores with rrf_k=60 are tiny (top single-list ≈ 1/61 ≈ 0.016;
+        # both-list top ≈ 0.033), so an ABSOLUTE floor is fragile and rrf_k-
+        # dependent. Use a floor RELATIVE to the strongest GENUINE chunk so it
+        # scales automatically. Mandatory entity chunks carry the 999.0 sentinel
+        # and are always kept regardless of the floor.
+        _SCORE_FLOOR_FRAC = 0.30
+        _genuine = [s for s in ordered_chunks_scores.values() if s < 900.0]
+        if _genuine:
+            _floor = max(_genuine) * _SCORE_FLOOR_FRAC
+            ordered_chunks = [
+                c for c in ordered_chunks
+                if ordered_chunks_scores.get(c.chunk_id, 0.0) >= _floor
+                or ordered_chunks_scores.get(c.chunk_id, 0.0) >= 900.0
+            ]
+            meta["score_floor"] = round(_floor, 4)
 
         # ── Step 7: Optional cross-encoder reranker ───────────────────────
         reranker_applied = False
@@ -496,6 +521,25 @@ def _apply_context_budget(
             note="FK_MAP or WORKFLOW chunks were retrieved but dropped by budget. "
                  "Consider increasing RETRIEVAL_CONTEXT_BUDGET_TOKENS.",
         )
+
+    # ── Post-budget hard cap on chunk COUNT ──────────────────────────────
+    # The token budget alone does not bound the chunk COUNT; ~32 chunks per
+    # query buried the relevant tables and caused column hallucination. Cap the
+    # count, but PROTECT mandatory entity chunks and critical join chunks
+    # (FK_MAP / WORKFLOW / BUSINESS_RULE) — dropping those would starve exactly
+    # the High-complexity multi-join queries this is meant to help. If the
+    # protected set alone exceeds the cap, keep all of it (never drop critical).
+    if len(final_chunks) > _MAX_CONTEXT_CHUNKS:
+        _protected_types = {ChunkType.FK_MAP, ChunkType.WORKFLOW, ChunkType.BUSINESS_RULE}
+        _must_keep_ids = set(entity_ids) | {
+            c.chunk_id for c in final_chunks if c.chunk_type in _protected_types
+        }
+        _must_keep = [c for c in final_chunks if c.chunk_id in _must_keep_ids]
+        _optional  = [c for c in final_chunks if c.chunk_id not in _must_keep_ids]
+        _optional.sort(key=get_sort_key, reverse=True)
+        _slots = max(0, _MAX_CONTEXT_CHUNKS - len(_must_keep))
+        final_chunks = _must_keep + _optional[:_slots]
+        used_tokens  = sum(_count_tokens(c.text) for c in final_chunks)
 
     # "Lost in the middle" reorder — high priority at start
     high_priority = [c for c in final_chunks if _CHUNK_PRIORITY.get(c.chunk_type, 0) >= 8]
