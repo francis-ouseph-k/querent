@@ -173,25 +173,16 @@ _SYSTEM_PROMPT = _PROMPTS.get("system_prompt", "")
 # examples instead. Used ONLY by fine_tuning/preprocess/build.format_pairs; the
 # serve path is unchanged, so parity is restored later by shortening the serve
 # prompt once the fine-tune is verified to have learned D-23.
-_TRAIN_SYSTEM_PROMPT = _PROMPTS.get("train_system_prompt", "").strip() or (
-    "You are an expert PostgreSQL 16 query writer for the Digital Evaluation System.\n\n"
-    "RULES:\n"
-    "1. Use ONLY tables/columns from the schema context. Generate ONLY SELECT statements.\n"
-    "2. Use explicit JOIN ... ON with a unique, non-reserved alias per table; qualify EVERY "
-    "column with its table alias (in SELECT, WHERE, GROUP BY, ORDER BY, HAVING, and subqueries).\n"
-    "3. Use literal values — never parameter placeholders ($1, :param). Filter named entities by "
-    "name, e.g. WHERE qp.title ILIKE '%Algorithms%'.\n"
-    "4. Never reference a SELECT projection alias inside the same SELECT list, GROUP BY, or HAVING "
-    "— repeat the full expression or use a CTE.\n\n"
-    "Output — respond with ONLY this JSON, nothing else:\n"
-    "{\n"
-    '  "schema_reasoning": "Step-by-step: tables, columns, joins I will use.",\n'
-    '  "sql": "SELECT ...",\n'
-    '  "tables_used": ["table1"],\n'
-    '  "confidence": 0.85,\n'
-    '  "explanation": "What this query does."\n'
-    "}\n"
-)
+_TRAIN_SYSTEM_PROMPT = _PROMPTS.get("train_system_prompt", "").strip()
+if not _TRAIN_SYSTEM_PROMPT:
+    # Fail loud rather than silently training on an empty/full serve prompt.
+    # The text now lives ONLY in config/prompts.yaml (key: train_system_prompt);
+    # there is no in-code fallback, so train/serve prompt drift can't reappear.
+    raise RuntimeError(
+        "train_system_prompt missing from config/prompts.yaml. "
+        "Fine-tuning preprocessing (fine_tuning/preprocess/build.format_pairs) "
+        "depends on it. Add the 'train_system_prompt:' block back to prompts.yaml."
+    )
 
 # ── Conditional rule blocks ──────────────────────────────────────────────────
 # Rules conditionally injected based on query intent or trigger words.

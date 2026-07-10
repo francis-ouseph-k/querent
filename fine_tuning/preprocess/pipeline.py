@@ -49,7 +49,7 @@ class PreprocessConfig:
     artifact:       Path = field(default_factory=lambda: Path(settings.fine_tuning.train_data))
     # knobs
     jaccard:        float = 0.85
-    max_seq:        int   = 2048
+    max_seq:        int   = field(default_factory=lambda: settings.fine_tuning.max_seq)  # FT_MAX_SEQ — same knob as trainer
     skip_retrieval: bool  = False        # throwaway smoke test only — degrades data
     # freshness behaviour
     force:          bool  = False        # rebuild even if fresh
@@ -188,7 +188,9 @@ def main() -> None:
     ap.add_argument("--out", type=Path, help="Artifact path (default: settings.fine_tuning.train_data)")
     ap.add_argument("--ddl", type=Path)
     ap.add_argument("--model", type=str, help="Qwen snapshot dir for tokenisation")
-    ap.add_argument("--max-seq", type=int, default=2048)
+    ap.add_argument("--max-seq", type=int, default=settings.fine_tuning.max_seq,
+                    help="Token budget for fit_rows. Default: .env FT_MAX_SEQ "
+                         "(settings.fine_tuning.max_seq). Keep identical to the trainer.")
     ap.add_argument("--jaccard", type=float, default=0.85)
     ap.add_argument("--force", action="store_true", help="Rebuild even if fresh")
     ap.add_argument("--skip-retrieval", action="store_true", help="Smoke test only — degrades data")

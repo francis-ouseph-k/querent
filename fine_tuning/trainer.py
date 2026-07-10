@@ -155,11 +155,16 @@ LEARNING_RATE      = 2e-4
 NUM_EPOCHS         = 3
 BATCH_SIZE         = 1      # per-device batch size (8 GB: batch 1 is the safe default)
 GRAD_ACCUM_STEPS   = 16     # effective batch = 16 (was 2*8; now 1*16)
-MAX_SEQ_LENGTH     = 1024   # token ceiling per training example.
-                            # 8 GB VRAM: seq 2048 spilled to shared RAM (~12 min/step)
-                            # and eval materialised 9 GB logits. 1024 keeps activations
-                            # + logits on-card. Re-run fit_context with --max-seq 1024
-                            # whenever you change this so corpus and ceiling stay aligned.
+MAX_SEQ_LENGTH     = settings.fine_tuning.max_seq   # token ceiling per training example.
+                            # SINGLE SOURCE OF TRUTH: comes from .env FT_MAX_SEQ
+                            # (settings.fine_tuning.max_seq, default 2048). The SAME value
+                            # drives the preprocessor's fit_rows budget, so the corpus and
+                            # the training ceiling can never diverge. Do NOT hardcode a
+                            # different number here — change FT_MAX_SEQ in .env instead, then
+                            # re-run preprocessing so fit.jsonl is refitted to the new budget.
+                            # 8 GB VRAM note: seq 2048 spills to shared RAM (~130 s/step) but
+                            # trains correctly; 1024 truncates past the assistant turn on this
+                            # corpus (reserve alone reaches ~1112 tok) → masked → zero loss.
 WARMUP_RATIO       = 0.03
 LR_SCHEDULER       = "cosine"
 SAVE_STEPS         = 50     # save checkpoint every N steps
@@ -688,6 +693,33 @@ def train(
         response_template = response_template_ids,
         tokenizer         = tokenizer,
     )
+
+    # ── GUARD: response template must survive truncation ──────────────────────
+    # If MAX_SEQ_LENGTH cuts the sequence before "<|im_start|>assistant\n", the
+    # collator finds no template → labels all -100 → NaN/zero loss → dead adapter.
+    # This is exactly the 1024-vs-2048 mismatch that silently wasted GPU hours.
+    # Fail LOUD here (cheap CPU tokenisation of a few rows) instead of discovering
+    # it hours later. Probe the LONGEST rows — they are the ones that truncate.
+    _rt = response_template_ids
+    _probe_rows = sorted(range(len(dataset)), key=lambda i: len(dataset[i]["text"]),
+                         reverse=True)[:min(8, len(dataset))]
+    for _i in _probe_rows:
+        _ids = tokenizer(dataset[_i]["text"], truncation=True,
+                         max_length=MAX_SEQ_LENGTH)["input_ids"]
+        _found = any(_ids[j:j + len(_rt)] == _rt
+                     for j in range(len(_ids) - len(_rt) + 1))
+        if not _found:
+            raise SystemExit(
+                f"FATAL: assistant response template not found within the first "
+                f"{MAX_SEQ_LENGTH} tokens after truncation (row {_i}). The label is "
+                f"being cut off → completion-only masking will zero the loss.\n"
+                f"  Fix: raise FT_MAX_SEQ in .env AND re-run preprocessing so "
+                f"fit.jsonl is refitted to the same budget:\n"
+                f"    python -m fine_tuning.preprocess.pipeline --force\n"
+                f"  (current FT_MAX_SEQ / MAX_SEQ_LENGTH = {MAX_SEQ_LENGTH})"
+            )
+    logger.info(component="trainer", event="response_template_guard_passed",
+                max_seq_length=MAX_SEQ_LENGTH, probed=len(_probe_rows))
 
     trainer = SFTTrainer(
         model          = model,
