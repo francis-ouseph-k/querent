@@ -39,8 +39,12 @@ verified the new one on a few queries, then delete it.
 
 TOOL PATHS (override via environment variables, no code edit needed)
 ───────────────────────────────────────────────────────────────────
-  LLAMA_CPP_SOURCE    — dir containing convert_hf_to_gguf.py   (default D:\\llama.cpp)
-  LLAMA_PRECOMPILED   — dir containing llama-quantize.exe       (default …\\llama-precompiled)
+  LLAMA_CPP_SOURCE    — REQUIRED. Dir containing convert_hf_to_gguf.py. This is a
+                        shared external llama.cpp checkout (outside this repo), so
+                        there is no baked default — set it in .env / the environment.
+  LLAMA_PRECOMPILED   — Dir containing the quantiser/server binaries. Default is the
+                        repo-relative "../llama-precompiled" (a sibling of the project
+                        inside the workspace); override for any other location.
   LLAMA_QUANTIZE_BIN  — override just the quantiser binary NAME (default llama-quantize.exe)
   LLAMA_SERVER_BIN    — override just the server binary NAME    (default llama-server.exe)
   FT_MERGE_DEVICE     — where Step-1 merge runs: "cuda:0" (default) or "cpu"
@@ -48,9 +52,6 @@ TOOL PATHS (override via environment variables, no code edit needed)
 MODEL PATHS come from config/settings.py (env prefix FT_): FT_HF_MODEL_DIR,
 FT_ADAPTER_DIR, FT_MERGED_DIR, FT_GGUF_OUTPUT_DIR. These MUST match what
 trainer.py used, or export will look in the wrong place for the adapter.
-
-Note: "CONFIDENTAIL" in the default path below is the real (misspelled) folder
-name on this machine — deliberately not corrected.
 
 USAGE
 ─────
@@ -72,28 +73,15 @@ from pathlib import Path
 
 from utils.logging_config import get_logger
 from config.settings import settings
+from utils.executables import probe_executable
 
 logger = get_logger(__name__)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Custom exception
-# ─────────────────────────────────────────────────────────────────────────────
-# REVIEW FIX (#4): the prerequisite/skip-merge failures used to call
-# `raise SystemExit(1)`, which kills the whole Python interpreter. That is fine
-# when run as a script, but fatal if export() is ever called from a notebook,
-# a test, or a web handler. We now raise this domain-specific exception instead
-# and let the __main__ block below translate it into a process exit code. Code
-# that imports export() can catch ExportError and stay alive.
 class ExportError(RuntimeError):
     """Raised when the export pipeline cannot proceed (missing files, bad args)."""
 
 
-# ── Version-label safety ──────────────────────────────────────────────────────
-# REVIEW FIX (#1): `version` is interpolated straight into filesystem paths
-# (e.g. models/adapters/fine_tuning-{version}). Without validation, a value like
-# "../../etc/evil" could escape the intended directory tree. Restrict it to a
-# safe character set. This is defence-in-depth even on a single-user box.
 _VALID_VERSION = re.compile(r"^[A-Za-z0-9._-]+$")
 
 def _validate_version(version: str) -> str:
@@ -105,40 +93,70 @@ def _validate_version(version: str) -> str:
     return version
 
 
-# ── Default tool paths (llama.cpp) ────────────────────────────────────────────
-# These point at the llama.cpp checkout and the precompiled Windows binaries.
-# Override via env var without editing source.
-_LLAMA_CPP_SOURCE = Path(os.environ.get("LLAMA_CPP_SOURCE", r"D:\llama.cpp"))
-_LLAMA_PRECOMPILED = Path(
-    os.environ.get(
-        "LLAMA_PRECOMPILED",
-        r"D:\work\CONFIDENTAIL\KREUPASANAM\digital-evaluation_ai\llama-precompiled",
-    )
+_HF_MODEL_DIR = Path(settings.fine_tuning.hf_model_dir)
+_ADAPTER_DIR  = Path(settings.fine_tuning.adapter_dir)
+_MERGED_DIR   = Path(settings.fine_tuning.merged_dir)
+_OUTPUT_DIR   = Path(settings.fine_tuning.gguf_output_dir)
+
+_CONVERT_TIMEOUT_S  = 3600
+_QUANTIZE_TIMEOUT_S = 1800
+
+
+# ── Tool paths / merge device (ALL sourced from settings → .env) ─────────────
+# export.py reads its config the SAME way main.py / batch_run.py do: through
+# pydantic settings, which loads the one project .env. Nothing here reads
+# os.environ directly, so a value in .env is honoured without exporting it into
+# the shell first. Relative values (defaults or .env overrides) anchor to the
+# WORKSPACE (project's parent) — NOT the shell CWD — so they resolve the same
+# wherever export is launched from. Layout this assumes:
+#     <workspace>/                  ← _WORKSPACE  (project's parent)
+#     ├── <project>/                ← _PROJECT_ROOT (this file: project/fine_tuning/)
+#     └── llama-precompiled/        ← quantiser/server binaries, sibling of project
+#     <external>/llama.cpp/         ← convert_hf_to_gguf.py (LLAMA_CPP_SOURCE, required)
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]   # …/<project>
+_WORKSPACE    = _PROJECT_ROOT.parent                  # …/<workspace>
+
+_ft = settings.fine_tuning
+
+
+def _anchor(raw: str, default_rel: str) -> Path:
+    """
+    Resolve a directory that HAS a sensible default. Uses `raw` if non-empty,
+    else `default_rel`; a relative result anchors to the WORKSPACE (not CWD) and
+    is always resolved (absolute inputs are normalised too).
+    """
+    p = Path(raw or default_rel).expanduser()
+    if not p.is_absolute():
+        p = _WORKSPACE / p
+    return p.resolve()
+
+
+def _optional(raw: str) -> Path | None:
+    """
+    Resolve a path that has NO baked default (lives outside the repo, differs per
+    machine). Returns None when `raw` is empty so `--help` / import still work;
+    the missing-value error is raised later in _check_prerequisites.
+    """
+    if not raw:
+        return None
+    return Path(raw).expanduser().resolve()
+
+
+_MERGE_DEVICE      = _ft.merge_device
+_QUANTIZE_BIN_NAME = _ft.llama_quantize_bin
+_SERVER_BIN_NAME   = _ft.llama_server_bin
+
+# llama.cpp SOURCE checkout (convert_hf_to_gguf.py). Required, no default → None
+# until provided; guarded in _check_prerequisites before Step 2 runs.
+_LLAMA_CPP_SOURCE: Path | None = _optional(_ft.llama_cpp_source)
+
+# Precompiled binaries dir. Empty in .env → repo-relative default beside project.
+_LLAMA_PRECOMPILED = _anchor(_ft.llama_precompiled, "llama-precompiled")
+
+_CONVERT_SCRIPT: Path | None = (
+    (_LLAMA_CPP_SOURCE / "convert_hf_to_gguf.py") if _LLAMA_CPP_SOURCE else None
 )
-
-# REVIEW FIX (#6): binary NAMES are overridable so the script is not hard-wired
-# to ".exe". On WSL2/Linux you would set LLAMA_QUANTIZE_BIN=llama-quantize etc.
-_QUANTIZE_BIN_NAME = os.environ.get("LLAMA_QUANTIZE_BIN", "llama-quantize.exe")
-_SERVER_BIN_NAME   = os.environ.get("LLAMA_SERVER_BIN",   "llama-server.exe")
-
-# ── Model paths (env-overridable via config/settings.py → .env, prefix FT_) ───
-# Sourced from settings so export reads/writes the SAME locations trainer.py used.
-_HF_MODEL_DIR = Path(settings.fine_tuning.hf_model_dir)        # FT_HF_MODEL_DIR
-_ADAPTER_DIR  = Path(settings.fine_tuning.adapter_dir)         # FT_ADAPTER_DIR
-_MERGED_DIR   = Path(settings.fine_tuning.merged_dir)          # FT_MERGED_DIR
-_OUTPUT_DIR   = Path(settings.fine_tuning.gguf_output_dir)     # FT_GGUF_OUTPUT_DIR
-
-_CONVERT_SCRIPT = _LLAMA_CPP_SOURCE  / "convert_hf_to_gguf.py"
-_QUANTIZE_BIN   = _LLAMA_PRECOMPILED / _QUANTIZE_BIN_NAME
-
-# REVIEW FIX (#5): subprocess steps get a timeout so a deadlocked binary cannot
-# hang the pipeline forever. Convert is the slower step (loads the whole model),
-# so it gets the larger budget.
-_CONVERT_TIMEOUT_S  = 3600   # 1 hour
-_QUANTIZE_TIMEOUT_S = 1800   # 30 minutes
-
-# Where the Step-1 merge runs. GPU by default (fast), CPU as an 8 GB escape hatch.
-_MERGE_DEVICE = os.environ.get("FT_MERGE_DEVICE", "cuda:0")
+_QUANTIZE_BIN = _LLAMA_PRECOMPILED / _QUANTIZE_BIN_NAME
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -162,8 +180,6 @@ def _check_prerequisites(version: str, skip_merge: bool) -> None:
 
     # The full-precision base is only needed if we are actually merging.
     if not skip_merge and not _HF_MODEL_DIR.exists():
-        # REVIEW FIX (#9): print the path via as_posix() so Windows backslashes
-        # don't turn into broken escape sequences in the copy-paste command.
         errors.append(
             f"HuggingFace base model not found: {_HF_MODEL_DIR}\n"
             "  Run:  python -c \"from huggingface_hub import snapshot_download; "
@@ -171,33 +187,73 @@ def _check_prerequisites(version: str, skip_merge: bool) -> None:
             f"local_dir='{_HF_MODEL_DIR.as_posix()}')\""
         )
 
-    # llama.cpp conversion script (Step 2).
-    if not _CONVERT_SCRIPT.exists():
+    # llama.cpp conversion script (Step 2). LLAMA_CPP_SOURCE has no default
+    # because it is an external, shared checkout — so first confirm it was set,
+    # then confirm the script is actually there.
+    if _LLAMA_CPP_SOURCE is None:
+        errors.append(
+            "LLAMA_CPP_SOURCE is not set. It must point at your llama.cpp checkout "
+            "(the directory that contains convert_hf_to_gguf.py).\n"
+            "  Windows   : $env:LLAMA_CPP_SOURCE='D:\\llama.cpp'\n"
+            "  Linux/WSL : export LLAMA_CPP_SOURCE=/path/to/llama.cpp\n"
+            "  Or set it in .env (see .env.example)."
+        )
+    elif not _CONVERT_SCRIPT.exists():
         errors.append(
             f"convert_hf_to_gguf.py not found: {_CONVERT_SCRIPT}\n"
-            f"  Override: set env var LLAMA_CPP_SOURCE to the directory containing it.\n"
-            f"  Current:  LLAMA_CPP_SOURCE={_LLAMA_CPP_SOURCE}"
+            f"  LLAMA_CPP_SOURCE is set to: {_LLAMA_CPP_SOURCE}\n"
+            f"  Check that this directory is a llama.cpp checkout."
         )
 
-    # llama.cpp quantiser binary (Step 3).
-    if not _QUANTIZE_BIN.exists():
+    # llama.cpp precompiled binaries (Step 3). Validate in order of specificity
+    # so the error names the ROOT problem, not a symptom:
+    #   1. the directory itself (a wrong LLAMA_PRECOMPILED gives a misleading
+    #      "quantise.exe not found" when the real fault is the folder),
+    #   2. the quantiser is PRESENT *and* LAUNCHABLE (probe_executable catches
+    #      wrong-arch / missing-DLL/.so / (Linux) no execute-bit — failures that
+    #      .exists() passes but that would otherwise crash Step 3 AFTER the
+    #      ~12 GB merge).
+    # The server binary is only used to PRINT a deploy command at the end, so it
+    # is advisory (a warning further down), never a hard error here.
+    if not _LLAMA_PRECOMPILED.exists():
         errors.append(
-            f"quantiser binary not found: {_QUANTIZE_BIN}\n"
-            f"  Override: set LLAMA_PRECOMPILED (directory) or LLAMA_QUANTIZE_BIN (name).\n"
-            f"  Current:  LLAMA_PRECOMPILED={_LLAMA_PRECOMPILED}  bin={_QUANTIZE_BIN_NAME}"
+            f"llama precompiled directory not found: {_LLAMA_PRECOMPILED}\n"
+            f"  Override: set env var LLAMA_PRECOMPILED to the folder holding "
+            f"{_QUANTIZE_BIN_NAME} / {_SERVER_BIN_NAME}\n"
+            f"  (default is the repo-relative 'llama-precompiled' beside the project)."
         )
+    elif not _LLAMA_PRECOMPILED.is_dir():
+        errors.append(
+            f"LLAMA_PRECOMPILED is not a directory: {_LLAMA_PRECOMPILED}"
+        )
+    else:
+        quant_err = probe_executable(_QUANTIZE_BIN, "quantiser binary")
+        if quant_err:
+            errors.append(
+                quant_err + "\n"
+                f"  Override: set LLAMA_PRECOMPILED (directory) or "
+                f"LLAMA_QUANTIZE_BIN (name).\n"
+                f"  Current:  LLAMA_PRECOMPILED={_LLAMA_PRECOMPILED}  "
+                f"bin={_QUANTIZE_BIN_NAME}"
+            )
 
     if errors:
-        # One combined message, then stop. Raise ExportError (not SystemExit) so
-        # a programmatic caller can catch this; __main__ converts it to exit 1.
         raise ExportError("\n\n".join(f"ERROR: {e}" for e in errors))
 
+    # ── Advisory: server binary (deploy command only, never blocks) ──────
+    _server_bin = _LLAMA_PRECOMPILED / _SERVER_BIN_NAME
+    if _LLAMA_PRECOMPILED.exists() and probe_executable(_server_bin, "server binary"):
+        print(
+            f"\n⚠  NOTE: server binary not found or not runnable: {_server_bin}\n"
+            f"   Export will still succeed; only the printed deploy command at the\n"
+            f"   end will be wrong. Set LLAMA_SERVER_BIN if your binary has a\n"
+            f"   different name (e.g. 'llama-server' without .exe on Linux/WSL).\n"
+        )
+
     # ── Advisory disk-space check (warning only, never blocks) ────────────────
-    # REVIEW FIX (#3): the old code checked the CURRENT directory's drive. But
-    # the big temporary files land under _MERGED_DIR / _OUTPUT_DIR, which may be
-    # on a DIFFERENT drive. Checking the wrong drive could pass while the real
-    # target drive is full. `.anchor` is the drive root (e.g. "D:\\") and works
-    # even if the directory doesn't exist yet.
+    # The big temporaries land under _MERGED_DIR / _OUTPUT_DIR, which may be on a
+    # DIFFERENT drive than CWD. `.anchor` is the drive root (e.g. "D:\\") and
+    # works even if the directory doesn't exist yet.
     try:
         target_drive = (_MERGED_DIR.anchor or _OUTPUT_DIR.anchor or Path(".").anchor)
         free_gb = shutil.disk_usage(target_drive).free / (1024 ** 3)
@@ -211,7 +267,6 @@ def _check_prerequisites(version: str, skip_merge: bool) -> None:
                 "   Free space before proceeding to avoid a mid-run failure.\n"
             )
     except Exception:
-        # A failed disk probe must never stop an otherwise-valid export.
         pass
 
 
@@ -224,16 +279,14 @@ def _step_merge(version: str) -> Path:
     permanently into the base (merge_and_unload), and save the result as a normal
     HuggingFace model directory.
 
-    WHY bf16 (not fp16): this box is an RTX 5060 Ti (Blackwell, sm_120). fp16
-    produces NaN logits on sm_120 — the same failure seen in the Gemma runs.
-    bf16 is the correct, validated compute dtype for Blackwell.
+    WHY bf16 (not fp16): Blackwell (sm_120) produces NaN logits under fp16 for
+    this workload. bf16 is the correct, validated compute dtype for sm_120. This
+    is a property of the GPU + kernels, not the OS.
 
-    WHY the imports are INSIDE this function (deliberate — see review #10): torch/
-    transformers/peft take seconds to import and pull in CUDA. Keeping them here
-    means `--help` and the fast prerequisite check don't pay that cost, and a
-    missing-dependency error surfaces with a clear pip hint instead of a stack
-    trace at module load. It is a one-shot function, so the "repeated import"
-    cost the linters warn about never actually happens.
+    WHY the imports are INSIDE this function: torch/transformers/peft take seconds
+    to import and pull in CUDA. Keeping them here means `--help` and the fast
+    prerequisite check don't pay that cost, and a missing-dependency error
+    surfaces with a clear pip hint instead of a stack trace at module load.
     """
     try:
         import torch
@@ -277,11 +330,11 @@ def _step_merge(version: str) -> Path:
         str(_HF_MODEL_DIR),
         torch_dtype         = torch.bfloat16,
         device_map          = device_map,
-        # SECURITY NOTE (review #2): trust_remote_code=True EXECUTES Python that
-        # ships inside the model repo. It is required for Qwen's custom modelling
-        # code. Safe here because the base is a known, locally-pinned snapshot —
-        # but if you ever point FT_HF_MODEL_DIR at an untrusted model, this is the
-        # line that would run its code. Keep the base source trusted.
+        # SECURITY NOTE: trust_remote_code=True EXECUTES Python that ships inside
+        # the model repo. Required for Qwen's custom modelling code. Safe here
+        # because the base is a known, locally-pinned snapshot — but if you ever
+        # point FT_HF_MODEL_DIR at an untrusted model, this is the line that would
+        # run its code. Keep the base source trusted.
         trust_remote_code   = True,
         attn_implementation = "eager",
     )
@@ -291,7 +344,7 @@ def _step_merge(version: str) -> Path:
 
     # merge_and_unload() adds the low-rank deltas (B·A·scaling) back into the
     # original weight matrices and drops the adapter wrappers, leaving a plain
-    # model that behaves as if it were trained fully — no adapter needed at serve.
+    # model that behaves as if trained fully — no adapter needed at serve.
     print("Merging adapter weights into base model (in-place)…")
     model = model.merge_and_unload()
 
@@ -302,7 +355,6 @@ def _step_merge(version: str) -> Path:
     tokenizer = AutoTokenizer.from_pretrained(str(_HF_MODEL_DIR), trust_remote_code=True)
     tokenizer.save_pretrained(str(merged_path))
 
-    # Report on-disk size (simple recursive sum; fine for a one-shot operation).
     size_gb = sum(f.stat().st_size for f in merged_path.rglob("*") if f.is_file()) / (1024 ** 3)
     print(f"✓  Merge complete. Merged model: {merged_path} ({size_gb:.1f} GB)\n")
 
@@ -333,7 +385,7 @@ def _step_convert(merged_path: Path, version: str) -> Path:
     print(f"{'─' * 60}\n")
 
     cmd = [
-        sys.executable,               # same Python running this script
+        sys.executable,
         str(_CONVERT_SCRIPT),
         str(merged_path),
         "--outfile", str(f16_gguf),
@@ -342,12 +394,12 @@ def _step_convert(merged_path: Path, version: str) -> Path:
 
     logger.info(component="export", event="convert_start", cmd=" ".join(map(str, cmd)))
 
-    # capture_output=True (review #10 origin): keep stdout/stderr so a failure's
-    #   real error is logged even when run headless/CI (not just "exit code 1").
-    # encoding="utf-8" + errors="replace" (REVIEW FIX #12): text=True otherwise
-    #   defaults to the Windows locale (often cp1252), which crashes the moment
-    #   the subprocess prints a UTF-8/CJK char or an emoji. Force UTF-8.
-    # timeout (REVIEW FIX #5): don't hang forever on a wedged converter.
+    # capture_output: keep stdout/stderr so a failure's real error is logged even
+    #   when run headless (not just "exit code 1").
+    # encoding="utf-8" + errors="replace": text=True otherwise defaults to the
+    #   Windows locale (often cp1252), which crashes the moment the subprocess
+    #   prints a UTF-8/CJK char or emoji. Force UTF-8.
+    # timeout: don't hang forever on a wedged converter.
     try:
         result = subprocess.run(
             cmd, check=False, capture_output=True,
@@ -371,7 +423,6 @@ def _step_convert(merged_path: Path, version: str) -> Path:
             "See output above."
         )
 
-    # Exit 0 but no file = the script wrote somewhere else. Fail loudly.
     if not f16_gguf.exists():
         raise RuntimeError(
             f"Conversion reported success but output not found:\n  {f16_gguf}\n"
@@ -407,7 +458,6 @@ def _step_quantize(f16_gguf: Path, version: str) -> Path:
 
     logger.info(component="export", event="quantize_start", cmd=" ".join(map(str, cmd)))
 
-    # Same subprocess hardening as Step 2: capture output, force UTF-8, timeout.
     try:
         result = subprocess.run(
             cmd, check=False, capture_output=True,
@@ -464,7 +514,7 @@ def export(
         ExportError:  a prerequisite is missing or an argument is invalid.
         RuntimeError: a subprocess step failed or produced no output.
     """
-    version = _validate_version(version)          # REVIEW FIX (#1)
+    version = _validate_version(version)
     _check_prerequisites(version, skip_merge)
 
     print(f"\n{'═' * 60}")
@@ -491,11 +541,7 @@ def export(
     # ── Step 3: Quantise ──────────────────────────────────────────────────────
     q4_gguf = _step_quantize(f16_gguf, version)
 
-    # ── Cleanup ───────────────────────────────────────────────────────────────
-    # NOTE (review #8): we intentionally only clean up on SUCCESS. If a step
-    # above raised, the intermediates are left on disk ON PURPOSE so you can
-    # inspect them / retry with --skip-merge. On a space-tight machine, a failed
-    # run may need manual cleanup of models/merged/ and the *-f16.gguf.
+    # ── Cleanup (only on SUCCESS — failed runs leave intermediates for retry) ─
     if not keep_f16 and f16_gguf.exists():
         freed = f16_gguf.stat().st_size / (1024 ** 3)
         print(f"Removing F16 GGUF ({freed:.1f} GB freed)…")
@@ -516,15 +562,11 @@ def export(
     print(f"     Size : {q4_size_gb:.1f} GB")
     print(f"{'═' * 60}\n")
 
-    # Printed deploy command. FIX: was `-ngl -1` (ambiguous across llama.cpp
-    # builds) with no context size. Use `-ngl 99` to offload all layers to the
-    # GPU and `-c 8192` to match the Phase-1 context window.
     server_bin = _LLAMA_PRECOMPILED / _SERVER_BIN_NAME
     print(
         "  To deploy, stop the running llama-server, then start it on the new GGUF:\n\n"
         f"    {server_bin} \\\n"
         f"      -m {q4_gguf} \\\n"
-        # f"      -c 8192 -ngl 99 --port 8080\n\n"
         f"      -c 32768 -ngl 99 --port 8080 --chat-template chatml\n\n"
         "  Phase-1 system resumes with zero code changes.\n"
         "  Keep the OLD gguf until you have verified a sample of queries.\n"
@@ -542,11 +584,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="GGUF Export Pipeline (LoRA adapter → merged → Q4_K_M .gguf)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        # REVIEW FIX (#7): document the env vars the code ACTUALLY reads. Model
-        # paths come from settings (FT_* prefix); tool paths are read here directly.
         epilog=(
             "Environment overrides (no code change needed):\n"
-            "  Tool paths : LLAMA_CPP_SOURCE, LLAMA_PRECOMPILED,\n"
+            "  Tool paths : LLAMA_CPP_SOURCE (REQUIRED — external llama.cpp checkout),\n"
+            "               LLAMA_PRECOMPILED (default: ../llama-precompiled beside project),\n"
             "               LLAMA_QUANTIZE_BIN, LLAMA_SERVER_BIN\n"
             "  Merge dev  : FT_MERGE_DEVICE  (cuda:0 [default] | cpu)\n"
             "  Model paths: FT_HF_MODEL_DIR, FT_ADAPTER_DIR, FT_MERGED_DIR,\n"
@@ -563,8 +604,6 @@ if __name__ == "__main__":
                         help="Skip merge — reuse existing models/merged/fine_tuning-v{N}/")
     args = parser.parse_args()
 
-    # Translate our domain exception into a clean process exit. Programmatic
-    # callers of export() catch ExportError themselves and are unaffected.
     try:
         export(
             version     = args.version,

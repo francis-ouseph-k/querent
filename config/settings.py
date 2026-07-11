@@ -291,6 +291,26 @@ class FineTuningSettings(BaseSettings):
     # so 1024 is too small. 2048 fits the current fit.jsonl with no re-fit.
     max_seq:      int = 2048                                   # FT_MAX_SEQ
 
+    # ── export.py tool paths / merge device ──────────────────────────────────
+    # These are read HERE (via settings/.env) rather than directly from
+    # os.environ, so export.py behaves exactly like main.py / batch_run.py:
+    # one .env, loaded once by pydantic. FT_MERGE_DEVICE uses the FT_ prefix like
+    # every other field; the LLAMA_* vars keep their historical un-prefixed names
+    # (shared with the llama-server launch command), so each declares an explicit
+    # validation_alias to bypass the FT_ prefix and read the exact env name.
+    merge_device:       str = "cuda:0"    # FT_MERGE_DEVICE  (cuda:0 | cuda:N | cpu)
+
+    # llama.cpp SOURCE checkout containing convert_hf_to_gguf.py. External/shared,
+    # differs per machine → empty default = "unset"; export.py raises a clear
+    # prerequisite error (not an import crash) when it's needed but blank.
+    llama_cpp_source:   str = Field(default="",                  validation_alias="LLAMA_CPP_SOURCE")
+    # Precompiled quantiser/server binaries dir. Empty default = "unset"; export.py
+    # then falls back to the repo-relative "llama-precompiled" beside the project.
+    llama_precompiled:  str = Field(default="",                  validation_alias="LLAMA_PRECOMPILED")
+    # Binary NAMES — override for Linux/WSL (no .exe).
+    llama_quantize_bin: str = Field(default="llama-quantize.exe", validation_alias="LLAMA_QUANTIZE_BIN")
+    llama_server_bin:   str = Field(default="llama-server.exe",   validation_alias="LLAMA_SERVER_BIN")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
