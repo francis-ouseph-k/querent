@@ -446,31 +446,45 @@ class PipelineRunner:
         join_path_text: list[str] = retrieval_meta.get("join_paths", [])
 
         # ── Step 3: Prompt Construction ───────────────────────────────────
-        t0     = time.time()
-        prompt = self.prompt_builder.build(
-            parsed_query       = parsed,
-            schema_chunks      = schema_chunks,
-            join_paths         = join_path_text,
-            few_shots          = few_shots,
-            tenant_context     = user_context.get("tenant_context", ""),
-            # Issue 5: pass clean query and note separately so prompt_builder
-            # can emit them as distinct [QUERY] and [CLARIFICATION] blocks.
-            # prompt_builder must use parsed.clean_query for [QUERY], not
-            # parsed.normalised which may contain marker text.
-            clarification_note = parsed.clarification_note,
-            # RapidFuzz: pass resolved course code if available so prompt_builder
-            # can inject a concrete JOIN hint in the [CLARIFICATION] block.
-            course_code_match  = parsed.course_code_match,
-            # PHASE-1 FIX (cheatsheet): pass full TableInventory map so the
-            # builder can emit the [COLUMN CHEATSHEET] block.  See
-            # prompt_builder.build() docstring for rationale and impact.
-            tables             = self.tables,
-        )
+        # FIX-F1 — profile switch. "ft" serves the fine-tuned model the exact
+        # training distribution (short system role + budgeted SCHEMA+QUESTION
+        # user turn, rendered by the SAME function the preprocessor uses).
+        # "full" (default) keeps the base-model rich prompt unchanged.
+        t0 = time.time()
+        _system: str | None = None
+        if settings.llm.prompt_profile == "ft":
+            ft_prompt = self.prompt_builder.build_ft(
+                parsed_query  = parsed,
+                schema_chunks = schema_chunks,
+                join_paths    = join_path_text,
+                few_shots     = few_shots,
+            )
+            prompt, _system = ft_prompt["user"], ft_prompt["system"]
+        else:
+            prompt = self.prompt_builder.build(
+                parsed_query       = parsed,
+                schema_chunks      = schema_chunks,
+                join_paths         = join_path_text,
+                few_shots          = few_shots,
+                tenant_context     = user_context.get("tenant_context", ""),
+                # Issue 5: pass clean query and note separately so prompt_builder
+                # can emit them as distinct [QUERY] and [CLARIFICATION] blocks.
+                # prompt_builder must use parsed.clean_query for [QUERY], not
+                # parsed.normalised which may contain marker text.
+                clarification_note = parsed.clarification_note,
+                # RapidFuzz: pass resolved course code if available so prompt_builder
+                # can inject a concrete JOIN hint in the [CLARIFICATION] block.
+                course_code_match  = parsed.course_code_match,
+                # PHASE-1 FIX (cheatsheet): pass full TableInventory map so the
+                # builder can emit the [COLUMN CHEATSHEET] block.  See
+                # prompt_builder.build() docstring for rationale and impact.
+                tables             = self.tables,
+            )
         timings["prompt_ms"] = round((time.time() - t0) * 1000)
 
         # ── Step 4: SQL Generation ────────────────────────────────────────
         t0          = time.time()
-        generated   = self.sql_generator.generate(prompt)
+        generated   = self.sql_generator.generate(prompt, system=_system)
         timings["generation_ms"] = round((time.time() - t0) * 1000)
 
         if generated.prompt_tokens is not None:
@@ -598,7 +612,7 @@ class PipelineRunner:
                     tenant_context = user_context.get("tenant_context", ""),
                     tables         = self.tables,
                 )
-                generated = self.sql_generator.generate(correction_prompt)
+                generated = self.sql_generator.generate(correction_prompt, system=_system)
                 retries += 1
                 
                 if generated.sql:
@@ -800,7 +814,7 @@ class PipelineRunner:
                 audit_misses   = audit.coverage_misses,    # NEW
                 tables         = self.tables,
             )
-            regenerated = self.sql_generator.generate(correction_prompt)
+            regenerated = self.sql_generator.generate(correction_prompt, system=_system)
             retries += 1
             if regenerated.sql:
                 # Re-run structural validation on the regenerated SQL.

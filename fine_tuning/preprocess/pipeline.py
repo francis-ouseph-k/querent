@@ -51,6 +51,9 @@ class PreprocessConfig:
     jaccard:        float = 0.85
     max_seq:        int   = field(default_factory=lambda: settings.fine_tuning.max_seq)  # FT_MAX_SEQ — same knob as trainer
     skip_retrieval: bool  = False        # throwaway smoke test only — degrades data
+    # FIX-F4: only serve-shaped question styles train. None = no filtering (old behaviour).
+    train_categories: frozenset[str] | None = field(
+        default_factory=lambda: quality.DEFAULT_TRAIN_CATEGORIES)
     # freshness behaviour
     force:          bool  = False        # rebuild even if fresh
     no_preprocess:  bool  = False        # stale ⇒ raise instead of rebuild (CI)
@@ -64,6 +67,7 @@ class PreprocessConfig:
             "curated_source": str(self.curated_source),
             "benchmark": str(self.benchmark),
             "skip_retrieval": self.skip_retrieval,
+            "train_categories": sorted(self.train_categories) if self.train_categories else None,
         }
 
 
@@ -97,8 +101,9 @@ def run(cfg: PreprocessConfig) -> Path:
     pairs, removed = quality.deleak(pairs, benchq, cfg.jaccard)
     n_deleak = len(pairs)
 
-    # 3. quality gate (placeholder strip / garbage+bad reject)
-    pairs, rej = quality.gate(pairs)
+    # 3. quality gate (category whitelist / placeholder substitute→strip /
+    #    garbage+bad reject)
+    pairs, rej = quality.gate(pairs, train_categories=cfg.train_categories)
     n_gate = len(pairs)
 
     # 4. format (retrieval → ChatML) — the expensive stage
@@ -111,27 +116,32 @@ def run(cfg: PreprocessConfig) -> Path:
         retriever = qu = None
     else:
         retriever, qu = build.init_retriever()
-    rows, empty_ctx = build.format_pairs(pairs, retriever, qu)
+    # FIX-F2a: gold-table pinning needs the real DDL table set once, up front.
+    real_tables = build._ddl_tables(cfg.ddl_path)
+    rows, empty_ctx = build.format_pairs(pairs, retriever, qu, real_tables=real_tables)
 
     # 5. wrap (JSON serve envelope) — backstop drop of any non-SQL survivors
     rows, wrap_dropped = build.wrap_rows(rows, cfg.ddl_path)
 
-    # 6. fit (token budget)
-    rows, trimmed, still_over = build.fit_rows(rows, cfg.model_dir, cfg.max_seq)
+    # 6. fit (token budget, section-aware, gold-protected — FIX-F2b/F2c)
+    rows, trimmed, still_over, fit_drops = build.fit_rows(rows, cfg.model_dir, cfg.max_seq)
     n_final = len(rows)
 
     # 7. write artifact + manifest
     _write_jsonl(cfg.artifact, rows)
     sh, ch = _hashes(cfg)
-    reasons = {k: v for k, v in rej.items() if k != "_stripped"}
+    reasons = {k: v for k, v in rej.items() if not k.startswith("_")}
     reasons.update({"wrap_dropped_non_sql": wrap_dropped})
+    reasons.update(fit_drops)
     man = manifest.Manifest(
         generator_version=manifest.GENERATOR_VERSION,
         source_hash=sh, config_hash=ch,
         config=cfg.config_fingerprint(),
         row_counts={
             "input": n_in, "after_deleak": n_deleak, "after_gate": n_gate,
-            "final": n_final, "placeholder_stripped": rej.get("_stripped", 0),
+            "final": n_final,
+            "placeholder_stripped":    rej.get("_stripped", 0),
+            "placeholder_substituted": rej.get("_substituted", 0),
             "leaks_removed": len(removed), "schema_trimmed": trimmed,
             "empty_context": len(empty_ctx), "still_over_max_seq": still_over,
         },
@@ -194,10 +204,15 @@ def main() -> None:
     ap.add_argument("--jaccard", type=float, default=0.85)
     ap.add_argument("--force", action="store_true", help="Rebuild even if fresh")
     ap.add_argument("--skip-retrieval", action="store_true", help="Smoke test only — degrades data")
+    ap.add_argument("--all-categories", action="store_true",
+                    help="Disable the FIX-F4 category whitelist (train on every "
+                         "category incl. meta/conceptual rows — NOT recommended)")
     args = ap.parse_args()
 
     cfg = PreprocessConfig(force=True, max_seq=args.max_seq, jaccard=args.jaccard,
-                           skip_retrieval=args.skip_retrieval)
+                           skip_retrieval=args.skip_retrieval,
+                           train_categories=None if args.all_categories
+                                            else quality.DEFAULT_TRAIN_CATEGORIES)
     if args.source:    cfg.curated_source = args.source
     if args.benchmark: cfg.benchmark = args.benchmark
     if args.out:       cfg.artifact = args.out

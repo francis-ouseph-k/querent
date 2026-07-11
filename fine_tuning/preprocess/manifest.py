@@ -31,7 +31,11 @@ from typing import Any
 # Bump when the preprocessing LOGIC changes in a way that alters output even
 # though inputs/config are unchanged (e.g. a new gate rule). This forces a
 # rebuild for everyone without them having to touch config.
-GENERATOR_VERSION = "2.1.0"   # 2.1.0: training uses short _TRAIN_SYSTEM_PROMPT (was full serve prompt)
+GENERATOR_VERSION = "3.0.0"   # 3.0.0: gold-table pinning + section-aware fit with gold-ctx hard gate
+                              #        + placeholder substitution (strip is fallback) + reasoning scrub
+                              #        + off-task category whitelist. Shared renderer with
+                              #        prompt_builder (train/serve parity via build_ft / LLM_PROMPT_PROFILE=ft).
+                              # 2.1.0: training uses short _TRAIN_SYSTEM_PROMPT (was full serve prompt)
 
 
 def _sha256_file(path: Path) -> str:

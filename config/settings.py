@@ -142,6 +142,16 @@ class LLMSettings(BaseSettings):
     base_url:     str   = ""
     frequency_penalty: float = 0.0
     presence_penalty:  float = 0.0
+    # FIX-F1 — prompt profile. Which prompt distribution the pipeline serves:
+    #   "full" (default) — the rich 10–14k-token serve prompt (base model).
+    #   "ft"             — the training-parity prompt: _TRAIN_SYSTEM_PROMPT in a
+    #                      real system role + a budgeted SCHEMA+QUESTION user
+    #                      turn (PromptBuilder.build_ft). REQUIRED whenever
+    #                      llama-server is serving a fine-tuned GGUF — the
+    #                      adapter is specialised to this shape; serving it the
+    #                      "full" prompt is out-of-distribution and degrades it
+    #                      below the base model.
+    prompt_profile: str = "full"         # env: LLM_PROMPT_PROFILE = full | ft
 
 
 class EmbeddingSettings(BaseSettings):

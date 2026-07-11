@@ -170,9 +170,15 @@ class SQLGenerator:
         self._grammar_checked = True
         return self._grammar
 
-    def generate(self, prompt: str) -> GeneratedSQL:
+    def generate(self, prompt: str, system: str | None = None) -> GeneratedSQL:
         """
         Run the LLM on the prompt and parse the structured output contract.
+
+        system — optional system-role content (FIX-F1). When provided, messages
+        become [{"role":"system"...},{"role":"user"...}] so the ChatML template
+        renders a real system turn — the shape the fine-tuned adapter was
+        trained on. When None (default), behaviour is unchanged: one user
+        message, matching the base-model "full" profile.
 
         Returns a GeneratedSQL with .sql, .tables_used, .confidence, .explanation.
         On parse failure, returns a GeneratedSQL with empty sql and confidence=0.
@@ -198,7 +204,8 @@ class SQLGenerator:
         # paths now send `messages` instead of a raw prompt string so the
         # model receives proper turn boundaries and stops cleanly after
         # generating the JSON output contract.
-        messages = [{"role": "user", "content": prompt}]
+        messages = ([{"role": "system", "content": system}] if system else []) \
+                   + [{"role": "user", "content": prompt}]
 
         prompt_tokens = None
         completion_tokens = None

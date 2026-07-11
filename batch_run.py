@@ -92,6 +92,44 @@ def _fmt_duration(seconds: float) -> str:
 from pipeline.bootstrap import create_runner
 
 
+# ── Model provenance probe (FIX-F6) ────────────────────────────────────────────
+def _probe_model_identity() -> str:
+    """
+    Identify the model serving this benchmark.
+
+    HTTP mode: GET llama-server /props → model file path (+ file size when the
+    path is locally resolvable — a cheap integrity proxy; SHA256 of a 2.4 GB
+    GGUF at every run start is not worth the wall-clock).
+    In-process mode: LLM_MODEL_PATH from settings.
+    Never raises — a benchmark must not die on a telemetry probe.
+    """
+    base_url = settings.llm.base_url
+    if base_url:
+        try:
+            import httpx
+            root = base_url.rsplit("/v1", 1)[0] if "/v1" in base_url else base_url
+            r = httpx.get(f"{root}/props", timeout=5.0)
+            r.raise_for_status()
+            props = r.json()
+            path = (props.get("model_path")
+                    or props.get("default_generation_settings", {}).get("model")
+                    or props.get("model", ""))
+            if path:
+                try:
+                    size = Path(path).stat().st_size
+                    return f"{path} ({size:,} bytes)"
+                except OSError:
+                    return str(path)
+            return f"llama-server@{root} (path not reported)"
+        except Exception as exc:
+            return f"llama-server@{base_url} (probe failed: {exc})"
+    p = Path(settings.llm.model_path)
+    try:
+        return f"{p} ({p.stat().st_size:,} bytes, in-process)"
+    except OSError:
+        return f"{p} (in-process, size unavailable)"
+
+
 # ── Main batch logic ───────────────────────────────────────────────────────────
 
 # ── DETERMINISM (1/5): new `eval_temperature` parameter ─────────────────────────
@@ -117,6 +155,18 @@ def run_batch(dry_run: bool = False, start_from: int = 1, strict_version_check: 
             was=prev,
             note="greedy decoding for a reproducible benchmark; use --sampled to override",
         )
+
+    # ── PROVENANCE (FIX-F6): fingerprint the model actually serving this run ──
+    # Four historical "post-FT" runs swung 59.7% → 79.1% under greedy decoding —
+    # impossible for one fixed model. Nothing in the output rows tied a run to
+    # a GGUF, so RESULT-1/RESULT-2 A/B claims were unverifiable. Every output
+    # row (and the header log line) now carries the served model's identity,
+    # the prompt profile, and the eval temperature.
+    model_id = _probe_model_identity()
+    logger.info(component=COMPONENT, event="model_provenance",
+                model=model_id, prompt_profile=settings.llm.prompt_profile,
+                temperature=settings.llm.temperature)
+    print(f"Model under test: {model_id}  |  prompt_profile={settings.llm.prompt_profile}")
 
     # Enforce strict version check if enabled
     from pipeline.bootstrap import check_schema_version
@@ -241,6 +291,10 @@ def run_batch(dry_run: bool = False, start_from: int = 1, strict_version_check: 
                 "Generation ms":   0,
                 "Prompt tokens":   0,
                 "Completion tokens": 0,
+                # PROVENANCE (FIX-F6) — which model/config produced this row
+                "Model":           model_id,
+                "Prompt profile":  settings.llm.prompt_profile,
+                "Temperature":     settings.llm.temperature,
             }
 
             # Validate question text — skip empty questions immediately

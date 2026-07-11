@@ -111,9 +111,112 @@ def deleak(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PLACEHOLDER STRIP  (AST-based; strip-if-valid-else-reject)
+# PLACEHOLDER SUBSTITUTION  (preferred) → STRIP (fallback) → REJECT
 # ══════════════════════════════════════════════════════════════════════════════
+# WHY SUBSTITUTE FIRST (FIX-F3): the old strip-only policy removed the WHERE
+# predicate but KEPT the question that demands it ("…for board 12"). 153/378
+# rows (40% of the v4 corpus) therefore taught "question names an entity →
+# answer omits the filter". Post-FT symptoms observed in batch runs: dropped
+# filters/grain (semantic 'per'/'for each' failures) and the model falling back
+# to :qp_id/:board_id bind variables it was never allowed to resolve — a
+# failure class the BASE model never produced. Substituting a plausible typed
+# literal preserves the question↔filter association and matches serve Rule 3
+# ("use literal values, never placeholders").
+#
+# Substitution is deliberately conservative — only when the literal's TYPE is
+# unambiguous from the placeholder/column name:
+#   *_id / id / *_no / limit / offset / count / marks / year → integer
+#   *date* / *_at / *_on                                     → ISO date string
+# Anything else (status enums, names, codes) falls through to the old strip
+# logic: guessing 'FROZEN' vs 'SUBMITTED' wrong would teach invalid enum
+# values, which is worse than a vanished filter.
 _STOP = (exp.And, exp.Or, exp.Where, exp.Join, exp.Having, exp.Select)
+
+_INT_HINT  = re.compile(r"(?:^|_)(id|no|num|limit|offset|count|marks|year|attempt)s?$", re.I)
+_DATE_HINT = re.compile(r"date|_at$|_on$", re.I)
+
+_SUBST_INT  = "42"
+_SUBST_DATE = "'2026-01-01'"
+
+
+def _placeholder_name(ph: exp.Placeholder) -> str:
+    return str(ph.this or "")
+
+
+def _context_column_name(ph: exp.Placeholder) -> str:
+    """Name of the column the placeholder is compared against, if findable."""
+    node = ph.parent
+    for _ in range(4):                      # EQ/GT/Between/In are shallow
+        if node is None:
+            return ""
+        col = node.find(exp.Column)
+        if col is not None:
+            return col.name or ""
+        node = node.parent
+    return ""
+
+
+def _literal_for(ph: exp.Placeholder) -> str | None:
+    """Typed literal SQL text, or None when the type cannot be inferred safely."""
+    hint = _placeholder_name(ph) or _context_column_name(ph)
+    if not hint:
+        return None
+    if _INT_HINT.search(hint):
+        return _SUBST_INT
+    if _DATE_HINT.search(hint):
+        return _SUBST_DATE
+    return None
+
+
+def substitute_placeholders(sql: str) -> tuple[str, str]:
+    """
+    Return (sql, status). status ∈ {'clean', 'substituted', 'partial', 'reject:<why>'}.
+
+    Replaces each :placeholder whose type is inferable with a typed literal.
+    'partial' means some placeholders were substituted but others remain —
+    caller should then run strip_placeholders() on the result.
+    Untouched ('clean') rows are returned verbatim — no reserialisation.
+    """
+    if ":" not in sql:
+        return sql, "clean"
+    try:
+        tree = sqlglot.parse_one(sql, read=_DIALECT)
+    except Exception:
+        return sql, "reject:parse_fail"
+    if tree.find(exp.Placeholder) is None:
+        return sql, "clean"                 # the ':' was a ::cast or a string literal
+
+    replaced, remaining = 0, 0
+    for ph in list(tree.find_all(exp.Placeholder)):
+        lit = _literal_for(ph)
+        if lit is None:
+            remaining += 1
+            continue
+        ph.replace(sqlglot.parse_one(lit, read=_DIALECT))
+        replaced += 1
+
+    if replaced == 0:
+        return sql, "partial"               # nothing inferable — strip fallback
+    try:
+        out = tree.sql(dialect=_DIALECT)
+        sqlglot.parse_one(out, read=_DIALECT)
+    except Exception:
+        return sql, "reject:invalid_after_substitute"
+    return out, ("substituted" if remaining == 0 else "partial")
+
+
+# ── reasoning scrub (FIX-F3b) ─────────────────────────────────────────────────
+# wrap_rows copies the curated `reasoning` field verbatim into the
+# schema_reasoning/explanation LABELS. Three v4 rows discussed ':qp_id bind
+# variables' in prose — training the exact token the serve validator rejects.
+_BIND_MENTION = re.compile(r"(?<![:\w]):[a-zA-Z_][a-zA-Z0-9_]*\b")
+
+
+def scrub_reasoning(text: str) -> str:
+    """Remove :bind-variable mentions from label prose. Idempotent."""
+    if not text or ":" not in text:
+        return text
+    return _BIND_MENTION.sub("a literal value", text)
 
 
 def strip_placeholders(sql: str) -> tuple[str, str]:
@@ -184,16 +287,34 @@ def _is_sql(text: str) -> bool:
     return text.strip().lower().startswith(("select", "with"))
 
 
-def gate(pairs: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+# FIX-F4: prompt-style whitelist. 118/378 rows of the v4 corpus (31%) were
+# meta-prompts ("Fix this query…" with no query embedded) or conceptual
+# categories whose question style never occurs at serve time. They dilute an
+# already tiny corpus and teach answer shapes ("Two possible intents…") that
+# break the single-JSON output contract. Only serve-shaped questions train.
+DEFAULT_TRAIN_CATEGORIES: frozenset[str] = frozenset({
+    "Business Question → SQL",
+    "",                       # failure-log / few-shot / synthetic rows carry no category
+})
+
+
+def gate(
+    pairs: list[dict[str, Any]],
+    train_categories: frozenset[str] | None = DEFAULT_TRAIN_CATEGORIES,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Correctness gate. Returns (kept_pairs, reject_counts_by_reason)."""
     kept: list[dict[str, Any]] = []
     rej: Counter = Counter()
     n_stripped = 0
+    n_substituted = 0
 
     for p in pairs:
         nl  = str(p.get("nl_query", "")).strip()
         sql = str(p.get("sql", "")).strip()
 
+        # 0. FIX-F4: off-task prompt styles never reach the corpus
+        if train_categories is not None and p.get("category", "") not in train_categories:
+            rej["off_task_category"] += 1; continue
         # 1. prose / non-SQL
         if not sql:
             rej["empty_sql"] += 1; continue
@@ -202,13 +323,22 @@ def gate(pairs: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, i
         # 2. garbage joins — BEFORE strip, so they're dropped not reserialised
         if _GARBAGE_JOIN.search(sql):
             rej["garbage_join"] += 1; continue
-        # 3. placeholder policy
-        new_sql, status = strip_placeholders(sql)
+        # 3. placeholder policy — FIX-F3: substitute typed literal first;
+        #    strip is the fallback only for uninferable placeholder types.
+        new_sql, status = substitute_placeholders(sql)
         if status.startswith("reject"):
             rej[status] += 1; continue
-        if status == "stripped":
+        if status in ("substituted", "partial"):
             sql = new_sql
-            n_stripped += 1
+            if status == "substituted":
+                n_substituted += 1
+        if status == "partial":
+            new_sql, status = strip_placeholders(sql)
+            if status.startswith("reject"):
+                rej[status] += 1; continue
+            if status == "stripped":
+                sql = new_sql
+                n_stripped += 1
         # 4. length / question quality (on the possibly-stripped SQL)
         if not nl:
             rej["empty_nl"] += 1; continue
@@ -227,8 +357,9 @@ def gate(pairs: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, i
         p = dict(p, sql=sql)
         kept.append(p)
 
-    rej["_stripped"] = n_stripped     # informational, not a rejection
+    rej["_stripped"]    = n_stripped      # informational, not a rejection
+    rej["_substituted"] = n_substituted   # informational, not a rejection
     logger.info(component="preprocess.quality", event="gate_complete",
                 rows_in=len(pairs), kept=len(kept),
-                stripped=n_stripped, rejected=dict(rej))
+                stripped=n_stripped, substituted=n_substituted, rejected=dict(rej))
     return kept, dict(rej)

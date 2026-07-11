@@ -148,7 +148,8 @@ TRAIN_DATA    = Path(settings.fine_tuning.train_data)
 # Effective batch size = BATCH_SIZE * GRAD_ACCUM_STEPS = 1 * 16 = 16
 # These values are shared between the legacy and Blackwell-safe paths.
 LORA_RANK          = 16
-LORA_ALPHA         = 32
+LORA_ALPHA         = 32     # [SUPERSEDED — FIX-F8] alpha is now computed as 2×rank inside
+                            # train(); this constant is kept only for the docstring table.
 LORA_DROPOUT       = 0.05
 LORA_TARGET_MODULES = ["q_proj", "v_proj", "k_proj", "o_proj"]
 LEARNING_RATE      = 2e-4
@@ -478,10 +479,16 @@ def train(
     # ── 4. Apply LoRA ─────────────────────────────────────────────────────────
     # LoRA rank, alpha, dropout, and target modules are identical between the
     # legacy and Blackwell-safe paths.  Only the base model precision changes.
-    print(f"Applying LoRA (rank={lora_rank}, alpha={LORA_ALPHA})…")
+    # FIX-F8: alpha follows rank. LORA_ALPHA was a constant 32 designed for
+    # rank 16 (effective scale alpha/r = 2). The v4 run used --lora-rank 8
+    # with alpha still 32 → scale 4, doubling how hard the adapter's learned
+    # behaviour is imprinted at merge time. alpha = 2×rank keeps the scale
+    # constant no matter what rank the CLI picks.
+    lora_alpha = 2 * lora_rank
+    print(f"Applying LoRA (rank={lora_rank}, alpha={lora_alpha})…")
     lora_config = LoraConfig(
         r                = lora_rank,
-        lora_alpha       = LORA_ALPHA,
+        lora_alpha       = lora_alpha,
         lora_dropout     = LORA_DROPOUT,
         target_modules   = LORA_TARGET_MODULES,
         bias             = "none",
@@ -505,8 +512,17 @@ def train(
     # until evaluator.py ran after training finished — by then GPU hours were
     # already spent. This dev split is separate from evaluator.py's held-out
     # set; it exists only to monitor the training run itself.
-    dataset, dev_dataset = _split_train_dev(full_dataset, dev_fraction=0.10, seed=seed)
-    print(f"Training on {len(dataset)} examples, {len(dev_dataset)} held out for eval_loss tracking…")
+    # FIX-F9: in-loop eval is hard-disabled on 8 GB (eval_strategy="no" below),
+    # so holding out 10% only shrinks an already tiny corpus (~38 rows wasted
+    # on v4's 378). Train on 100%; re-enable the split together with
+    # eval_strategy="steps" on a bigger GPU.
+    _EVAL_ENABLED = False   # keep in sync with eval_strategy in SFTConfig below
+    if _EVAL_ENABLED:
+        dataset, dev_dataset = _split_train_dev(full_dataset, dev_fraction=0.10, seed=seed)
+        print(f"Training on {len(dataset)} examples, {len(dev_dataset)} held out for eval_loss tracking…")
+    else:
+        dataset, dev_dataset = full_dataset, None
+        print(f"Training on {len(dataset)} examples (no dev split — in-loop eval disabled on 8 GB)…")
 
     # ── 6. Training arguments ─────────────────────────────────────────────────
     training_args = SFTConfig(

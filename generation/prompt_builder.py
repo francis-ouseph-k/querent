@@ -184,6 +184,135 @@ if not _TRAIN_SYSTEM_PROMPT:
         "depends on it. Add the 'train_system_prompt:' block back to prompts.yaml."
     )
 
+# ══════════════════════════════════════════════════════════════════════════════
+# SHARED TRAIN-FORMAT RENDERER  (FIX-F1 — single source of the training prompt)
+# ══════════════════════════════════════════════════════════════════════════════
+# Used by BOTH fine_tuning/preprocess/build.py (to build training rows) and
+# PromptBuilder.build_ft() (to serve the fine-tuned model). One function, one
+# format — train/serve drift is now impossible for the FT profile.
+#
+# Section order mirrors the historical training builder:
+#   SCHEMA CONTEXT → WORKFLOW/STATUS → STATUS MODEL → DOMAIN TERMINOLOGY →
+#   RELEVANT JOIN PATHS → ADDITIONAL CONTEXT → EXAMPLE QUERIES → QUESTION
+_TRAIN_SECTION_ORDER = (
+    "=== SCHEMA CONTEXT ===",
+    "=== WORKFLOW AND STATUS SEMANTICS ===",
+    "=== ANSWER SCRIPT STATUS MODEL ===",
+    "=== DOMAIN TERMINOLOGY ===",
+    "=== RELEVANT JOIN PATHS ===",
+    "=== ADDITIONAL CONTEXT ===",
+    "=== EXAMPLE QUERIES ===",
+)
+# Trim priority when over budget: drop the most expendable section first.
+# TABLE chunks in SCHEMA CONTEXT are LAST to go (and gold-pinned tables never
+# go — see fine_tuning/preprocess/build.fit_row).
+TRAIN_TRIM_ORDER = (
+    "=== EXAMPLE QUERIES ===",
+    "=== DOMAIN TERMINOLOGY ===",
+    "=== ADDITIONAL CONTEXT ===",
+    "=== RELEVANT JOIN PATHS ===",
+    "=== ANSWER SCRIPT STATUS MODEL ===",
+    "=== WORKFLOW AND STATUS SEMANTICS ===",
+    "=== SCHEMA CONTEXT ===",   # trimmed chunk-by-chunk, never wholesale
+)
+QUESTION_MARK  = "=== QUESTION ==="
+_CLOSING_LINE  = "Respond with ONLY the JSON object as specified above:"
+
+
+def render_train_user_prompt(
+    schema_chunks: list,
+    join_paths:    list[str],
+    few_shots:     list,
+    question:      str,
+) -> str:
+    """Render the user turn in the exact training format. Pure string assembly."""
+    from models.schema import ChunkType
+
+    lines: list[str] = []
+
+    table_chunks = [c for c in schema_chunks
+                    if c.chunk_type in (ChunkType.TABLE, ChunkType.VIEW)]
+    if table_chunks:
+        lines.append("=== SCHEMA CONTEXT ===")
+        for c in table_chunks:
+            lines.append(c.text); lines.append("")
+
+    wf_chunks = [c for c in schema_chunks
+                 if c.chunk_type in (ChunkType.WORKFLOW, ChunkType.STATUS)]
+    if wf_chunks:
+        lines.append("=== WORKFLOW AND STATUS SEMANTICS ===")
+        for c in wf_chunks:
+            lines.append(c.text); lines.append("")
+
+    if _STATUS_MODEL_BLOCK:
+        lines.append(_STATUS_MODEL_BLOCK)   # carries its own === header
+
+    glossary_chunks = [c for c in schema_chunks if c.chunk_type == ChunkType.GLOSSARY]
+    if glossary_chunks:
+        lines.append("=== DOMAIN TERMINOLOGY ===")
+        for c in glossary_chunks:
+            lines.append(c.text); lines.append("")
+
+    if join_paths:
+        lines.append("=== RELEVANT JOIN PATHS ===")
+        lines.append("\n".join(join_paths)); lines.append("")
+
+    fk_chunks = [c for c in schema_chunks if c.chunk_type in
+                 (ChunkType.FK_MAP, ChunkType.INDEX, ChunkType.AUDIT, ChunkType.PARTITION)]
+    if fk_chunks:
+        lines.append("=== ADDITIONAL CONTEXT ===")
+        for c in fk_chunks:
+            lines.append(c.text); lines.append("")
+
+    if few_shots:
+        lines.append("=== EXAMPLE QUERIES ===")
+        for i, ex in enumerate(few_shots, 1):
+            lines.append(f"Example {i}:")
+            lines.append(f"Question: {ex.nl_question}")
+            lines.append(f"SQL: {ex.expected_sql}")
+            lines.append("")
+
+    lines += [QUESTION_MARK, question, "", _CLOSING_LINE]
+    return "\n".join(lines)
+
+
+def split_train_sections(head: str) -> list[tuple[str, str]]:
+    """Split the pre-QUESTION head into (header, body) pairs, order preserved.
+    Text before the first known header gets header ''."""
+    positions = sorted(
+        (idx, h) for h in _TRAIN_SECTION_ORDER
+        if (idx := head.find(h)) != -1
+    )
+    if not positions:
+        return [("", head)] if head.strip() else []
+    out: list[tuple[str, str]] = []
+    if positions[0][0] > 0 and head[:positions[0][0]].strip():
+        out.append(("", head[:positions[0][0]]))
+    for n, (idx, h) in enumerate(positions):
+        end = positions[n + 1][0] if n + 1 < len(positions) else len(head)
+        out.append((h, head[idx:end]))
+    return out
+
+
+def _trim_train_user_prompt(user: str, token_budget: int) -> str:
+    """Serve-time budget enforcement, section-aware (mirrors preprocess fit order)."""
+    if _count_tokens(user) <= token_budget:
+        return user
+    qidx = user.find(QUESTION_MARK)
+    if qidx == -1:
+        return user                              # malformed — do not mangle
+    head, tail = user[:qidx], user[qidx:]
+    sections = split_train_sections(head)
+    for victim in TRAIN_TRIM_ORDER:
+        if victim == "=== SCHEMA CONTEXT ===":
+            break                                # serve side never drops tables blind
+        sections = [(h, b) for h, b in sections if h != victim]
+        head = "".join(b for _, b in sections)
+        if _count_tokens(head + tail) <= token_budget:
+            return head + tail
+    return head + tail                           # over budget with tables only: accept
+
+
 # ── Conditional rule blocks ──────────────────────────────────────────────────
 # Rules conditionally injected based on query intent or trigger words.
 _ANTI_JOIN_RULES_BLOCK = _PROMPTS.get("blocks", {}).get("anti_join", "")
@@ -739,6 +868,60 @@ class PromptBuilder:
         )
 
         return prompt
+
+    # ══════════════════════════════════════════════════════════════════════
+    # FT PROFILE — train/serve parity prompt (FIX-F1)
+    # ══════════════════════════════════════════════════════════════════════
+    def build_ft(
+        self,
+        parsed_query,
+        schema_chunks: list[SemanticChunk],
+        join_paths:    list[str] | None = None,
+        few_shots:     list[SemanticChunk] | None = None,
+        token_budget:  int | None = None,
+    ) -> dict[str, str]:
+        """
+        Build the prompt the FINE-TUNED model was trained on, and nothing else.
+
+        Returns {"system": <_TRAIN_SYSTEM_PROMPT>, "user": <schema+question>}.
+        The caller must send these as SEPARATE ChatML roles
+        (sql_generator.generate(user, system=system)).
+
+        WHY THIS EXISTS: the fine-tune specialises the model to the training
+        distribution — a ~2k-token user turn (SCHEMA CONTEXT → … → QUESTION,
+        rendered by render_train_user_prompt, the SAME function the
+        preprocessor uses) under a system turn holding _TRAIN_SYSTEM_PROMPT.
+        Serving the fine-tuned model the full 14k-token serve prompt as a
+        single user message (no system role, different rulebook, unseen
+        sections) is maximally out-of-distribution and measurably degrades it
+        below the base model. The base model stays on build(); the fine-tuned
+        model gets build_ft(). Select via LLM_PROMPT_PROFILE=ft in .env.
+
+        token_budget: cap for the user turn (default: FT_MAX_SEQ minus the
+        reserve for system + output). Trims the schema head from ITS TAIL
+        (few-shots and low-priority sections drop first — same order the
+        preprocessor's fit stage uses).
+        """
+        from config.settings import settings as _settings
+
+        question = getattr(parsed_query, "clean_query",
+                           getattr(parsed_query, "normalised", "")) or ""
+        user = render_train_user_prompt(
+            schema_chunks = schema_chunks or [],
+            join_paths    = join_paths or [],
+            few_shots     = few_shots or [],
+            question      = question,
+        )
+
+        # Budget: same knob training used. Reserve ≈ system + JSON output.
+        if token_budget is None:
+            reserve      = _count_tokens(_TRAIN_SYSTEM_PROMPT) + _settings.llm.max_tokens // 4
+            token_budget = max(512, _settings.fine_tuning.max_seq - reserve)
+        user = _trim_train_user_prompt(user, token_budget)
+
+        logger.debug(component="prompt_builder", event="ft_prompt_built",
+                     user_tokens=_count_tokens(user), budget=token_budget)
+        return {"system": _TRAIN_SYSTEM_PROMPT, "user": user}
 
     def build_correction_prompt(
         self,

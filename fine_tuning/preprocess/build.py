@@ -93,11 +93,27 @@ def init_retriever():
 # ══════════════════════════════════════════════════════════════════════════════
 # FORMAT  (schema context + ChatML record) — ported from data_pipeline
 # ══════════════════════════════════════════════════════════════════════════════
-def _build_schema_context(nl_query: str, retriever, query_understanding) -> str:
-    """Mirror generation/prompt_builder section order EXACTLY (train/serve parity)."""
+def _build_schema_context(
+    nl_query: str,
+    retriever,
+    query_understanding,
+    gold_tables: list[str] | None = None,
+) -> str:
+    """
+    Render the user-turn context via the SHARED train-format renderer
+    (generation/prompt_builder.render_train_user_prompt) — one function for
+    training and FT serving, so drift is impossible.
+
+    FIX-F2a (gold pinning): retrieval is seeded with the tables the GOLD SQL
+    actually uses, not just query_understanding's entity guesses. The
+    orchestrator promotes entity_tables to mandatory chunks, so pinning here
+    guarantees the answer's tables are IN the context the model learns from.
+    Pre-fix measurement: 23% of rows (106/452 pre-fit) were missing at least
+    one gold table from context purely due to retrieval misses — every such
+    row trains the model to write SQL over tables it cannot see.
+    """
     try:
-        from models.schema import ChunkType
-        from generation.prompt_builder import _STATUS_MODEL_BLOCK
+        from generation.prompt_builder import render_train_user_prompt
 
         entity_tables: list[str] = []
         intent_value = "unknown"
@@ -106,63 +122,41 @@ def _build_schema_context(nl_query: str, retriever, query_understanding) -> str:
             entity_tables = parsed.entities
             intent_value = parsed.intent.value
 
+        # gold pinning — union, gold first so mandatory promotion favours them
+        seed = list(dict.fromkeys([*(gold_tables or []), *entity_tables]))
+
         chunks, retrieval_meta = retriever.retrieve(
-            query_text=nl_query, entity_tables=entity_tables, intent=intent_value,
+            query_text=nl_query, entity_tables=seed, intent=intent_value,
         )
         few_shots = retriever.get_few_shot_examples(query_text=nl_query, top_k=3)
         join_paths: list[str] = retrieval_meta.get("join_paths", [])
 
-        lines: list[str] = []
-        table_chunks = [c for c in chunks if c.chunk_type in (ChunkType.TABLE, ChunkType.VIEW)]
-        if table_chunks:
-            lines.append("=== SCHEMA CONTEXT ===")
-            for c in table_chunks:
-                lines.append(c.text); lines.append("")
-
-        wf_chunks = [c for c in chunks if c.chunk_type in (ChunkType.WORKFLOW, ChunkType.STATUS)]
-        if wf_chunks:
-            lines.append("=== WORKFLOW AND STATUS SEMANTICS ===")
-            for c in wf_chunks:
-                lines.append(c.text); lines.append("")
-
-        lines.append(_STATUS_MODEL_BLOCK)   # fixed block, injected on every serve prompt
-
-        glossary_chunks = [c for c in chunks if c.chunk_type == ChunkType.GLOSSARY]
-        if glossary_chunks:
-            lines.append("=== DOMAIN TERMINOLOGY ===")
-            for c in glossary_chunks:
-                lines.append(c.text); lines.append("")
-
-        if join_paths:
-            lines.append("=== RELEVANT JOIN PATHS ===")
-            lines.append("\n".join(join_paths)); lines.append("")
-
-        fk_chunks = [c for c in chunks if c.chunk_type in
-                     (ChunkType.FK_MAP, ChunkType.INDEX, ChunkType.AUDIT, ChunkType.PARTITION)]
-        if fk_chunks:
-            lines.append("=== ADDITIONAL CONTEXT ===")
-            for c in fk_chunks:
-                lines.append(c.text); lines.append("")
-
-        if few_shots:
-            lines.append("=== EXAMPLE QUERIES ===")
-            for i, ex in enumerate(few_shots, 1):
-                lines.append(f"Example {i}:")
-                lines.append(f"Question: {ex.nl_question}")
-                lines.append(f"SQL: {ex.expected_sql}")
-                lines.append("")
-        return "\n".join(lines)
+        # render WITHOUT the question — format_pairs appends the question block
+        rendered = render_train_user_prompt(
+            schema_chunks=chunks, join_paths=join_paths,
+            few_shots=few_shots, question="",
+        )
+        # strip the trailing question scaffold the renderer adds
+        qidx = rendered.find(QUESTION_MARK)
+        return rendered[:qidx].rstrip("\n") if qidx != -1 else rendered
     except Exception as exc:
         logger.warning(component="preprocess.build", event="schema_retrieval_failed",
                        nl_query=nl_query[:80], error=str(exc))
         return ""
 
 
-def format_pairs(pairs: list[dict[str, Any]], retriever, query_understanding) -> tuple[list[dict], list[int]]:
+def format_pairs(
+    pairs: list[dict[str, Any]],
+    retriever,
+    query_understanding,
+    real_tables: set[str] | None = None,
+) -> tuple[list[dict], list[int]]:
     """Enrich each pair with retrieved schema context → ChatML record. Returns (rows, empty_ctx_lines)."""
     # Train on the SHORT system prompt, not the full serve-time rulebook: the full
     # prompt overflows the training window and trains a dependence on the rulebook
     # fine-tuning should internalise. See prompt_builder._TRAIN_SYSTEM_PROMPT.
+    # PARITY NOTE (FIX-F1): the fine-tuned model MUST be served this same shape —
+    # set LLM_PROMPT_PROFILE=ft so runner uses PromptBuilder.build_ft().
     from generation.prompt_builder import _TRAIN_SYSTEM_PROMPT as _SYSTEM_PROMPT
 
     rows: list[dict[str, Any]] = []
@@ -174,7 +168,11 @@ def format_pairs(pairs: list[dict[str, Any]], retriever, query_understanding) ->
     # shows Q#, %, elapsed and ETA instead of sitting silent.
     print(f"[preprocess] formatting {total} pairs (live retrieval per pair)…", flush=True)
     for i, p in enumerate(pairs):
-        schema_context = (_build_schema_context(p["nl_query"], retriever, query_understanding)
+        # FIX-F2a: tables the gold SQL uses — pinned into retrieval, and carried
+        # on the row so fit_row can protect their chunks from trimming.
+        gold_tables = _tables_used(p["sql"], real_tables) if real_tables else []
+        schema_context = (_build_schema_context(p["nl_query"], retriever,
+                                                query_understanding, gold_tables)
                           if retriever is not None else "")
         user_parts: list[str] = []
         if schema_context:
@@ -187,6 +185,7 @@ def format_pairs(pairs: list[dict[str, Any]], retriever, query_understanding) ->
             "output":      p["sql"],
             "reasoning":   p.get("reasoning", ""),
             "source":      p.get("source", "curated"),
+            "gold_tables": gold_tables,     # consumed (and removed) by fit_rows
             "timestamp":   datetime.now(timezone.utc).isoformat(),
         }
         no_ctx = retriever is not None and not any(h in rec["instruction"] for h in _RETRIEVED_HEADERS)
@@ -214,7 +213,22 @@ def format_pairs(pairs: list[dict[str, Any]], retriever, query_understanding) ->
 # ══════════════════════════════════════════════════════════════════════════════
 # WRAP  (JSON serve envelope) — ported from wrap_outputs_json
 # ══════════════════════════════════════════════════════════════════════════════
-GOLD_CONFIDENCE = 0.9
+# FIX-F5: a CONSTANT confidence label (was 0.9 on all rows) trains the model
+# to always emit the same number, destroying the signal CONFIDENCE_WARN_THRESHOLD
+# gates on — post-FT distribution collapsed to {0.9, 0.85}. A deterministic
+# complexity heuristic restores variance while staying honest: gold SQL is
+# correct by definition, so simpler queries get higher confidence.
+GOLD_CONFIDENCE = 0.9   # kept for backward reference; _gold_confidence() supersedes
+
+
+def _gold_confidence(sql: str) -> float:
+    s = sql.lower()
+    joins = s.count(" join ")
+    if s.strip().startswith("with") or joins >= 3:
+        return 0.82
+    if joins >= 1:
+        return 0.88
+    return 0.92
 
 
 def _ddl_tables(ddl_path: Path) -> set[str]:
@@ -254,12 +268,15 @@ def wrap_rows(rows: list[dict[str, Any]], ddl_path: Path) -> tuple[list[dict], i
             dropped += 1
             continue
         tables = _tables_used(raw, real)
-        reasoning = str(row.get("reasoning", "")).strip()
+        # FIX-F3b: reasoning goes verbatim into the schema_reasoning/explanation
+        # LABELS — scrub :bind mentions so the model never learns the token.
+        from fine_tuning.preprocess.quality import scrub_reasoning
+        reasoning = scrub_reasoning(str(row.get("reasoning", "")).strip())
         envelope = {
             "schema_reasoning": reasoning or _synth_reasoning(raw, tables),
             "sql":              raw,
             "tables_used":      tables,
-            "confidence":       GOLD_CONFIDENCE,
+            "confidence":       _gold_confidence(raw),   # FIX-F5: complexity-derived
             "explanation":      reasoning or "Returns the rows described by the question.",
         }
         out_rows.append(dict(row, output=json.dumps(envelope, ensure_ascii=False)))
@@ -278,42 +295,135 @@ def _count(tok, text: str) -> int:
     return len(tok.encode(text, add_special_tokens=False))
 
 
-def fit_row(tok, row: dict, max_seq: int) -> tuple[dict, bool]:
-    instr = row["instruction"]; system = row.get("input", ""); output = row.get("output", "")
+_TABLE_CHUNK_RE = re.compile(r"^TABLE: (\w+)", re.M)
+
+
+def _split_table_chunks(schema_body: str) -> tuple[str, list[tuple[str, str]]]:
+    """Split '=== SCHEMA CONTEXT ===\\n<chunks>' into (header_line, [(table, chunk_text)])."""
+    lines = schema_body.split("\n", 1)
+    header = lines[0]
+    body   = lines[1] if len(lines) > 1 else ""
+    starts = [(m.start(), m.group(1).lower()) for m in _TABLE_CHUNK_RE.finditer(body)]
+    chunks: list[tuple[str, str]] = []
+    for n, (pos, tbl) in enumerate(starts):
+        end = starts[n + 1][0] if n + 1 < len(starts) else len(body)
+        chunks.append((tbl, body[pos:end]))
+    return header, chunks
+
+
+def fit_row(tok, row: dict, max_seq: int) -> tuple[dict, str]:
+    """
+    Token-budget one row. Returns (row, status);
+    status ∈ {'ok', 'trimmed', 'reject:gold_over_budget', 'reject:no_question'}.
+
+    FIX-F2b — the OLD implementation cut the schema head blindly from its tail.
+    Result on the v4 corpus (manifest: schema_trimmed=378/378): rows whose gold
+    SQL referenced context-absent tables jumped from 23% pre-fit to 54% post-fit
+    — half the gradient taught the model to write SQL over tables it could not
+    see, which is precisely the hallucinated-column failure class that appeared
+    after fine-tuning. NEW policy, section-aware:
+
+      1. Drop whole low-value sections first, in TRAIN_TRIM_ORDER
+         (EXAMPLES → GLOSSARY → ADDITIONAL → JOIN PATHS → STATUS MODEL → WORKFLOW).
+      2. Then drop non-gold TABLE chunks from the end of SCHEMA CONTEXT.
+      3. NEVER drop a TABLE chunk for a table in row['gold_tables'].
+      4. If gold chunks alone still exceed the budget → REJECT the row.
+         A rejected row costs one example; a kept-but-poisoned row costs accuracy.
+    """
+    from generation.prompt_builder import TRAIN_TRIM_ORDER, split_train_sections
+
+    instr  = row["instruction"]; system = row.get("input", ""); output = row.get("output", "")
+    gold   = {t.lower() for t in row.get("gold_tables", []) or []}
     idx = instr.find(QUESTION_MARK)
     if idx == -1:
-        return row, False
+        return row, "reject:no_question"
     head, tail = instr[:idx], instr[idx:]
     reserve = _count(tok, system) + _count(tok, tail) + _count(tok, output) + TEMPLATE_OVERHEAD
     head_budget = max_seq - reserve
-    if head_budget <= 0:
-        row["instruction"] = tail
-        return row, True
-    head_ids = tok.encode(head, add_special_tokens=False)
-    if len(head_ids) <= head_budget:
-        return row, False
-    kept = tok.decode(head_ids[:head_budget])
-    nl = kept.rfind("\n")
-    if nl > 0:
-        kept = kept[: nl + 1]
-    row["instruction"] = kept + tail
-    return row, True
+
+    def head_text(sections: list[tuple[str, str]]) -> str:
+        return "".join(b for _, b in sections)
+
+    sections = split_train_sections(head)
+    if _count(tok, head_text(sections)) <= head_budget:
+        return row, "ok"
+
+    trimmed = False
+    # 1. whole-section drops
+    for victim in TRAIN_TRIM_ORDER:
+        if victim == "=== SCHEMA CONTEXT ===":
+            break
+        new_sections = [(h, b) for h, b in sections if h != victim]
+        if len(new_sections) != len(sections):
+            sections, trimmed = new_sections, True
+            if _count(tok, head_text(sections)) <= head_budget:
+                row["instruction"] = head_text(sections) + tail
+                return row, "trimmed"
+
+    # 2. drop non-gold TABLE chunks, last first
+    out_sections: list[tuple[str, str]] = []
+    for h, b in sections:
+        if h != "=== SCHEMA CONTEXT ===":
+            out_sections.append((h, b))
+            continue
+        sc_header, chunks = _split_table_chunks(b)
+        keep = list(chunks)
+        def assemble() -> str:
+            body = sc_header + "\n" + "".join(t for _, t in keep)
+            return head_text(out_sections) + body + head_text(rest)
+        rest = [(hh, bb) for hh, bb in sections[sections.index((h, b)) + 1:]]
+        for n in range(len(chunks) - 1, -1, -1):
+            if _count(tok, assemble()) <= head_budget:
+                break
+            if chunks[n][0] in gold:
+                continue                      # protected — never dropped
+            keep.remove(chunks[n]); trimmed = True
+        body = sc_header + "\n" + "".join(t for _, t in keep)
+        out_sections.append((h, body))
+    sections = out_sections
+
+    final_head = head_text(sections)
+    if _count(tok, final_head) > head_budget:
+        # 3. even gold-only context does not fit → reject rather than poison
+        return row, "reject:gold_over_budget"
+    row["instruction"] = final_head + tail
+    return row, ("trimmed" if trimmed else "ok")
 
 
-def fit_rows(rows: list[dict[str, Any]], model_dir: str, max_seq: int) -> tuple[list[dict], int, int]:
-    """Trim schema head so each row fits max_seq. Returns (rows, trimmed, still_over)."""
+def fit_rows(rows: list[dict[str, Any]], model_dir: str, max_seq: int) -> tuple[list[dict], int, int, dict]:
+    """
+    Trim schema head so each row fits max_seq.
+    Returns (rows, trimmed, still_over, drop_counts).
+
+    FIX-F2c — post-fit hard gate: any surviving row whose gold tables are not
+    all present as TABLE chunks in the final context is DROPPED and counted
+    (gold_ctx_missing). This closes both damage paths at once: retrieval
+    misses (23% pre-fix) and fit truncation (54% post-fit pre-fix).
+    """
     from transformers import AutoTokenizer
     tok = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
     out, trimmed, over = [], 0, 0
+    drops: dict[str, int] = {}
     for row in rows:
-        row, was = fit_row(tok, row, max_seq)
-        if was:
+        gold = {t.lower() for t in row.pop("gold_tables", []) or []}
+        row, status = fit_row(tok, dict(row, gold_tables=list(gold)), max_seq)
+        row.pop("gold_tables", None)          # working field — not a training column
+        if status.startswith("reject"):
+            drops[status] = drops.get(status, 0) + 1
+            continue
+        if status == "trimmed":
             trimmed += 1
+        # hard gate: gold ⊆ context tables
+        ctx = {m.group(1).lower() for m in _TABLE_CHUNK_RE.finditer(row["instruction"])}
+        if gold and not gold <= ctx:
+            drops["reject:gold_ctx_missing"] = drops.get("reject:gold_ctx_missing", 0) + 1
+            continue
         full = (_count(tok, row.get("input", "")) + _count(tok, row["instruction"])
                 + _count(tok, row.get("output", "")) + TEMPLATE_OVERHEAD)
         if full > max_seq:
             over += 1
         out.append(row)
     logger.info(component="preprocess.build", event="fit_complete",
-                rows=len(out), trimmed=trimmed, still_over=over, max_seq=max_seq)
-    return out, trimmed, over
+                rows=len(out), trimmed=trimmed, still_over=over,
+                dropped=drops, max_seq=max_seq)
+    return out, trimmed, over, drops
