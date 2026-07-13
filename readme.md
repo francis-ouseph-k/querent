@@ -1,122 +1,74 @@
-# Querent — Natural Language → SQL Query Engine
+```markdown
+# Querent
 
-A local, schema-aware Natural Language → SQL system that generates validated PostgreSQL queries from business questions using hybrid retrieval, deterministic validation, and iterative correction.
+Natural Language → SQL platform with hybrid RAG, schema reasoning, 
+and constrained generation for complex relational databases.
 
-The system is designed for large relational schemas with complex joins, workflow-driven entities, and strict execution constraints, operating fully on local infrastructure without external LLM APIs.
+## What it does
 
----
-
-## Overview
-
-Enterprise relational databases typically involve deeply interconnected tables, domain-specific terminology, and non-trivial join paths, making reliable natural language to SQL translation a multi-step reasoning problem rather than a single generation task.
-
-This system addresses those challenges using a structured pipeline that combines retrieval, constraint-based generation, and multi-layer validation before execution.
-
-All components run locally, making the system suitable for privacy-sensitive and cost-constrained environments.
-
----
-
-## Key Capabilities
-
-* Hybrid retrieval fusing semantic search, keyword search, and schema-graph traversal, combined via Reciprocal Rank Fusion (RRF) and refined with cross-encoder reranking
-* Schema-aware prompt construction with minimal, prioritized context selection
-* Local LLM-based SQL generation (no external API dependencies)
-* Optional local LoRA fine-tuning (Qwen2.5-Coder-3B) for schema-specialised generation, leaving the base model weights unmodified
-* Deterministic multi-stage SQL validation before execution
-* Automatic correction loop for recoverable SQL errors
-* Confidence scoring and structured output format
-* Failure logging for downstream improvement pipelines
-
----
+Takes natural language questions about a relational database and generates 
+validated, executable SQL. Built for complex enterprise schemas (62+ tables, 
+150+ foreign keys).
 
 ## Architecture
 
-```text
+```
 Natural Language Query
         │
         ▼
-Query Understanding
-(Intent + Entity + Table Mapping)
+Query Understanding (Intent + Entity + Table Mapping)
         │
         ▼
-Hybrid Retrieval Layer
-(Vector + BM25 + FK Graph → RRF fusion → Cross-Encoder Rerank)
+Hybrid Retrieval Layer (Vector + BM25 + FK Graph → RRF → Cross-Encoder Rerank)
         │
         ▼
-Context Assembly
-(Schema + Joins + Glossary + Examples)
+Context Assembly (Schema + Joins + Glossary + Examples)
         │
         ▼
-Local LLM Inference
-(SQL Generation)
+Local LLM Inference (SQL Generation)
         │
         ▼
-Validation Pipeline
-(Syntax → Schema → Safety → Semantic)
+Validation Pipeline (Syntax → Schema → Safety → Semantic)
         │
         ├── Pass → Execution → Results
         │
         └── Fail → Repair Loop → Re-validation
 ```
 
----
-
-## Processing Pipeline
-
-1. Parse and normalize natural language input
-2. Identify candidate schema entities using rule-based intent mapping
-3. Retrieve relevant schema context using hybrid retrieval (dense + sparse + graph traversal), fuse with RRF, and rerank with a cross-encoder
-4. Construct constrained prompt with prioritized schema sections
-5. Generate SQL using a local LLM
-6. Validate SQL through deterministic rule-based and AST-based checks
-7. Apply automatic repair for safe, recoverable failures
-8. Execute validated queries against a read-only database
-9. Log failures for continuous dataset improvement
-
----
-
 ## Design Principles
 
-* **Schema-first reasoning** — retrieval is grounded in actual relational structure
-* **Deterministic validation** — no execution without AST-level safety checks
-* **Local-only inference** — no external LLM or API dependencies
-* **Graph-aware retrieval** — join paths are derived from FK relationships
-* **Failure-driven improvement** — production errors are structured for training reuse
-
----
+- **Schema-first reasoning** — retrieval grounded in actual relational structure
+- **Deterministic validation** — no execution without AST-level safety checks
+- **Local-only inference** — no external LLM or API dependencies in this implementation
+- **Graph-aware retrieval** — join paths derived from FK relationships
+- **Failure-driven improvement** — production errors structured for training reuse
 
 ## Why This System is Different
 
-Most text-to-SQL systems rely primarily on prompt engineering or flat schema retrieval. This system introduces structural constraints before generation:
-
-| Capability                  | Description                                                      |
-| --------------------------- | ---------------------------------------------------------------- |
-| Graph-aware retrieval       | Uses FK graph traversal to identify valid join paths             |
+| Capability | Description |
+|---|---|
+| Graph-aware retrieval | Uses FK graph traversal to identify valid join paths |
 | Multi-source context fusion | Combines vector search, keyword search, and schema graph signals via RRF, then cross-encoder reranking |
-| AST-based validation        | Enforces SQL correctness beyond regex or heuristic checks        |
-| Controlled execution gate   | Prevents unsafe or invalid SQL from reaching the database        |
-| Repair loop                 | Iteratively corrects recoverable SQL failures                    |
-| Local specialisation        | Optional LoRA fine-tuning adapts a local model to the target schema without retraining or modifying the base model |
-
----
+| AST-based validation | Enforces SQL correctness beyond regex or heuristic checks |
+| Controlled execution gate | Prevents unsafe or invalid SQL from reaching the database |
+| Repair loop | Iteratively corrects recoverable SQL failures |
+| Local specialisation | Optional LoRA fine-tuning adapts a local model to the target schema without modifying base model weights |
 
 ## Technology Stack
 
-* Python 3.11
-* PostgreSQL-compatible databases
-* Local LLM inference (llama.cpp / GGUF)
-* Vector search (Qdrant)
-* Keyword search (OpenSearch)
-* Cross-encoder reranking (sentence-transformers)
-* SQL AST parsing (sqlglot)
-* Parameter-efficient fine-tuning (PEFT / LoRA, TRL)
-* Structured logging (structlog)
-
----
+- Python 3.11
+- PostgreSQL-compatible databases
+- Local LLM inference (llama.cpp / GGUF)
+- Vector search (Qdrant)
+- Keyword search (OpenSearch)
+- Cross-encoder reranking (sentence-transformers)
+- SQL AST parsing (sqlglot)
+- Parameter-efficient fine-tuning (PEFT / LoRA, TRL)
+- Structured logging (structlog)
 
 ## Repository Structure
 
-```text
+```
 pipeline/      Orchestration and execution flow
 retrieval/     Hybrid retrieval (vector + keyword + graph), RRF fusion, reranking
 generation/    Prompting, query understanding, LLM inference
@@ -132,16 +84,64 @@ config/        Runtime configuration
 tests/         System validation tests
 ```
 
----
+## Setup
 
-## License
+```bash
+git clone https://github.com/francis-ouseph-k/querent.git
+cd querent
+pip install -r requirements.txt
+pip install -r requirements_fine_tuning.txt
 
-This project is licensed under the MIT License. See `LICENSE` for details.
+# Configure your database connection in config/
+python -m pipeline.main
+```
 
----
+## Example
+
+**Input:** "What is the total marks scored by students in Physics in the 2024 odd semester?"
+
+**Output:**
+```sql
+SELECT SUM(marks_obtained) 
+FROM student_marks sm 
+JOIN subjects s ON sm.subject_id = s.id 
+WHERE s.name = 'Physics' 
+  AND sm.academic_year = 2024 
+  AND sm.semester_type = 'odd';
+```
+
+**Validation:** PASSED (12/12 checks)
+
+## Evaluation
+
+Tested against 62-table PostgreSQL schema with 150+ foreign keys. 
+80% SQL validation pass rate on complex multi-join queries.
 
 ## Status
 
-The system implements a complete end-to-end NL → SQL pipeline with retrieval, generation, validation, and execution layers.
+Complete end-to-end NL → SQL pipeline with retrieval, generation, validation, 
+and execution layers. 
 
-Current focus is on improving semantic accuracy for complex multi-join queries and expanding the failure-driven training dataset.
+Current focus: improving semantic accuracy for complex multi-join queries and 
+expanding the failure-driven training dataset.
+
+Developed over 30+ commits across schema ingestion, retrieval pipelines, 
+reasoning engines, and validation layers. Architecture iterated through 
+multiple RAG and fine-tuning experiments before converging on the current 
+hybrid approach.
+
+## Background
+
+Built as an independent architecture exercise to validate hybrid RAG and 
+constrained generation approaches for enterprise NL→SQL, following production 
+experience architecting similar systems in higher education.
+
+## Contact
+
+- LinkedIn: [linkedin.com/in/francis-ouseph-k](https://linkedin.com/in/francis-ouseph-k)
+- Email: francis.ouseph.k [at] gmail [dot] com
+
+## License
+
+MIT License. See `LICENSE` for details.
+```
