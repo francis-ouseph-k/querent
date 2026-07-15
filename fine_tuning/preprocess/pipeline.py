@@ -103,7 +103,13 @@ def run(cfg: PreprocessConfig) -> Path:
 
     # 3. quality gate (category whitelist / placeholder substitute→strip /
     #    garbage+bad reject)
-    pairs, rej = quality.gate(pairs, train_categories=cfg.train_categories)
+    pairs, rej = quality.gate(
+        pairs,
+        train_categories=cfg.train_categories,
+        # FIX-R4: every semantic-contract reject lands here with its error text
+        # so the MASTER corpus can be repaired at the source (INNER→LEFT etc.).
+        semantic_report_path=cfg.artifact.with_suffix(".semantic_rejects.jsonl"),
+    )
     n_gate = len(pairs)
 
     # 4. format (retrieval → ChatML) — the expensive stage

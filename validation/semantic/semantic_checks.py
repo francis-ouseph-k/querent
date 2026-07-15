@@ -115,6 +115,58 @@ SAFE_LITERALS = frozenset(str(x) for x in HEURISTICS.get('safe_literals', []))
 
 # ── Step 7: Semantic heuristic checks ─────────────────────────────────────────
 
+# ══ PURE CONTRACT CHECKS  (FIX-R4 — shared by serve validation AND corpus gate) ══
+# These two checks caused a dominant post-fine-tune failure class because the
+# TRAINING CORPUS contained gold SQL that violates them (per/for-each rows with
+# INNER-join-only gold). Fine-tuning on SQL your own validator rejects trains
+# failures in. Extracted as pure (question, sql) -> error|None so that
+# fine_tuning/preprocess/quality.gate() enforces the identical contract on the
+# corpus. NEVER fork this logic — the class checks below call these.
+
+def per_entity_left_join_error(question: str, sql: str) -> str | None:
+    """Check 16 core: per-entity aggregate served by INNER JOIN drops
+    zero-count entities. Returns the failure message or None."""
+    query_lower = question.lower()
+    sql_lower   = sql.lower()
+    per_x_triggers     = [' per ', ' for each ']
+    zero_group_exclude = [' with ', ' that have ', ' assigned to ']
+    padded_query = f" {query_lower} "
+    asks_per_x = (any(p in padded_query for p in per_x_triggers)
+                  or 'including those with none' in query_lower)
+    has_exclusion = any(p in padded_query for p in zero_group_exclude)
+    sql_has_aggregate = bool(re.search(r'\b(count|sum|avg|min|max)\s*\(', sql_lower))
+    if not (asks_per_x and not has_exclusion and sql_has_aggregate):
+        return None
+    has_left_join = bool(re.search(r'\b(?:left|right|full)\s+(?:outer\s+)?join\b', sql_lower))
+    has_any_join  = bool(re.search(r'\bjoin\b', sql_lower))
+    if not has_left_join and has_any_join:
+        return (
+            "The question asks for a metric 'per' or 'for each' entity. "
+            "Using an INNER JOIN drops entities that have a count of zero. "
+            "You MUST use a LEFT JOIN to ensure entities with zero "
+            "associated records are included in the results."
+        )
+    return None
+
+
+def avg_duration_epoch_error(question: str, sql: str) -> str | None:
+    """Check 8 core: 'average duration/time' must use EXTRACT(EPOCH ...).
+    Returns the failure message or None."""
+    query_lower = question.lower()
+    sql_lower   = sql.lower()
+    avg_time_patterns = ['average duration', 'average time', 'avg duration', 'avg time']
+    asks_avg_time = any(p in query_lower for p in avg_time_patterns)
+    uses_epoch = 'extract(epoch' in sql_lower or 'extract (epoch' in sql_lower
+    if asks_avg_time and not uses_epoch:
+        return (
+            "The question asks for 'average duration' or 'average time'. "
+            "You MUST use EXTRACT(EPOCH FROM (end_ts - start_ts)) / 86400 to "
+            "compute durations before averaging. Do NOT use "
+            "AVG(timestamp - timestamp)."
+        )
+    return None
+
+
 class SemanticValidator(BaseValidationStep):
     name = "SemanticValidator"
 
@@ -339,11 +391,10 @@ class SemanticValidator(BaseValidationStep):
             )
 
         # ── Check 8: "average duration/time" uses EXTRACT(EPOCH) ─────────────
-        avg_time_patterns = ['average duration', 'average time', 'avg duration', 'avg time']
-        asks_avg_time = any(p in query_lower for p in avg_time_patterns)
-        uses_epoch = 'extract(epoch' in sql_lower or 'extract (epoch' in sql_lower
-
-        if asks_avg_time and not uses_epoch:
+        # FIX-R4: logic lives in avg_duration_epoch_error() at module top so
+        # the fine-tuning corpus gate enforces the identical contract.
+        _avg_err = avg_duration_epoch_error(original_query, sql)
+        if _avg_err:
             logger.warning(
                 component="sql_validator",
                 event="semantic_avg_time_no_epoch",
@@ -351,11 +402,7 @@ class SemanticValidator(BaseValidationStep):
             )
             return ValidationResult(
                 passed=False, step="semantic",
-                message=(
-                    "The question asks for 'average duration' or 'average time'. "
-                    "You MUST use EXTRACT(EPOCH FROM (end_ts - start_ts)) / 86400 to "
-                    "compute durations before averaging. Do NOT use AVG(timestamp - timestamp)."
-                ),
+                message=_avg_err,
                 sql=sql,
             )
 
@@ -636,42 +683,19 @@ class SemanticValidator(BaseValidationStep):
         #   (a) the phrasing is a per-entity metric ('per' / 'for each'), and
         #   (b) the SQL actually contains an aggregate (COUNT/SUM/AVG/...),
         #       i.e. a zero-count row could genuinely be dropped by INNER JOIN.
-        per_x_triggers = [' per ', ' for each ']
-        zero_group_exclude = [' with ', ' that have ', ' assigned to ']
-
-        padded_query = f" {query_lower} "
-        asks_per_x = any(p in padded_query for p in per_x_triggers) or 'including those with none' in query_lower
-        has_exclusion = any(p in padded_query for p in zero_group_exclude)
-
-        sql_has_aggregate = bool(
-            re.search(r'\b(count|sum|avg|min|max)\s*\(', sql_lower)
-        )
-
-        if asks_per_x and not has_exclusion and sql_has_aggregate:
-            # 2026-06-25 fix: use regex with \s+ to tolerate variable whitespace.
-            # Previous string-match `'left join' in sql_lower` failed on
-            # 'LEFT   JOIN' (indentation pretty-printing) and caused a false
-            # positive on Q8 even though the SQL DID use LEFT JOIN.
-            has_left_join = bool(
-                re.search(r'\b(?:left|right|full)\s+(?:outer\s+)?join\b', sql_lower)
+        # FIX-R4: logic lives in per_entity_left_join_error() at module top so
+        # the fine-tuning corpus gate enforces the identical contract.
+        _per_err = per_entity_left_join_error(original_query, sql)
+        if _per_err:
+            logger.warning(
+                component="sql_validator",
+                event="semantic_per_entity_inner_join"
             )
-            # Also tolerate variable whitespace before 'join' in the inner-join detector
-            has_any_join = bool(re.search(r'\bjoin\b', sql_lower))
-            if not has_left_join and has_any_join:
-                logger.warning(
-                    component="sql_validator",
-                    event="semantic_per_entity_inner_join"
-                )
-                return ValidationResult(
-                    passed=False, step="semantic",
-                    message=(
-                        "The question asks for a metric 'per' or 'for each' entity. "
-                        "Using an INNER JOIN drops entities that have a count of zero. "
-                        "You MUST use a LEFT JOIN to ensure entities with zero "
-                        "associated records are included in the results."
-                    ),
-                    sql=sql,
-                )
+            return ValidationResult(
+                passed=False, step="semantic",
+                message=_per_err,
+                sql=sql,
+            )
 
         # ── Check 17: Subject Resolution ───────────────
         # 2026-06-25: Expanded to match 'count of', 'total', 'number of',

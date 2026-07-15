@@ -232,8 +232,17 @@ def _gold_confidence(sql: str) -> float:
 
 
 def _ddl_tables(ddl_path: Path) -> set[str]:
+    """All queryable relations: tables AND views.
+
+    FIX-R6: the previous regex matched only `create table`, so gold SQL that
+    selected from a view (v10.5 has v_user_auxiliary_role_resolved and
+    v_key_encryption_key_rotation_candidates) was never pinned — those rows
+    trained with the view ABSENT from context.
+    """
     txt = ddl_path.read_text(encoding="utf-8", errors="ignore").lower()
-    return set(re.findall(r"create table (?:if not exists )?([a-z_][a-z0-9_]*)", txt))
+    tables = set(re.findall(r"create table (?:if not exists )?([a-z_][a-z0-9_]*)", txt))
+    views  = set(re.findall(r"create (?:or replace )?view ([a-z_][a-z0-9_]*)", txt))
+    return tables | views
 
 
 def _tables_used(sql: str, real_tables: set[str]) -> list[str]:
@@ -295,7 +304,9 @@ def _count(tok, text: str) -> int:
     return len(tok.encode(text, add_special_tokens=False))
 
 
-_TABLE_CHUNK_RE = re.compile(r"^TABLE: (\w+)", re.M)
+# FIX-R6: VIEW chunks ("VIEW: v_...") are first-class schema context too —
+# the old TABLE-only regex made them invisible to gold protection.
+_TABLE_CHUNK_RE = re.compile(r"^(?:TABLE|VIEW|AUDIT TABLE): (\w+)", re.M)
 
 
 def _split_table_chunks(schema_body: str) -> tuple[str, list[tuple[str, str]]]:
@@ -311,10 +322,44 @@ def _split_table_chunks(schema_body: str) -> tuple[str, list[tuple[str, str]]]:
     return header, chunks
 
 
+# ── FIX-R3: gold-chunk compression (salvage stage before reject) ─────────────
+# Chunk text structure (ingestion/chunk_generator._table_chunk / _view_chunk):
+#   TABLE: <name>            ← identity line (always kept)
+#   Purpose: / Description:  ← prose        (level 1 drops)
+#   Columns:                 ← essential    (level 2 strips ' — comment' tails)
+#   JSONB Column Notes:      ← verbose      (level 1 drops)
+#   Foreign Key References:  ← essential    (never dropped — join signal)
+_CHUNK_BLOCK_HEADERS = (
+    "Purpose:", "Description:", "Columns:",
+    "JSONB Column Notes:", "Foreign Key References:",
+)
+_COL_COMMENT_RE = re.compile(r" — .*$")
+
+
+def _compress_gold_chunk(text: str, level: int) -> str:
+    """Shrink one TABLE/VIEW chunk, preserving identity, columns and FKs.
+    level 1: drop Purpose/Description + JSONB Column Notes blocks.
+    level 2: additionally strip per-column comment tails (' — ...')."""
+    lines = text.split("\n")
+    out: list[str] = []
+    current_block = ""                       # '' = identity/preamble
+    for ln in lines:
+        stripped = ln.strip()
+        if stripped in _CHUNK_BLOCK_HEADERS:
+            current_block = stripped
+        if current_block in ("Purpose:", "Description:", "JSONB Column Notes:"):
+            continue                         # level >= 1 drops these blocks
+        if level >= 2 and current_block == "Columns:" and stripped not in _CHUNK_BLOCK_HEADERS:
+            ln = _COL_COMMENT_RE.sub("", ln)
+        out.append(ln)
+    return "\n".join(out)
+
+
 def fit_row(tok, row: dict, max_seq: int) -> tuple[dict, str]:
     """
     Token-budget one row. Returns (row, status);
-    status ∈ {'ok', 'trimmed', 'reject:gold_over_budget', 'reject:no_question'}.
+    status ∈ {'ok', 'trimmed', 'trimmed_gold_compressed',
+              'reject:gold_over_budget', 'reject:no_question'}.
 
     FIX-F2b — the OLD implementation cut the schema head blindly from its tail.
     Result on the v4 corpus (manifest: schema_trimmed=378/378): rows whose gold
@@ -384,7 +429,26 @@ def fit_row(tok, row: dict, max_seq: int) -> tuple[dict, str]:
 
     final_head = head_text(sections)
     if _count(tok, final_head) > head_budget:
-        # 3. even gold-only context does not fit → reject rather than poison
+        # 3. FIX-R3 SALVAGE — gold-only context over budget. The OLD policy
+        #    rejected here, deleting multi-join High-tier rows wholesale.
+        #    NEW: compress the gold chunks (drop prose, keep columns + FKs —
+        #    level 1; also strip column comments — level 2) and only reject
+        #    if even the compressed gold context cannot fit.
+        for level in (1, 2):
+            comp_sections: list[tuple[str, str]] = []
+            for h, b in sections:
+                if h != "=== SCHEMA CONTEXT ===":
+                    comp_sections.append((h, b)); continue
+                sc_header, chunks = _split_table_chunks(b)
+                body = sc_header + "\n" + "".join(
+                    _compress_gold_chunk(t, level) for _, t in chunks
+                )
+                comp_sections.append((h, body))
+            final_head = head_text(comp_sections)
+            if _count(tok, final_head) <= head_budget:
+                row["instruction"] = final_head + tail
+                return row, "trimmed_gold_compressed"
+        # 4. even compressed gold-only context does not fit → reject, not poison
         return row, "reject:gold_over_budget"
     row["instruction"] = final_head + tail
     return row, ("trimmed" if trimmed else "ok")
@@ -411,8 +475,12 @@ def fit_rows(rows: list[dict[str, Any]], model_dir: str, max_seq: int) -> tuple[
         if status.startswith("reject"):
             drops[status] = drops.get(status, 0) + 1
             continue
-        if status == "trimmed":
+        if status.startswith("trimmed"):
             trimmed += 1
+        if status == "trimmed_gold_compressed":
+            # FIX-R3: informational — rows salvaged by gold-chunk compression
+            # instead of being rejected. Surfaces in the manifest.
+            drops["salvaged_gold_compressed"] = drops.get("salvaged_gold_compressed", 0) + 1
         # hard gate: gold ⊆ context tables
         ctx = {m.group(1).lower() for m in _TABLE_CHUNK_RE.finditer(row["instruction"])}
         if gold and not gold <= ctx:

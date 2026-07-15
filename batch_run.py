@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 import traceback
@@ -136,7 +137,8 @@ def _probe_model_identity() -> str:
 #   None  -> leave settings.llm.temperature untouched (use configured/env value)
 #   float -> force this temperature for the whole run (default 0.0 = greedy)
 def run_batch(dry_run: bool = False, start_from: int = 1, strict_version_check: bool = False,
-              eval_temperature: float | None = 0.0) -> None:
+              eval_temperature: float | None = 0.0,
+              allow_profile_mismatch: bool = False) -> None:
 
     if strict_version_check:
         settings.strict_version_check = True
@@ -167,6 +169,31 @@ def run_batch(dry_run: bool = False, start_from: int = 1, strict_version_check: 
                 model=model_id, prompt_profile=settings.llm.prompt_profile,
                 temperature=settings.llm.temperature)
     print(f"Model under test: {model_id}  |  prompt_profile={settings.llm.prompt_profile}")
+
+    # ── GUARD (FIX-R1): profile ↔ model contract is enforced, not documented ──
+    # The 2026-07-14 "RESULT-2" run served finetuned-v5 with prompt_profile=full
+    # — the exact out-of-distribution configuration the ft profile exists to
+    # prevent — because the contract lived only in a comment. A fine-tuned GGUF
+    # must be benchmarked with LLM_PROMPT_PROFILE=ft, and a base GGUF with
+    # `full`; anything else measures nothing you can act on.
+    _looks_finetuned = bool(re.search(r"finetuned|adapter|merged",
+                                      str(model_id), re.IGNORECASE))
+    _profile = settings.llm.prompt_profile
+    if not allow_profile_mismatch:
+        if _looks_finetuned and _profile != "ft":
+            raise SystemExit(
+                f"ABORT: the served model looks fine-tuned ({model_id}) but "
+                f"LLM_PROMPT_PROFILE={_profile!r}. RESULT-2 runs MUST use the "
+                f"training-parity profile: set LLM_PROMPT_PROFILE=ft in .env "
+                f"(or pass --allow-profile-mismatch to run anyway — the result "
+                f"will NOT be a valid A/B measurement)."
+            )
+        if not _looks_finetuned and _profile == "ft":
+            raise SystemExit(
+                f"ABORT: the served model looks like a BASE model ({model_id}) "
+                f"but LLM_PROMPT_PROFILE=ft. RESULT-1 control runs MUST use "
+                f"LLM_PROMPT_PROFILE=full (or pass --allow-profile-mismatch)."
+            )
 
     # Enforce strict version check if enabled
     from pipeline.bootstrap import check_schema_version
@@ -481,6 +508,14 @@ if __name__ == "__main__":
              "instead of forcing greedy decoding. Results become non-reproducible.",
     )
     parser.set_defaults(deterministic=True)
+    # ── GUARD (FIX-R1): explicit escape hatch only — never silent ────────────
+    parser.add_argument(
+        "--allow-profile-mismatch",
+        action="store_true",
+        help="Override the profile↔model guard (fine-tuned GGUF requires "
+             "LLM_PROMPT_PROFILE=ft; base GGUF requires full). Only for "
+             "deliberate OOD experiments — the run is NOT a valid A/B result.",
+    )
     args = parser.parse_args()
 
     # ── DETERMINISM (5/5): pass the resolved temperature into run_batch ──────────
@@ -492,4 +527,5 @@ if __name__ == "__main__":
         start_from=args.start,
         strict_version_check=args.strict_version_check,
         eval_temperature=_eval_temp,
+        allow_profile_mismatch=args.allow_profile_mismatch,
     )

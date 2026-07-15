@@ -301,12 +301,29 @@ DEFAULT_TRAIN_CATEGORIES: frozenset[str] = frozenset({
 def gate(
     pairs: list[dict[str, Any]],
     train_categories: frozenset[str] | None = DEFAULT_TRAIN_CATEGORIES,
+    semantic_report_path=None,   # Path | None — where to write rejected-row repair report
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    """Correctness gate. Returns (kept_pairs, reject_counts_by_reason)."""
+    """Correctness gate. Returns (kept_pairs, reject_counts_by_reason).
+
+    FIX-R4 (semantic contract): gold SQL must pass the SAME pure semantic
+    checks the serve validator enforces (per-entity LEFT JOIN, avg-duration
+    EPOCH). Violating rows are REJECTED (not auto-rewritten: a mechanical
+    INNER→LEFT rewrite can silently change gold semantics). Each reject is
+    written to `semantic_report_path` so the MASTER corpus can be repaired
+    deliberately, once, at the source.
+    """
+    # Imported here (not at module top) to keep preprocess importable without
+    # the full validation package in minimal environments.
+    from validation.semantic.semantic_checks import (
+        per_entity_left_join_error,
+        avg_duration_epoch_error,
+    )
+
     kept: list[dict[str, Any]] = []
     rej: Counter = Counter()
     n_stripped = 0
     n_substituted = 0
+    semantic_rejects: list[dict[str, Any]] = []
 
     for p in pairs:
         nl  = str(p.get("nl_query", "")).strip()
@@ -354,8 +371,40 @@ def gate(
             if not sql.lower().startswith("with"):
                 rej["not_select"] += 1; continue
 
+        # 5. FIX-R4: semantic contract — the corpus must be a fixed point of
+        #    the serve validator, else fine-tuning trains failures in.
+        contract_err = (per_entity_left_join_error(nl, sql)
+                        or avg_duration_epoch_error(nl, sql))
+        if contract_err:
+            rej["reject:semantic_contract"] += 1
+            semantic_rejects.append({
+                "line_no":  p.get("line_no", 0),
+                "source":   p.get("source", ""),
+                "category": p.get("category", ""),
+                "nl_query": nl,
+                "sql":      sql,
+                "error":    contract_err,
+            })
+            continue
+
         p = dict(p, sql=sql)
         kept.append(p)
+
+    if semantic_rejects and semantic_report_path is not None:
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+            rp = _Path(semantic_report_path)
+            rp.parent.mkdir(parents=True, exist_ok=True)
+            with rp.open("w", encoding="utf-8") as fh:
+                for row in semantic_rejects:
+                    fh.write(_json.dumps(row, ensure_ascii=False) + "\n")
+            logger.info(component="preprocess.quality",
+                        event="semantic_contract_report_written",
+                        path=str(rp), rows=len(semantic_rejects))
+        except Exception as exc:                     # report is best-effort
+            logger.warning(component="preprocess.quality",
+                           event="semantic_contract_report_failed", error=str(exc))
 
     rej["_stripped"]    = n_stripped      # informational, not a rejection
     rej["_substituted"] = n_substituted   # informational, not a rejection
