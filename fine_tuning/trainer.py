@@ -157,11 +157,12 @@ NUM_EPOCHS         = 3
 BATCH_SIZE         = 1      # per-device batch size (8 GB: batch 1 is the safe default)
 GRAD_ACCUM_STEPS   = 16     # effective batch = 16 (was 2*8; now 1*16)
 MAX_SEQ_LENGTH     = settings.fine_tuning.max_seq   # token ceiling per training example.
-                            # SINGLE SOURCE OF TRUTH: comes from .env FT_MAX_SEQ
-                            # (settings.fine_tuning.max_seq, default 2048). The SAME value
+                            # SINGLE SOURCE OF TRUTH: comes from .env MAX_SEQ_LENGTH
+                            # (settings.fine_tuning.max_seq, default 2048; legacy alias
+                            # FT_MAX_SEQ still accepted). The SAME value
                             # drives the preprocessor's fit_rows budget, so the corpus and
                             # the training ceiling can never diverge. Do NOT hardcode a
-                            # different number here — change FT_MAX_SEQ in .env instead, then
+                            # different number here — change MAX_SEQ_LENGTH in .env instead, then
                             # re-run preprocessing so fit.jsonl is refitted to the new budget.
                             # 8 GB VRAM note: seq 2048 spills to shared RAM (~130 s/step) but
                             # trains correctly; 1024 truncates past the assistant turn on this
@@ -729,10 +730,10 @@ def train(
                 f"FATAL: assistant response template not found within the first "
                 f"{MAX_SEQ_LENGTH} tokens after truncation (row {_i}). The label is "
                 f"being cut off → completion-only masking will zero the loss.\n"
-                f"  Fix: raise FT_MAX_SEQ in .env AND re-run preprocessing so "
+                f"  Fix: raise MAX_SEQ_LENGTH in .env AND re-run preprocessing so "
                 f"fit.jsonl is refitted to the same budget:\n"
                 f"    python -m fine_tuning.preprocess.pipeline --force\n"
-                f"  (current FT_MAX_SEQ / MAX_SEQ_LENGTH = {MAX_SEQ_LENGTH})"
+                f"  (current MAX_SEQ_LENGTH = {MAX_SEQ_LENGTH})"
             )
     logger.info(component="trainer", event="response_template_guard_passed",
                 max_seq_length=MAX_SEQ_LENGTH, probed=len(_probe_rows))

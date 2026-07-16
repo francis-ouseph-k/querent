@@ -49,7 +49,7 @@ class PreprocessConfig:
     artifact:       Path = field(default_factory=lambda: Path(settings.fine_tuning.train_data))
     # knobs
     jaccard:        float = 0.85
-    max_seq:        int   = field(default_factory=lambda: settings.fine_tuning.max_seq)  # FT_MAX_SEQ — same knob as trainer
+    max_seq:        int   = field(default_factory=lambda: settings.fine_tuning.max_seq)  # MAX_SEQ_LENGTH — same knob as trainer
     skip_retrieval: bool  = False        # throwaway smoke test only — degrades data
     # FIX-F4: only serve-shaped question styles train. None = no filtering (old behaviour).
     train_categories: frozenset[str] | None = field(

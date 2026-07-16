@@ -57,7 +57,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 import time
 import traceback
@@ -92,43 +91,11 @@ def _fmt_duration(seconds: float) -> str:
 
 from pipeline.bootstrap import create_runner
 
-
-# ── Model provenance probe (FIX-F6) ────────────────────────────────────────────
-def _probe_model_identity() -> str:
-    """
-    Identify the model serving this benchmark.
-
-    HTTP mode: GET llama-server /props → model file path (+ file size when the
-    path is locally resolvable — a cheap integrity proxy; SHA256 of a 2.4 GB
-    GGUF at every run start is not worth the wall-clock).
-    In-process mode: LLM_MODEL_PATH from settings.
-    Never raises — a benchmark must not die on a telemetry probe.
-    """
-    base_url = settings.llm.base_url
-    if base_url:
-        try:
-            import httpx
-            root = base_url.rsplit("/v1", 1)[0] if "/v1" in base_url else base_url
-            r = httpx.get(f"{root}/props", timeout=5.0)
-            r.raise_for_status()
-            props = r.json()
-            path = (props.get("model_path")
-                    or props.get("default_generation_settings", {}).get("model")
-                    or props.get("model", ""))
-            if path:
-                try:
-                    size = Path(path).stat().st_size
-                    return f"{path} ({size:,} bytes)"
-                except OSError:
-                    return str(path)
-            return f"llama-server@{root} (path not reported)"
-        except Exception as exc:
-            return f"llama-server@{base_url} (probe failed: {exc})"
-    p = Path(settings.llm.model_path)
-    try:
-        return f"{p} ({p.stat().st_size:,} bytes, in-process)"
-    except OSError:
-        return f"{p} (in-process, size unavailable)"
+# ── Model↔profile contract (FIX-R1b) ───────────────────────────────────────────
+# The probe (FIX-F6) and the guard (FIX-R1) previously lived inline here, which
+# left main.py unprotected. Both now live in config/model_profile.py — the
+# single source of truth every entry point calls at startup.
+from config.model_profile import ProfileMismatchError, resolve_profile
 
 
 # ── Main batch logic ───────────────────────────────────────────────────────────
@@ -164,36 +131,18 @@ def run_batch(dry_run: bool = False, start_from: int = 1, strict_version_check: 
     # a GGUF, so RESULT-1/RESULT-2 A/B claims were unverifiable. Every output
     # row (and the header log line) now carries the served model's identity,
     # the prompt profile, and the eval temperature.
-    model_id = _probe_model_identity()
-    logger.info(component=COMPONENT, event="model_provenance",
-                model=model_id, prompt_profile=settings.llm.prompt_profile,
-                temperature=settings.llm.temperature)
-    print(f"Model under test: {model_id}  |  prompt_profile={settings.llm.prompt_profile}")
-
-    # ── GUARD (FIX-R1): profile ↔ model contract is enforced, not documented ──
+    # ── GUARD (FIX-R1, now FIX-R1b shared): probe + contract in ONE call ──────
     # The 2026-07-14 "RESULT-2" run served finetuned-v5 with prompt_profile=full
     # — the exact out-of-distribution configuration the ft profile exists to
-    # prevent — because the contract lived only in a comment. A fine-tuned GGUF
-    # must be benchmarked with LLM_PROMPT_PROFILE=ft, and a base GGUF with
-    # `full`; anything else measures nothing you can act on.
-    _looks_finetuned = bool(re.search(r"finetuned|adapter|merged",
-                                      str(model_id), re.IGNORECASE))
-    _profile = settings.llm.prompt_profile
-    if not allow_profile_mismatch:
-        if _looks_finetuned and _profile != "ft":
-            raise SystemExit(
-                f"ABORT: the served model looks fine-tuned ({model_id}) but "
-                f"LLM_PROMPT_PROFILE={_profile!r}. RESULT-2 runs MUST use the "
-                f"training-parity profile: set LLM_PROMPT_PROFILE=ft in .env "
-                f"(or pass --allow-profile-mismatch to run anyway — the result "
-                f"will NOT be a valid A/B measurement)."
-            )
-        if not _looks_finetuned and _profile == "ft":
-            raise SystemExit(
-                f"ABORT: the served model looks like a BASE model ({model_id}) "
-                f"but LLM_PROMPT_PROFILE=ft. RESULT-1 control runs MUST use "
-                f"LLM_PROMPT_PROFILE=full (or pass --allow-profile-mismatch)."
-            )
+    # prevent — because the contract lived only in a comment. The rule now
+    # lives in config/model_profile.py and protects EVERY entry point.
+    try:
+        model_id, _profile = resolve_profile(
+            allow_mismatch=allow_profile_mismatch
+        )
+    except ProfileMismatchError as exc:
+        raise SystemExit(f"ABORT: {exc}")
+    print(f"Model under test: {model_id}  |  prompt_profile={_profile}")
 
     # Enforce strict version check if enabled
     from pipeline.bootstrap import check_schema_version

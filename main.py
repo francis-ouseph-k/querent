@@ -85,6 +85,15 @@ def main() -> None:
         help="Fail immediately on schema version mismatch"
     )
 
+    arg_parser.add_argument(
+        "--allow-profile-mismatch",
+        action="store_true",
+        help="Override the model↔profile guard (fine-tuned GGUF requires "
+             "LLM_PROMPT_PROFILE=ft; base GGUF requires full). Only for "
+             "deliberate OOD experiments — NOT a supported production "
+             "configuration."
+    )
+
     args = arg_parser.parse_args()
 
     # ─────────────────────────────────────────────────────────
@@ -92,6 +101,21 @@ def main() -> None:
     # ─────────────────────────────────────────────────────────
     settings.strict_version_check = args.strict_version_check
     settings.debug_mode = args.debug
+
+    # ── GUARD (FIX-R1b): model↔profile contract — shared with batch_run ──────
+    # Enforced BEFORE the heavy pipeline load so a misconfigured serve dies in
+    # milliseconds, not after schema/retrieval bootstrap. Without this, main.py
+    # would serve a fine-tuned GGUF with the `full` profile — the exact
+    # out-of-distribution condition that degrades the fine-tuned model below
+    # the base model (see config/model_profile.py).
+    from config.model_profile import ProfileMismatchError, resolve_profile
+    try:
+        model_id, profile = resolve_profile(
+            allow_mismatch=args.allow_profile_mismatch
+        )
+    except ProfileMismatchError as exc:
+        sys.exit(f"ABORT: {exc}")
+    print(f"Model: {model_id}  |  prompt_profile={profile}")
 
     # Create pipeline runner (loads schema + retrieval + validation stack)
     runner = create_runner(strict_version_check=settings.strict_version_check)

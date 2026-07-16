@@ -923,6 +923,88 @@ class PromptBuilder:
                      user_tokens=_count_tokens(user), budget=token_budget)
         return {"system": _TRAIN_SYSTEM_PROMPT, "user": user}
 
+    def build_ft_correction_prompt(
+        self,
+        parsed_query,
+        schema_chunks: list[SemanticChunk],
+        failed_sql:    str,
+        error_message: str,
+        join_paths:    list[str] | None = None,
+        few_shots:     list[SemanticChunk] | None = None,
+        audit_misses:  list[str] | None = None,
+    ) -> dict[str, str]:
+        """
+        FT-profile correction prompt (FIX-R7 — the retry-path OOD fix).
+
+        WHY THIS EXISTS: build_correction_prompt() rebuilds the FULL serve
+        prompt (~11-14k tokens, full rulebook, no system role) — correct for
+        the base model, maximally out-of-distribution for the fine-tuned one.
+        Under LLM_PROMPT_PROFILE=ft only the FIRST attempt was in-distribution;
+        every correction attempt fed the fine-tuned model the exact prompt
+        shape the FIX-R1 guard exists to prevent. Measured consequence: the
+        base model's retry loop rescues ~21pp of the benchmark (40/191
+        questions pass only after >=1 retry); the fine-tuned model's rescued
+        ~nothing — v7 scored 57.6%, almost exactly the base model's
+        first-attempt-only rate (57.1%).
+
+        This builder keeps corrections in-distribution: the SAME ft user
+        prompt (render_train_user_prompt + budget trim), the SAME system
+        role, plus a compact correction block appended after the question.
+        The correction block is reserved out of the token budget FIRST, so
+        the total stays inside the trained ceiling.
+
+        Returns {"system": _TRAIN_SYSTEM_PROMPT, "user": <ft prompt + correction>}.
+        The caller MUST send both roles: generate(user, system=system).
+        """
+        from config.settings import settings as _settings
+
+        # Compact, bounded correction block. Cap the echoed SQL and error so a
+        # degenerate 2048-token failure cannot blow the budget it is meant to
+        # respect (observed: runaway generations hitting the completion cap).
+        sql_echo = (failed_sql or "").strip()
+        if len(sql_echo) > 1200:
+            sql_echo = sql_echo[:1200] + " …[truncated]"
+        err_echo = (error_message or "").strip()
+        if len(err_echo) > 700:
+            err_echo = err_echo[:700] + " …[truncated]"
+
+        lines = [
+            "",
+            "=== CORRECTION REQUIRED ===",
+            "Your previous SQL failed validation. Fix the error below and respond",
+            "with ONLY the same JSON contract as before.",
+            "",
+            "Failed SQL:",
+            sql_echo,
+            "",
+            f"Error: {err_echo}",
+        ]
+        if audit_misses:
+            lines += ["", "Unmet requirements from the question:"]
+            lines += [f"- {m}" for m in audit_misses[:8]]
+        lines.append("")
+        suffix = "\n".join(lines)
+
+        # Budget: identical formula to build_ft(), minus the suffix — so
+        # (system + user + suffix) stays within the trained sequence length.
+        reserve      = _count_tokens(_TRAIN_SYSTEM_PROMPT) + _settings.llm.max_tokens // 4
+        suffix_toks  = _count_tokens(suffix)
+        token_budget = max(512, _settings.fine_tuning.max_seq - reserve - suffix_toks)
+
+        ft = self.build_ft(
+            parsed_query  = parsed_query,
+            schema_chunks = schema_chunks or [],
+            join_paths    = join_paths or [],
+            few_shots     = few_shots or [],
+            token_budget  = token_budget,
+        )
+        user = ft["user"] + suffix
+
+        logger.debug(component="prompt_builder", event="ft_correction_prompt_built",
+                     user_tokens=_count_tokens(user), budget=token_budget,
+                     suffix_tokens=suffix_toks)
+        return {"system": ft["system"], "user": user}
+
     def build_correction_prompt(
         self,
         original_query:  str,

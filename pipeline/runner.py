@@ -599,20 +599,41 @@ class PipelineRunner:
                     confidence=generated.confidence,
                     sql_preview=validated_sql[:80]
                 )
-                # Force one more retry with full context
-                correction_prompt = self.prompt_builder.build_correction_prompt(
-                    original_query = query_for_pipeline,
-                    failed_sql     = validated_sql,
-                    error_message  = f"Query confidence dropped to {generated.confidence} (below 0.80) due to risky patterns like ILIKE on IDs or excessive nesting. Please simplify the query and use exact matches for IDs.",
-                    label_filters  = [],
-                    parsed_query   = parsed,
-                    schema_chunks  = schema_chunks,
-                    join_paths     = join_path_text,
-                    few_shots      = few_shots,
-                    tenant_context = user_context.get("tenant_context", ""),
-                    tables         = self.tables,
+                # Force one more retry with full context.
+                # FIX-R7: profile-aware — under ft, the correction must stay in
+                # the training distribution (ft prompt + system role), not the
+                # full serve prompt the fine-tune never saw.
+                _calib_err = (
+                    f"Query confidence dropped to {generated.confidence} (below 0.80) "
+                    f"due to risky patterns like ILIKE on IDs or excessive nesting. "
+                    f"Please simplify the query and use exact matches for IDs."
                 )
-                generated = self.sql_generator.generate(correction_prompt, system=_system)
+                if settings.llm.prompt_profile == "ft":
+                    _ft_msgs = self.prompt_builder.build_ft_correction_prompt(
+                        parsed_query  = parsed,
+                        schema_chunks = schema_chunks,
+                        failed_sql    = validated_sql,
+                        error_message = _calib_err,
+                        join_paths    = join_path_text,
+                        few_shots     = few_shots,
+                    )
+                    generated = self.sql_generator.generate(
+                        _ft_msgs["user"], system=_ft_msgs["system"]
+                    )
+                else:
+                    correction_prompt = self.prompt_builder.build_correction_prompt(
+                        original_query = query_for_pipeline,
+                        failed_sql     = validated_sql,
+                        error_message  = _calib_err,
+                        label_filters  = [],
+                        parsed_query   = parsed,
+                        schema_chunks  = schema_chunks,
+                        join_paths     = join_path_text,
+                        few_shots      = few_shots,
+                        tenant_context = user_context.get("tenant_context", ""),
+                        tables         = self.tables,
+                    )
+                    generated = self.sql_generator.generate(correction_prompt, system=_system)
                 retries += 1
                 
                 if generated.sql:
@@ -796,25 +817,41 @@ class PipelineRunner:
                 requirement_coverage=audit.requirement_coverage,
                 coverage_misses=audit.coverage_misses,
             )
-            correction_prompt = self.prompt_builder.build_correction_prompt(
-                original_query = query_for_pipeline,
-                failed_sql     = validated_sql,
-                error_message  = (
-                    f"The SQL passed structural validation but the audit "
-                    f"found requirement_coverage={audit.requirement_coverage} "
-                    f"— the SQL does not satisfy all requirements from the "
-                    f"question."
-                ),
-                label_filters  = [],
-                parsed_query   = parsed,
-                schema_chunks  = schema_chunks,
-                join_paths     = join_path_text,
-                few_shots      = few_shots,
-                tenant_context = user_context.get("tenant_context", ""),
-                audit_misses   = audit.coverage_misses,    # NEW
-                tables         = self.tables,
+            # FIX-R7: profile-aware — same rule as the main retry loop.
+            _audit_err = (
+                f"The SQL passed structural validation but the audit "
+                f"found requirement_coverage={audit.requirement_coverage} "
+                f"— the SQL does not satisfy all requirements from the "
+                f"question."
             )
-            regenerated = self.sql_generator.generate(correction_prompt, system=_system)
+            if settings.llm.prompt_profile == "ft":
+                _ft_msgs = self.prompt_builder.build_ft_correction_prompt(
+                    parsed_query  = parsed,
+                    schema_chunks = schema_chunks,
+                    failed_sql    = validated_sql,
+                    error_message = _audit_err,
+                    join_paths    = join_path_text,
+                    few_shots     = few_shots,
+                    audit_misses  = audit.coverage_misses,
+                )
+                regenerated = self.sql_generator.generate(
+                    _ft_msgs["user"], system=_ft_msgs["system"]
+                )
+            else:
+                correction_prompt = self.prompt_builder.build_correction_prompt(
+                    original_query = query_for_pipeline,
+                    failed_sql     = validated_sql,
+                    error_message  = _audit_err,
+                    label_filters  = [],
+                    parsed_query   = parsed,
+                    schema_chunks  = schema_chunks,
+                    join_paths     = join_path_text,
+                    few_shots      = few_shots,
+                    tenant_context = user_context.get("tenant_context", ""),
+                    audit_misses   = audit.coverage_misses,    # NEW
+                    tables         = self.tables,
+                )
+                regenerated = self.sql_generator.generate(correction_prompt, system=_system)
             retries += 1
             if regenerated.sql:
                 # Re-run structural validation on the regenerated SQL.

@@ -24,7 +24,7 @@ ARCHITECTURE:
 
 import re
 from pathlib import Path
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -291,15 +291,20 @@ class FineTuningSettings(BaseSettings):
     baseline_path: str = "data/eval_baseline.json"            # evaluator baseline metrics
     merged_dir:   str = "models/merged"                       # export: merged HF model
     gguf_output_dir: str = "models/qwen"                      # export: final GGUF output
-    # SINGLE token-budget knob for Phase 2. Override in .env with FT_MAX_SEQ.
-    # This ONE value drives BOTH the preprocessor (fit_rows token budget) and the
-    # trainer (SFTConfig.max_seq_length), so the corpus and the training ceiling
+    # SINGLE token-budget knob for Phase 2. Override in .env with MAX_SEQ_LENGTH
+    # (canonical name; the historical FT_MAX_SEQ is accepted as a legacy alias —
+    # if both are set, MAX_SEQ_LENGTH wins). This ONE value drives BOTH the
+    # preprocessor (fit_rows token budget) and the trainer
+    # (SFTConfig.max_seq_length), so the corpus and the training ceiling
     # can never diverge again. If they diverge, rows are silently truncated past
     # the assistant turn and the completion-only collator masks the whole
     # sequence → zero loss. Keep >= the reserve floor (system + question + output
     # JSON + template); measured max reserve on the current corpus is ~1112 tok,
     # so 1024 is too small. 2048 fits the current fit.jsonl with no re-fit.
-    max_seq:      int = 2048                                   # FT_MAX_SEQ
+    max_seq:      int = Field(
+        default=2048,
+        validation_alias=AliasChoices("MAX_SEQ_LENGTH", "FT_MAX_SEQ"),
+    )
 
     # ── export.py tool paths / merge device ──────────────────────────────────
     # These are read HERE (via settings/.env) rather than directly from

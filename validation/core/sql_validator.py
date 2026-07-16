@@ -260,26 +260,56 @@ class RetryValidator:
                     )
 
             # Build repair/correction instructions for the LLM.
-            # Fix 1+4+5: when full context objects are available, the correction
-            # prompt rebuilds the entire initial-quality prompt (via build()) and
-            # appends the error feedback ΓÇö ensuring the retry sees ALL schema DDL,
-            # join recipes, few-shots, and glossary, not just a 10-chunk subset.
-            correction_prompt = self.prompt_builder.build_correction_prompt(
-                original_query = original_query,
-                failed_sql     = sql,
-                error_message  = result.message,
-                schema_context = schema_context,
-                label_filters  = label_filters,
-                parsed_query   = parsed_query,
-                schema_chunks  = schema_chunks,
-                join_paths     = join_paths,
-                few_shots      = few_shots,
-                tenant_context = tenant_context,
-                tables         = schema_inventory,
-            )
-
-            # Run the SQL generator model on the correction prompt to generate a repaired candidate.
-            corrected   = self.sql_generator.generate(correction_prompt)
+            # FIX-R7 — profile-aware correction. Under LLM_PROMPT_PROFILE=ft the
+            # correction MUST stay in the training distribution (ft user prompt +
+            # system role + compact correction block). The previous behaviour —
+            # rebuilding the full 11-14k serve prompt via build() with no system
+            # role — was the exact OOD condition the ft profile exists to prevent,
+            # and it ran on EVERY retry: only the first attempt was ever
+            # in-distribution. (Evidence: base-model retries rescue ~21pp of the
+            # benchmark — 40/191 questions pass only after >=1 retry; the
+            # fine-tuned model's rescued ~0 — v7 at 57.6% equals the base
+            # model's first-attempt-only rate of 57.1%.)
+            #
+            # Full profile is unchanged (Fix 1+4+5): the correction prompt
+            # rebuilds the entire initial-quality prompt (via build()) and
+            # appends the error feedback — the retry sees ALL schema DDL,
+            # join recipes, few-shots, and glossary, not a 10-chunk subset.
+            #
+            # Note: the on_retry_fallback expansion above still helps under ft —
+            # expanded chunks can pull in error-mentioned tables, and
+            # build_ft_correction_prompt re-trims everything back inside the
+            # trained token ceiling.
+            if settings.llm.prompt_profile == "ft" and parsed_query is not None:
+                ft_msgs = self.prompt_builder.build_ft_correction_prompt(
+                    parsed_query  = parsed_query,
+                    schema_chunks = schema_chunks or [],
+                    failed_sql    = sql,
+                    error_message = result.message,
+                    join_paths    = join_paths,
+                    few_shots     = few_shots,
+                )
+                # Run the generator with BOTH roles — the shape the adapter
+                # was trained on (system turn + short user turn).
+                corrected = self.sql_generator.generate(
+                    ft_msgs["user"], system=ft_msgs["system"]
+                )
+            else:
+                correction_prompt = self.prompt_builder.build_correction_prompt(
+                    original_query = original_query,
+                    failed_sql     = sql,
+                    error_message  = result.message,
+                    schema_context = schema_context,
+                    label_filters  = label_filters,
+                    parsed_query   = parsed_query,
+                    schema_chunks  = schema_chunks,
+                    join_paths     = join_paths,
+                    few_shots      = few_shots,
+                    tenant_context = tenant_context,
+                    tables         = schema_inventory,
+                )
+                # Run the SQL generator model on the correction prompt.
+                corrected = self.sql_generator.generate(correction_prompt)
             sql         = corrected.sql
             tables_used = corrected.tables_used or tables_used
 
