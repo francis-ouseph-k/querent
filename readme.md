@@ -1,13 +1,18 @@
-```markdown
 # Querent
 
-Natural Language → SQL platform with hybrid RAG, schema reasoning, 
-and constrained generation for complex relational databases.
+<p align="center">
+  <img src="querent-logo.svg" alt="Querent Logo" width="180">
+</p>
+
+<p align="center">
+  <strong>Natural Language → SQL platform with hybrid RAG, schema reasoning,
+  and constrained generation for complex relational databases.</strong>
+</p>
 
 ## What it does
 
-Takes natural language questions about a relational database and generates 
-validated, executable SQL. Built for complex enterprise schemas (62+ tables, 
+Takes natural language questions about a relational database and generates
+validated, executable SQL. Built for complex enterprise schemas (62+ tables,
 150+ foreign keys).
 
 ## Architecture
@@ -145,3 +150,4 @@ experience architecting similar systems in higher education.
 
 MIT License. See `LICENSE` for details.
 ```
+

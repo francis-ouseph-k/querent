@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+	<linearGradient id="gradMain" x1="0%" y1="0%" x2="100%" y2="100%">
+		<stop offset="0%" stop-color="#2563EB"/>
+		<stop offset="100%" stop-color="#10B981"/>
+	</linearGradient>
+
+	<linearGradient id="gradAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+		<stop offset="0%" stop-color="#0EA5E9"/>
+		<stop offset="100%" stop-color="#2563EB"/>
+	</linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+<rect x="16" y="16" width="480" height="480" rx="48" fill="#F8FAFC"/>
+<rect x="16" y="16" width="480" height="480" rx="48"
+      fill="none" stroke="#CBD5E1" stroke-width="3"/>
+
+  <!-- Database cylinder (SQL) -->
+  <ellipse cx="200" cy="160" rx="55" ry="18" fill="none" stroke="url(#gradAccent)" stroke-width="6"/>
+  <path d="M145 160 L145 240 C145 250 170 260 200 260 C230 260 255 250 255 240 L255 160" fill="none" stroke="url(#gradAccent)" stroke-width="6" stroke-linecap="round"/>
+  <path d="M145 200 C145 210 170 220 200 220 C230 220 255 210 255 200" fill="none" stroke="url(#gradAccent)" stroke-width="4" opacity="0.6"/>
+
+  <!-- Neural node / Brain (NL) -->
+  <circle cx="200" cy="160" r="12" fill="url(#gradMain)"/>
+  <circle cx="155" cy="130" r="8" fill="#22d3ee" opacity="0.8"/>
+  <circle cx="245" cy="130" r="8" fill="#22d3ee" opacity="0.8"/>
+  <circle cx="170" cy="100" r="6" fill="#a855f7" opacity="0.7"/>
+  <circle cx="230" cy="100" r="6" fill="#a855f7" opacity="0.7"/>
+  <path d="M200 160 L155 130 M200 160 L245 130 M155 130 L170 100 M245 130 L230 100" stroke="url(#gradAccent)" stroke-width="2" opacity="0.5"/>
+
+  <!-- Document stack (RAG Retrieval) -->
+  <rect x="290" y="120" width="70" height="90" rx="6" fill="none" stroke="#22d3ee" stroke-width="5"/>
+  <rect x="300" y="110" width="70" height="90" rx="6" fill="none" stroke="#3b82f6" stroke-width="5" opacity="0.6"/>
+  <rect x="310" y="100" width="70" height="90" rx="6" fill="none" stroke="#6366f1" stroke-width="5" opacity="0.4"/>
+  
+  <!-- Document lines -->
+  <line x1="325" y1="125" x2="365" y2="125" stroke="#22d3ee" stroke-width="3" stroke-linecap="round" opacity="0.8"/>
+  <line x1="325" y1="140" x2="355" y2="140" stroke="#22d3ee" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+  <line x1="325" y1="155" x2="360" y2="155" stroke="#22d3ee" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+
+  <!-- Magnifying glass overlay on docs -->
+  <circle cx="350" cy="165" r="16" fill="none" stroke="#f472b6" stroke-width="4"/>
+  <line x1="362" y1="177" x2="375" y2="190" stroke="#f472b6" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Connection lines: DB + Docs -> Model -->
+  <path d="M200 260 L200 300 M325 210 L325 300" stroke="url(#gradMain)" stroke-width="3" stroke-dasharray="6 4" opacity="0.5"/>
+
+  <!-- Central Model / Tuning Gear (Fine-tuning) -->
+  <g transform="translate(256, 340)">
+    <!-- Gear -->
+    <path d="M0 -35 L6 -35 L8 -50 L-8 -50 L-6 -35 Z" fill="#fbbf24"/>
+    <path d="M0 -35 L6 -35 L8 -50 L-8 -50 L-6 -35 Z" fill="#fbbf24" transform="rotate(45)"/>
+    <path d="M0 -35 L6 -35 L8 -50 L-8 -50 L-6 -35 Z" fill="#fbbf24" transform="rotate(90)"/>
+    <path d="M0 -35 L6 -35 L8 -50 L-8 -50 L-6 -35 Z" fill="#fbbf24" transform="rotate(135)"/>
+    <path d="M0 -35 L6 -35 L8 -50 L-8 -50 L-6 -35 Z" fill="#fbbf24" transform="rotate(180)"/>
+    <path d="M0 -35 L6 -35 L8 -50 L-8 -50 L-6 -35 Z" fill="#fbbf24" transform="rotate(225)"/>
+    <path d="M0 -35 L6 -35 L8 -50 L-8 -50 L-6 -35 Z" fill="#fbbf24" transform="rotate(270)"/>
+    <path d="M0 -35 L6 -35 L8 -50 L-8 -50 L-6 -35 Z" fill="#fbbf24" transform="rotate(315)"/>
+    
+	<circle r="28" fill="#FFFFFF" stroke="#F59E0B" stroke-width="4"/>
+    
+    <!-- Inner chip / model symbol -->
+    <rect x="-12" y="-12" width="24" height="24" rx="3" fill="none" stroke="#22d3ee" stroke-width="2"/>
+    <circle cx="0" cy="0" r="5" fill="#f472b6"/>
+    
+    <!-- Tuning sliders inside -->
+    <line x1="-8" y1="-4" x2="8" y2="-4" stroke="#22d3ee" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="-3" cy="-4" r="2.5" fill="#fbbf24"/>
+    <line x1="-8" y1="4" x2="8" y2="4" stroke="#22d3ee" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="4" cy="4" r="2.5" fill="#fbbf24"/>
+  </g>
+
+  <!-- Bottom label -->
+  <text x="256" y="420" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="700" fill="url(#gradMain)" letter-spacing="2">QUERENT</text>
+  <text x="256" y="450" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="18"  fill="#6B7280" letter-spacing="4">NL-SQL · RAG+ · FINETUNE</text>
+</svg>
