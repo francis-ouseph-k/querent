@@ -13,7 +13,10 @@ Usage (from project root nl_to_sql/):
     python batch_run.py --temperature 0.0  # explicit (this is the default)
     python batch_run.py --dry-run          # skip DB execution
     python batch_run.py --start 50         # resume from QNum 50
+    python batch_run.py --start 1 --end 60 # run only QNum 1..60 (inclusive)
+    python batch_run.py --end 60           # run from the beginning through QNum 60
     python batch_run.py --allow-stale-index# run even if the index is stale (smoke test)
+    python batch_run.py --verbose          # restore full console log trace (default: quiet)
 
 DETERMINISM & TEMPERATURE  (why this matters for a benchmark)
 ─────────────────────────────────────────────────────────────
@@ -66,7 +69,7 @@ from pathlib import Path
 # ── Bootstrap — identical to main.py ──────────────────────────────────────────
 
 from config.settings import settings
-from utils.logging_config import configure_logging, get_logger
+from utils.logging_config import configure_logging, get_logger, set_console_level
 
 configure_logging(settings.log_dir)
 logger = get_logger(__name__)
@@ -100,10 +103,23 @@ from config.model_profile import ProfileMismatchError, resolve_profile
 
 # ── Main batch logic ───────────────────────────────────────────────────────────
 
+# ── PACING: optional pause between questions (BATCH_QUERY_DELAY_MS) ─────────────
+# Extracted as its own function -- rather than an inline conditional in the loop
+# -- so it is independently unit-testable without invoking the full pipeline
+# (schema load, retrieval, LLM calls). Default 0 preserves existing behaviour:
+# no delay, applied between questions only, never before the first.
+def _maybe_inter_query_delay(idx: int, delay_ms: int) -> None:
+    """Sleep BATCH_QUERY_DELAY_MS between questions. No-op before the first
+    question (idx == 1) and when delay_ms <= 0 (the default)."""
+    if idx > 1 and delay_ms > 0:
+        time.sleep(delay_ms / 1000.0)
+
+
 # ── DETERMINISM (1/5): new `eval_temperature` parameter ─────────────────────────
 #   None  -> leave settings.llm.temperature untouched (use configured/env value)
 #   float -> force this temperature for the whole run (default 0.0 = greedy)
-def run_batch(dry_run: bool = False, start_from: int = 1, strict_version_check: bool = False,
+def run_batch(dry_run: bool = False, start_from: int = 1, end_at: int | None = None,
+              strict_version_check: bool = False,
               eval_temperature: float | None = 0.0,
               allow_profile_mismatch: bool = False) -> None:
 
@@ -188,10 +204,18 @@ def run_batch(dry_run: bool = False, start_from: int = 1, strict_version_check: 
         print("ERROR: No valid questions found in input file.")
         sys.exit(1)
 
-    # Apply --start filter
-    if start_from > 1:
-        questions = [q for q in questions if q.get("QNum", 0) >= start_from]
-        print(f"Resuming from QNum {start_from} -- {len(questions)} questions to run.")
+    # Apply --start / --end range filter
+    if end_at is not None and start_from > end_at:
+        print(f"ERROR: --start {start_from} is greater than --end {end_at}.")
+        sys.exit(1)
+    if start_from > 1 or end_at is not None:
+        questions = [
+            q for q in questions
+            if q.get("QNum", 0) >= start_from
+            and (end_at is None or q.get("QNum", 0) <= end_at)
+        ]
+        range_desc = f"QNum {start_from}" + (f" through {end_at}" if end_at is not None else " onward")
+        print(f"Running {range_desc} -- {len(questions)} questions to run.")
 
     total = len(questions)
     print(f"Loaded {total} questions from {INPUT_PATH}")
@@ -208,6 +232,7 @@ def run_batch(dry_run: bool = False, start_from: int = 1, strict_version_check: 
         total=total,
         dry_run=dry_run,
         start_from=start_from,
+        end_at=end_at,
         output=str(output_path),
     )
 
@@ -247,8 +272,12 @@ def run_batch(dry_run: bool = False, start_from: int = 1, strict_version_check: 
 
     batch_start = time.perf_counter()
 
+    delay_ms = settings.batch_query_delay_ms
+
     with output_path.open("w", encoding="utf-8") as out_f:
         for idx, item in enumerate(questions, 1):
+            _maybe_inter_query_delay(idx, delay_ms)
+
             qnum     = item.get("QNum", idx)
             question = item.get("Question", "")
             qtype    = item.get("type", "")
@@ -436,6 +465,15 @@ if __name__ == "__main__":
         help="Resume from this QNum (skip earlier questions)",
     )
     parser.add_argument(
+        "--end",
+        type=int,
+        default=None,
+        metavar="QNUM",
+        help="Stop after this QNum, inclusive (default: run through the last "
+             "question). Combine with --start for a bounded range, e.g. "
+             "--start 1 --end 60.",
+    )
+    parser.add_argument(
         "--strict-version-check",
         action="store_true",
         default=True,
@@ -474,7 +512,19 @@ if __name__ == "__main__":
              "LLM_PROMPT_PROFILE=ft; base GGUF requires full). Only for "
              "deliberate OOD experiments — the run is NOT a valid A/B result.",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Restore full console log trace (retrieval/generation/validation "
+             "detail per question). Off by default so a normal run shows only "
+             "the progress line per question, not the underlying library and "
+             "structured-log chatter. Always fully captured in logs/nl_sql.jsonl "
+             "either way.",
+    )
     args = parser.parse_args()
+
+    if args.verbose:
+        set_console_level("INFO")
 
     # ── DETERMINISM (5/5): pass the resolved temperature into run_batch ──────────
     #   deterministic (default) -> use args.temperature (0.0)
@@ -483,7 +533,8 @@ if __name__ == "__main__":
     run_batch(
         dry_run=args.dry_run,
         start_from=args.start,
+        end_at=args.end,
         strict_version_check=args.strict_version_check,
         eval_temperature=_eval_temp,
         allow_profile_mismatch=args.allow_profile_mismatch,
-    )
+    )

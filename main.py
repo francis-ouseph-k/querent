@@ -26,7 +26,7 @@ import argparse
 import sys
 
 from config.settings import settings
-from utils.logging_config import configure_logging, get_logger
+from utils.logging_config import configure_logging, get_logger, set_console_level
 from pipeline.bootstrap import create_runner
 
 # ─────────────────────────────────────────────────────────────
@@ -101,6 +101,12 @@ def main() -> None:
     # ─────────────────────────────────────────────────────────
     settings.strict_version_check = args.strict_version_check
     settings.debug_mode = args.debug
+
+    # --debug also restores full console log verbosity (retrieval/generation/
+    # validation trace) — off by default so a normal run isn't a wall of
+    # library log noise. See utils/logging_config.py module docstring.
+    if args.debug:
+        set_console_level("INFO")
 
     # ── GUARD (FIX-R1b): model↔profile contract — shared with batch_run ──────
     # Enforced BEFORE the heavy pipeline load so a misconfigured serve dies in

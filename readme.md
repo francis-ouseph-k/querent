@@ -30,7 +30,7 @@ Hybrid Retrieval Layer (Vector + BM25 + FK Graph → RRF → Cross-Encoder Reran
 Context Assembly (Schema + Joins + Glossary + Examples)
         │
         ▼
-Local LLM Inference (SQL Generation)
+LLM Inference (SQL Generation)
         │
         ▼
 Validation Pipeline (Syntax → Schema → Safety → Semantic)
@@ -44,7 +44,9 @@ Validation Pipeline (Syntax → Schema → Safety → Semantic)
 
 - **Schema-first reasoning** — retrieval grounded in actual relational structure
 - **Deterministic validation** — no execution without AST-level safety checks
-- **Local-only inference** — no external LLM or API dependencies in this implementation
+- **Provider-agnostic inference** — runs fully local by default (llama.cpp / GGUF);
+  swaps to a hosted LLM (Mistral, Gemini) behind the same interface via one
+  config flag, no code change
 - **Graph-aware retrieval** — join paths derived from FK relationships
 - **Failure-driven improvement** — production errors structured for training reuse
 
@@ -57,13 +59,14 @@ Validation Pipeline (Syntax → Schema → Safety → Semantic)
 | AST-based validation | Enforces SQL correctness beyond regex or heuristic checks |
 | Controlled execution gate | Prevents unsafe or invalid SQL from reaching the database |
 | Repair loop | Iteratively corrects recoverable SQL failures |
+| Pluggable LLM backend | One provider interface serves local llama.cpp or a hosted model (Mistral, Gemini) — swap via config, not code |
 | Local specialisation | Optional LoRA fine-tuning adapts a local model to the target schema without modifying base model weights |
 
 ## Technology Stack
 
 - Python 3.11
 - PostgreSQL-compatible databases
-- Local LLM inference (llama.cpp / GGUF)
+- LLM inference — local (llama.cpp / GGUF) or hosted (Mistral, Gemini), behind a common provider interface
 - Vector search (Qdrant)
 - Keyword search (OpenSearch)
 - Cross-encoder reranking (sentence-transformers)
@@ -77,6 +80,7 @@ Validation Pipeline (Syntax → Schema → Safety → Semantic)
 pipeline/      Orchestration and execution flow
 retrieval/     Hybrid retrieval (vector + keyword + graph), RRF fusion, reranking
 generation/    Prompting, query understanding, LLM inference
+               └── llm/        Provider abstraction — local llama.cpp, Mistral, Gemini
 validation/    AST-based SQL validation and repair
                ├── ast/        Syntax-level checks
                ├── schema/     Table / column / type validation
@@ -95,10 +99,16 @@ tests/         System validation tests
 git clone https://github.com/francis-ouseph-k/querent.git
 cd querent
 pip install -r requirements.txt
+
+# Optional — only needed for a hosted LLM provider (Mistral / Gemini)
+pip install -r requirements_llm_providers.txt
+
+# Optional — only needed for local LoRA fine-tuning
 pip install -r requirements_fine_tuning.txt
 
-# Configure your database connection in config/
-python -m pipeline.main
+# Configure your database connection and LLM provider in .env
+# (see .env.example)
+python main.py
 ```
 
 ## Example
@@ -149,5 +159,3 @@ experience architecting similar systems in higher education.
 ## License
 
 MIT License. See `LICENSE` for details.
-```
-

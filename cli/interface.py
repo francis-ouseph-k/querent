@@ -73,6 +73,7 @@ from rich.table import Table
 from rich.text import Text
 
 from config.settings import settings
+from utils.logging_config import set_console_level
 from generation.query_understanding import INCOMPLETE_PREFIX, REFINED_MARKER, VALUE_MARKER
 from mcp_tools.client import call_corpus_save_correction, MCPCallError
 from models.schema import QueryResult
@@ -593,6 +594,10 @@ class ChatInterface:
         elif cmd == ":debug":
             self.debug_mode    = not self.debug_mode
             settings.debug_mode = self.debug_mode
+            # Keep raw console log verbosity in sync with the CLI's own debug
+            # display — toggling one without the other is confusing (either
+            # retrieval chunks with no trace, or a trace with no chunks).
+            set_console_level("INFO" if self.debug_mode else "WARNING")
             self.console.print(f"[dim]Debug mode: {'ON' if self.debug_mode else 'OFF'}[/dim]")
 
         elif cmd == ":clear":

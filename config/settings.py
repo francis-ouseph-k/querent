@@ -503,6 +503,14 @@ class Settings(BaseSettings):
     debug_mode:                   bool  = False
     strict_version_check:         bool  = Field(default=False, validation_alias="STRICT_MODE")
 
+    # ── Batch runner pacing ──────────────────────────────────────────────────
+    # Optional pause between individual questions in batch_run.py, to reduce
+    # the risk of hitting a hosted LLM_PROVIDER's rate limit on a long run.
+    # Milliseconds, not seconds — consistent with this being a short inter-
+    # request gap, not a coarse delay. Default 0 preserves existing behaviour
+    # (no delay) for the local provider and anyone who hasn't opted in.
+    batch_query_delay_ms:         int   = Field(default=0, ge=0, validation_alias="BATCH_QUERY_DELAY_MS")
+
 
 # Module-level singleton — import this everywhere
 settings = Settings()
