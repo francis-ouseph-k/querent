@@ -12,6 +12,9 @@ env/
 # Environment
 .env
 .env.*
+# ...but the credential-free template MUST be committed (`.env.*` would
+# otherwise swallow it, leaving new clones with no configuration reference).
+!.env.example
 
 # IDE
 .vscode/

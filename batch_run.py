@@ -136,6 +136,14 @@ def run_batch(dry_run: bool = False, start_from: int = 1, strict_version_check: 
     # — the exact out-of-distribution configuration the ft profile exists to
     # prevent — because the contract lived only in a comment. The rule now
     # lives in config/model_profile.py and protects EVERY entry point.
+    # PROVIDER SWITCH: banner first — every benchmark row should be traceable
+    # to the provider that produced it. Secret-free by construction.
+    from generation.llm import LLMConfigurationError, describe_active_llm
+    try:
+        print(describe_active_llm().banner())
+    except LLMConfigurationError as exc:
+        raise SystemExit(f"ABORT: {exc}")
+
     try:
         model_id, _profile = resolve_profile(
             allow_mismatch=allow_profile_mismatch
@@ -269,6 +277,7 @@ def run_batch(dry_run: bool = False, start_from: int = 1, strict_version_check: 
                 "Completion tokens": 0,
                 # PROVENANCE (FIX-F6) — which model/config produced this row
                 "Model":           model_id,
+                "LLM provider":    settings.llm.provider,
                 "Prompt profile":  settings.llm.prompt_profile,
                 "Temperature":     settings.llm.temperature,
             }

@@ -1,5 +1,5 @@
-schema_version: "10.4"
-extraction_date: "2026-06-19"
+schema_version: "10.10"
+extraction_date: "2026-06-19"   # edges re-verified against v10.10 DDL
 total_derived_edges: 5
 
 derived_fks:

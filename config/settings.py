@@ -27,6 +27,11 @@ from pathlib import Path
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Provider names / aliases / defaults live in a leaf module with no imports, so
+# that config.settings and generation.llm.factory can both use them without a
+# cycle (settings must never import from generation/).
+from config import llm_providers as _lp
+
 ROOT_DIR = Path(__file__).resolve().parent.parent
 ENV_FILE = str(ROOT_DIR / ".env")
 
@@ -152,6 +157,130 @@ class LLMSettings(BaseSettings):
     #                      "full" prompt is out-of-distribution and degrades it
     #                      below the base model.
     prompt_profile: str = "full"         # env: LLM_PROMPT_PROFILE = full | ft
+
+    # ── PROVIDER SELECTION (switchable LLM) ───────────────────────────────
+    # Which backend generates SQL. Default "local" preserves the pre-existing
+    # behaviour exactly: llama.cpp against the Qwen GGUF, llama-server first
+    # with the in-process fallback. See config/llm_providers.py.
+    #   local            — llama.cpp direct (DEFAULT)
+    #   local_langchain  — the same llama-server, via LangChain
+    #   mistral          — Mistral La Plateforme, via LangChain
+    #   gemini           — Google Gemini, via LangChain
+    provider: str = "local"                  # env: LLM_PROVIDER
+
+    # Model id llama-server is serving. Sent in the request body on the
+    # LangChain path and shown in the startup banner. NOT the GGUF path —
+    # that stays LLM_MODEL_PATH, which the in-process loader still uses.
+    primary_model: str = "qwen2.5-coder-3b-instruct"   # env: LLM_PRIMARY_MODEL
+
+    # ── TIMEOUTS ──────────────────────────────────────────────────────────
+    # Two separate budgets, deliberately. The local primary can spend its
+    # first request loading a 2.4 GB GGUF into VRAM and needs real time on the
+    # 10-14k-token serve prompt; a hosted provider taking that long means
+    # something is actually wrong, so it gets a shorter leash.
+    primary_timeout_seconds: float = 120.0   # env: LLM_PRIMARY_TIMEOUT_SECONDS
+    timeout_seconds:         float = 90.0    # env: LLM_TIMEOUT_SECONDS
+
+    # ── HOSTED PROVIDERS ──────────────────────────────────────────────────
+    # Both vendors expose an OpenAI-compatible /v1 surface, so all three
+    # LangChain providers share one client type and differ only by these
+    # three values. Endpoints are overridable for proxies / regional hosts.
+    #
+    # API keys carry exclude=True so they never appear in model_dump() — the
+    # thing any accidental settings-logging call would serialise. They are
+    # declared with explicit validation_alias so the conventional bare vendor
+    # names (MISTRAL_API_KEY, GOOGLE_API_KEY) work alongside the prefixed
+    # LLM_MISTRAL_API_KEY form, the same technique FineTuningSettings uses for
+    # the LLAMA_* vars.
+    mistral_base_url: str = "https://api.mistral.ai/v1"
+    mistral_model:    str = "mistral-small-latest"
+    mistral_api_key:  str = Field(
+        default="", exclude=True,
+        validation_alias=AliasChoices("LLM_MISTRAL_API_KEY", "MISTRAL_API_KEY"),
+    )
+
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    gemini_model:    str = "gemini-2.0-flash"
+    gemini_api_key:  str = Field(
+        default="", exclude=True,
+        validation_alias=AliasChoices(
+            "LLM_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"
+        ),
+    )
+
+    @model_validator(mode="after")
+    def normalise_provider(self) -> "LLMSettings":
+        """
+        Resolve aliases, reject unknown providers at startup, and enforce the
+        one cross-field rule: prompt_profile="ft" is meaningless off the local
+        GGUF.
+
+        The "ft" profile serves PromptBuilder.build_ft() — the exact training
+        distribution of OUR LoRA adapter. A hosted Mistral/Gemini model has
+        never seen that distribution; serving it the short training-parity
+        prompt strips out the schema context the rich prompt provides and
+        degrades it for no reason. Rather than make every reader of
+        settings.llm.prompt_profile provider-aware (runner.py x3,
+        sql_validator.py, batch_run.py), the profile is corrected ONCE here,
+        so every existing read site stays untouched and correct.
+        """
+        name = _lp.normalise(self.provider)
+        if name not in _lp.SUPPORTED_PROVIDERS:
+            raise ValueError(
+                f"Unknown LLM_PROVIDER={self.provider!r}. "
+                f"Supported: {', '.join(_lp.SUPPORTED_PROVIDERS)}."
+            )
+        object.__setattr__(self, "provider", name)
+
+        if name not in _lp.LOCAL_PROVIDERS and self.prompt_profile != "full":
+            object.__setattr__(self, "prompt_profile", "full")
+        return self
+
+    # ── ACTIVE-PROVIDER ACCESSORS ─────────────────────────────────────────
+    # The ONLY place provider names are branched on. generation/llm/factory.py
+    # reads these and builds one client, so adding a provider never adds an
+    # `if` anywhere in generation/.
+
+    @property
+    def is_local_provider(self) -> bool:
+        """True when the active provider serves the local GGUF."""
+        return self.provider in _lp.LOCAL_PROVIDERS
+
+    @property
+    def active_base_url(self) -> str:
+        if self.provider in _lp.LOCAL_PROVIDERS:
+            return self.base_url
+        if self.provider == _lp.MISTRAL:
+            return self.mistral_base_url
+        if self.provider == _lp.GEMINI:
+            return self.gemini_base_url
+        return ""
+
+    @property
+    def active_model(self) -> str:
+        if self.provider in _lp.LOCAL_PROVIDERS:
+            return self.primary_model
+        if self.provider == _lp.MISTRAL:
+            return self.mistral_model
+        if self.provider == _lp.GEMINI:
+            return self.gemini_model
+        return ""
+
+    @property
+    def active_api_key(self) -> str:
+        """Secret for the active provider. Never logged, never in the banner."""
+        if self.provider == _lp.MISTRAL:
+            return self.mistral_api_key
+        if self.provider == _lp.GEMINI:
+            return self.gemini_api_key
+        # llama-server accepts any bearer token; a placeholder keeps the
+        # OpenAI client happy without implying a credential exists.
+        return ""
+
+    @property
+    def active_timeout(self) -> float:
+        return (self.primary_timeout_seconds if self.is_local_provider
+                else self.timeout_seconds)
 
 
 class EmbeddingSettings(BaseSettings):
@@ -347,7 +476,10 @@ class Settings(BaseSettings):
     fine_tuning: FineTuningSettings = Field(default_factory=FineTuningSettings)
 
     # ── Paths ──────────────────────────────────────────────────────────────
-    ddl_path:              str = "data/docs/digital_evaluation_schema_v10_4_1.sql"
+    # DDL VERSION: v10.10 is the authoritative schema source. Override with
+    # DDL_PATH in .env. Changing this invalidates data/.schema_hash — re-run
+    # `python ingest.py` so the vector index and FK graph match the new DDL.
+    ddl_path:              str = "data/docs/digital_evaluation_schema_v10_10.sql"
     glossary_path:         str = "data/glossary.json"
     few_shot_examples_path: str = "data/few_shot_examples.json"
     failure_log_dir:       str = "failures"

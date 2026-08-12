@@ -1,0 +1,32 @@
+# =============================================================================
+# requirements_llm_providers.txt
+# =============================================================================
+# OPTIONAL dependencies for the switchable LLM layer (generation/llm/).
+#
+# The default configuration — LLM_PROVIDER=local, llama.cpp serving the Qwen
+# Coder 3B GGUF — needs NOTHING from this file.
+#
+# Every non-default provider (local_langchain, mistral, gemini) is reached
+# through LangChain's OpenAI-compatible client, because all three endpoints
+# ARE OpenAI-compatible /v1 surfaces:
+#
+#   local_langchain  ->  llama-server's own /v1
+#   mistral          ->  https://api.mistral.ai/v1
+#   gemini           ->  Google's OpenAI-compatibility endpoint
+#
+# So one install covers all of them:
+#   pip install -r requirements_llm_providers.txt
+#
+# The import is deferred inside generation/llm/factory.py, so leaving these
+# uninstalled costs nothing until a non-default LLM_PROVIDER is selected — at
+# which point you get an LLMConfigurationError naming this pip command, not an
+# ImportError from inside the pipeline.
+# =============================================================================
+
+# OpenAI-compatible chat client used by every LangChain-served provider.
+langchain-openai>=0.2,<1.0
+
+# Core message/runnable types. Pulled in transitively by langchain-openai, but
+# pinned explicitly since generation/llm/langchain_provider.py imports
+# langchain_core.messages directly.
+langchain-core>=0.3,<1.0

@@ -109,6 +109,16 @@ def main() -> None:
     # out-of-distribution condition that degrades the fine-tuned model below
     # the base model (see config/model_profile.py).
     from config.model_profile import ProfileMismatchError, resolve_profile
+
+    # PROVIDER SWITCH: announce the active LLM before anything else. The banner
+    # is built from provider label + model id only — API keys are held in
+    # LLMSettings with exclude=True and never reach this string.
+    from generation.llm import LLMConfigurationError, describe_active_llm
+    try:
+        print(describe_active_llm().banner())
+    except LLMConfigurationError as exc:
+        sys.exit(f"ABORT: {exc}")
+
     try:
         model_id, profile = resolve_profile(
             allow_mismatch=args.allow_profile_mismatch
