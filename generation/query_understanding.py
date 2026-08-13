@@ -281,13 +281,23 @@ _DISAMBIGUATION_SPECS = [
             "Evaluation workflow status (answer_script.evaluation_status)",
             "Script scanning status (answer_script.scan_status)",
             "Student lifecycle status (answer_script.lifecycle_status)",
+            # FIX-G2: block_status is the FOURTH independent status dimension on
+            # answer_script (DDL v10.10 L1607-1608, CHECK IN 'NONE','ABSENT',
+            # 'NOT_PERMITTED','BLOCKED','MALPRACTICE','NOT_ELIGIBLE') and was
+            # missing from this option list entirely, so even a correct semantic
+            # match had nothing to match against. Q179 ("scripts with a block
+            # status of ABSENT") hard-failed as ambiguous because of this.
+            "Script blocking status (answer_script.block_status)",
             "Board lifecycle status (board.status)",
             "ERP push status for results (result.erp_push_status)",
             "Honorarium approval status (honorarium_summary.approval_status)",
         ],
         resolvers=[
             "evaluation", "scan", "scanning", "lifecycle",
-            "block", "blocking", "erp", "push",
+            "block", "blocking", "block_status", "erp", "push",
+            # FIX-G2: block_status enum values are themselves unambiguous
+            # resolvers — if the question names one, the dimension is decided.
+            "absent", "not_permitted", "blocked", "malpractice", "not_eligible",
             "approval", "board", "publication",
             "answer key", "answer_key", "bundle", "eligibility", "purge", "job", "external system", "external", "system",
         ]
@@ -444,6 +454,9 @@ class QueryUnderstanding:
         self._rewrites:      dict[str, str]       = dict(_BASE_REWRITES)
         self._term_to_table: dict[str, list[str]] = {k: list(v) for k, v in _TABLE_KEYWORDS.items()}
         self._status_codes:  set[str]       = set(_STATUS_CODES)
+        # FIX-G1: glossary alias → canonical term. Used ONLY to append expansion
+        # terms to the retrieval query; never substituted into the question text.
+        self._alias_to_term: dict[str, str]       = {}
 
         # ── Overlay DDL-generated data (always up-to-date) ─────────────────
         self._load_query_understanding_data(query_understanding_path)
@@ -516,9 +529,45 @@ class QueryUnderstanding:
 
     def _load_glossary(self, path: str) -> None:
         """
-        Merge glossary aliases into rewrite map and glossary terms into
-        entity map. Aliases become rewrite rules (alias → canonical term).
-        related_tables[0] becomes the entity table for the term.
+        Merge glossary terms AND their aliases into the entity map, and record
+        alias → canonical-term for ADDITIVE retrieval expansion.
+
+        FIX-G1 (accuracy root cause, batch run 20260812) — aliases are no longer
+        written into ``self._rewrites``.
+        ────────────────────────────────────────────────────────────────────────
+        Previously every alias became a destructive ``re.sub`` applied to the
+        question text before intent classification, entity extraction, ambiguity
+        detection, retrieval AND the prompt. Measured on the 191-question
+        benchmark: 81/191 questions (42%) contained at least one alias and
+        63/189 retrieval queries no longer matched the question the user asked.
+        Observed corruptions:
+
+            "no rubric defined"            → "no answer_key defined"
+            "average duration of a legal hold" → "…of a legal legal hold"
+            "OCR confidence scores"        → "scan confidence scores"
+            "Count attempt rules"          → "Count evaluation_attempt rules"
+            "course-level policy"          → "academic_unit-level policy"
+            "a block status of ABSENT"     → "a block_status status of ABSENT"
+
+        The last one is the clearest kill: the DisambiguationSpec for "status"
+        carries the resolver "block", but ``\\bblock\\b`` cannot match inside
+        ``block_status`` (``_`` is a word character), so the resolver stopped
+        firing, the MiniLM fallback scored 0.402 (< 0.75 threshold) and Q179
+        hard-failed as ``ambiguous_query`` in 159 ms with retrieval never run.
+
+        The signal the aliases carried is still needed — it is simply routed
+        without editing the user's words:
+
+          * ``_term_to_table`` gains an entry per alias, so entity seeding
+            (mandatory RAG chunks) works exactly as before.
+          * ``_alias_to_term`` feeds ``expansion_terms``, which are APPENDED to
+            the retrieval query only. BM25 treats extra terms as additional
+            OR-able evidence and the dense encoder sees the original sentence
+            plus canonical vocabulary — neither loses the user's own words.
+
+        ``_BASE_REWRITES`` is deliberately left in place: those are genuine
+        abbreviation expansions ("qp" → "question paper") that add information
+        rather than destroying it.
         """
         p = Path(path)
         if not p.exists():
@@ -535,12 +584,39 @@ class QueryUnderstanding:
                         if t not in existing:
                             existing.append(t)
                 for alias in aliases:
-                    self._rewrites[alias.lower()] = term
+                    alias_l = alias.lower().strip()
+                    if not alias_l or alias_l == term:
+                        # Self-alias (e.g. 'legal hold' → legal hold). Under the
+                        # old rewrite path this was non-idempotent and produced
+                        # "legal legal hold". Nothing to record here.
+                        continue
+                    self._alias_to_term[alias_l] = term
+                    # Alias seeds the same entity tables as its canonical term,
+                    # so entity extraction keeps working on the RAW question.
+                    if tables:
+                        existing = self._term_to_table.setdefault(alias_l, [])
+                        for t in tables:
+                            if t not in existing:
+                                existing.append(t)
         except Exception as exc:
             logger.warning(
                 component="query_understanding",
                 event="glossary_load_failed", error=str(exc),
             )
+
+    def _expansion_terms(self, query: str) -> list[str]:
+        """
+        Canonical glossary terms implied by the query, for ADDITIVE retrieval
+        expansion. Never substituted into the query text.
+        """
+        lower = query.lower()
+        found: list[str] = []
+        for alias, term in self._alias_to_term.items():
+            if term in found:
+                continue
+            if re.search(rf"\b{re.escape(alias)}\b", lower):
+                found.append(term)
+        return found
 
     def _load_course_codes(self, path: str) -> list[str]:
         """
@@ -602,7 +678,9 @@ class QueryUnderstanding:
         entities, status_codes, domain = self._extract_entities(normalised)
         course_match                   = self._resolve_course_codes(normalised)
         label_filters                  = self._extract_label_filters(raw_query)
-        is_ambiguous, clarifications, resolved_choices = self._detect_ambiguity(normalised, entities)
+        is_ambiguous, clarifications, resolved_choices = self._detect_ambiguity(
+            normalised, entities, status_codes
+        )
 
         # Issue 5 fix: strip markers before exposing normalised to prompt layer.
         # If the SLM automatically resolved any ambiguity, append it to the query
@@ -614,10 +692,19 @@ class QueryUnderstanding:
         # runner.py uses clean_query for retrieval + prompt, not normalised.
         clean_query, clarification_note = _strip_refinement_markers(normalised)
 
+        # FIX-G1: retrieval gets the user's own wording PLUS canonical glossary
+        # terms appended. The prompt and few-shot lookup keep clean_query, so the
+        # LLM still reads the question as asked.
+        expansion = self._expansion_terms(clean_query)
+        retrieval_query = (
+            f"{clean_query} {' '.join(expansion)}".strip() if expansion else clean_query
+        )
+
         parsed = ParsedQuery(
             original           = raw_query,
             normalised         = normalised,       # full string incl. markers (for logging)
             clean_query        = clean_query,       # marker-stripped (for LLM prompt)
+            retrieval_query    = retrieval_query,   # clean_query + glossary expansion
             clarification_note = clarification_note, # extracted clarification (for prompt)
             intent             = intent,
             entities           = entities,
@@ -971,20 +1058,33 @@ class QueryUnderstanding:
         return best_match
 
     def _detect_ambiguity(
-        self, query: str, entities: list[str]
+        self, query: str, entities: list[str], status_codes: list[str] | None = None
     ) -> tuple[bool, list[str], list[str]]:
         """
         Data-driven ambiguity detection.
 
         Delegates to the Intent Router to check all registered DisambiguationSpecs,
         including Semantic SLM matching via MiniLM.
+
+        FIX-G2: a recognised enum literal in the question is a stronger, cheaper
+        signal than a MiniLM similarity score. When the question names a concrete
+        status value the pipeline has already extracted (e.g. ABSENT), the
+        "status" dimension is decided, so that spec is passed as pre-resolved
+        rather than sent to the semantic model. Q179 supplied
+        ``status_codes=['ABSENT']`` and still hard-failed as ambiguous.
         """
         # Skip if query was already refined by the CLI disambiguation loop
         if REFINED_MARKER in query or VALUE_MARKER in query:
             return False, [], []
 
+        resolved_hint = query
+        if status_codes:
+            # Append the extracted codes so spec resolvers (which now include the
+            # block_status enum values) can see them without editing the question.
+            resolved_hint = f"{query} {' '.join(c.lower() for c in status_codes)}"
+
         return self.router.detect_ambiguity(
-            query, 
-            entities, 
+            resolved_hint,
+            entities,
             enrich_option=self.schema_enricher.enrich
         )

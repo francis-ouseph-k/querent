@@ -430,9 +430,16 @@ def _check_anti_join_polarity(nl: str, sql: str, result: AuditResult) -> None:
     nl_low = nl.lower()
     sql_low = _sql_lower(sql)
 
-    # Negation patterns in the NL that imply an anti-join is needed
+    # Negation patterns in the NL that imply an anti-join is needed.
+    #
+    # FIX-L4a (false positives, Q188 / Q40 of batch run 20260812): `\bno\s+\w+`
+    # matched comparative and temporal phrases that carry no anti-join meaning
+    # at all. "Which academic unit relationships are **no longer** active?" is
+    # answered correctly by `WHERE aur.is_active = FALSE` — a scalar predicate,
+    # not an anti-join — and was rejected. The exclusion list below covers the
+    # adverbial uses of "no" that precede a modifier rather than a noun.
     negation_patterns = [
-        r'\bno\s+\w+',       # "no scripts", "no coordinator"
+        r'\bno\s+(?!longer\b|more\b|later\b|earlier\b|fewer\b|greater\b|less\b)\w+',
         r'\bnone\b',          # "none of the..."
         r'\bwithout\b',       # "scripts without annotations"
         r'\bmissing\b',       # "missing rubrics"
@@ -460,17 +467,27 @@ def _check_anti_join_polarity(nl: str, sql: str, result: AuditResult) -> None:
             "The query may return wrong results by including rather than excluding.",
             penalty=0.10,
         )
-        # 2026-07-01: promoted to hard_fail. This detection (presence/absence
-        # of an anti-join pattern given NL negation) is reliable; what's NOT
-        # reliable is assuming the LLM's retry will fix it correctly -- Q55
-        # in batch-run-output-20260630 shows the model reproducing the
-        # identical wrong anti-join across two separate retry attempts.
-        # No deterministic autofix exists here (fixing it requires knowing
-        # which table to negate -- semantic, not mechanical), so this stops
-        # short of claiming the retry succeeds. It only guarantees the
-        # query is never silently labeled Success while the pattern is
-        # missing.
-        result.hard_fail = True
+        # 2026-07-01: promoted to hard_fail on the grounds that the detection
+        # itself was reliable.
+        #
+        # FIX-L4b (2026-08-13): reverted to a scored warning. The 20260812 run
+        # showed the detection is NOT reliable — it is a keyword test over the
+        # question, and correct SQL routinely encodes exclusion without any of
+        # the four tokens it looks for:
+        #
+        #   Q188  "…are no longer active?"  →  WHERE aur.is_active = FALSE
+        #         Correct. A boolean predicate is an anti-condition; it is not
+        #         spelled NOT EXISTS.
+        #   Q40   "…has not started marking within 3 working days…"  →  a CASE
+        #         over working_day_offset(), the DDL's own deadline function
+        #         (v10.10 L1050). Correct, and killed outright.
+        #
+        # hard_fail meant these never reached execution and never got a retry —
+        # the run's only two terminal logical_audit failures were both correct
+        # queries. The penalty still lowers confidence and the warning still
+        # surfaces in coverage_misses, so a genuine polarity error remains
+        # visible without a false positive being fatal.
+        result.hard_fail = False
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

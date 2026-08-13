@@ -800,7 +800,28 @@ class PromptBuilder:
                     "When you reference T.col, T must appear in this list "
                     "AND col must appear after T's colon. "
                     "If a column you need is not here, the column lives on "
-                    "a different table — find the right one before using it."
+                    "a different table — find the right one before using it. "
+                    # FIX-CS1: the cheatsheet used to be bare names. It is the
+                    # LAST block before the question, so it is what the model
+                    # reads immediately before writing SQL — and it silently
+                    # dropped the two facts the model most often gets wrong.
+                    #
+                    # Types: DATE - DATE yields INTEGER in PostgreSQL, not an
+                    # interval, so EXTRACT(DAY FROM (CURRENT_DATE - d)) fails
+                    # with "function pg_catalog.extract(unknown, integer) does
+                    # not exist". That was the whole of Q17 in the 20260812 run:
+                    # script_hold.hold_start_date is DATE while released_at is
+                    # TIMESTAMPTZ, and nothing in this block said so.
+                    #
+                    # Keys: without a PK marker the model cannot know what
+                    # identifies a row, which is what GROUP BY correctness turns
+                    # on (relationship_type_config's PK is `relationship_type`,
+                    # not `id`).
+                    "Each entry is `column TYPE` — [PK] marks the primary key "
+                    "and [ONE OF: ...] lists the only values a CHECK constraint "
+                    "permits. Respect the types: DATE - DATE gives INTEGER (use "
+                    "AGE() or cast to TIMESTAMP for an interval), while "
+                    "TIMESTAMPTZ - TIMESTAMPTZ gives an INTERVAL."
                 )
                 # Sort: entity tables first (most likely to be the SELECT
                 # target), then alphabetical for stability.
@@ -810,8 +831,18 @@ class PromptBuilder:
                     cols = getattr(inv, 'columns', None)
                     if not cols:
                         continue
-                    col_names = sorted(cols.keys())
-                    cheatsheet_lines.append(f"{tname}: {', '.join(col_names)}")
+                    rendered: list[str] = []
+                    for col_name in sorted(cols.keys()):
+                        col = cols[col_name]
+                        dtype = (getattr(col, 'data_type', '') or '').strip()
+                        part = f"{col_name} {dtype}".strip()
+                        if getattr(col, 'is_pk', False):
+                            part += " [PK]"
+                        allowed = getattr(col, 'allowed_values', None)
+                        if allowed:
+                            part += f" [ONE OF: {'|'.join(sorted(allowed))}]"
+                        rendered.append(part)
+                    cheatsheet_lines.append(f"{tname}: {', '.join(rendered)}")
                 sections.extend(cheatsheet_lines)
                 sections.append("")
 

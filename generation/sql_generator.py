@@ -42,7 +42,12 @@ import time
 from typing import Any
 
 from config.settings import settings
-from generation.llm import LLMProvider, LLMProviderError, get_provider
+from generation.llm import (
+    LLMProvider,
+    LLMProviderError,
+    LLMRateLimitError,
+    get_provider,
+)
 from models.schema import GeneratedSQL
 from utils.logging_config import get_logger
 
@@ -133,6 +138,15 @@ class SQLGenerator:
                 max_tokens  = settings.llm.max_tokens,
                 temperature = settings.llm.temperature,
                 stop        = stop,
+            )
+        except LLMRateLimitError as exc:
+            # FIX-P1: transport failure, not a modelling failure. The provider
+            # already exhausted its own bounded backoff. Tag the sentinel so the
+            # runner reports "provider_error" instead of scoring this as a wrong
+            # answer and spending SQL-correction retries on it.
+            return GeneratedSQL(
+                sql="", raw_output="", confidence=0.0,
+                explanation=f"provider_error: {exc}",
             )
         except LLMProviderError:
             # Provider already logged the specific failure (event=
@@ -240,17 +254,28 @@ class SQLGenerator:
             sql = _unescape_json_string(sql_field_match.group(1))
             if sql.upper().startswith('SELECT'):
                 # FIX-L1: event as kwarg — consistent with rest of codebase
+                # FIX-P2: this event previously claimed "JSON truncated by
+                # context limit". Measured on the 20260812 run, both firings had
+                # completion_tokens of 306 and 451 against LLM_MAX_TOKENS=4096,
+                # and the whole run's maximum was 1597 — nothing was truncated.
+                # The real cause is malformed JSON (unescaped newlines or quotes
+                # inside the sql field). The old wording pointed debugging at
+                # token limits that were never the problem.
                 logger.warning(
                     component="sql_generator",
-                    event="json_truncated_sql_extracted",
+                    event="json_sql_field_extracted",
                     sql_preview=sql[:100],
-                    note="JSON truncated by context limit — sql field extracted directly",
+                    completion_tokens=completion_tokens,
+                    max_tokens=settings.llm.max_tokens,
+                    note="JSON object not closeable — sql field extracted directly. "
+                         "Compare completion_tokens against max_tokens before "
+                         "assuming truncation; malformed escaping is the usual cause.",
                 )
                 return GeneratedSQL(
                     sql         = sql,
                     raw_output  = raw,
                     confidence  = 0.0,
-                    explanation = "SQL extracted from truncated JSON — review carefully",
+                    explanation = "SQL extracted from unparseable JSON — review carefully",
                     prompt_tokens = prompt_tokens,
                     completion_tokens = completion_tokens,
                 )

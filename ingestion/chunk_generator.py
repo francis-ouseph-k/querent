@@ -341,7 +341,19 @@ class ChunkGenerator:
             null_tag= "" if col.nullable else " [NOT NULL]"
             comment = f" — {col.comment}" if col.comment else ""
             jsonb_note = " [JSONB — see key schema below]" if col.has_jsonb else ""
-            lines.append(f"  {col_name}: {col.data_type}{pk_tag}{null_tag}{comment}{jsonb_note}")
+            # FIX-E1: emit the CHECK(col IN (...)) value set. ddl_parser already
+            # captures this into ColumnInfo.allowed_values, but no chunk ever
+            # rendered it, so the model could not satisfy the system prompt's
+            # "Use EXACT status codes from the schema" for any column whose
+            # values were not also hand-written into a COMMENT. 19 CHECK-enum
+            # columns in v10.10 have no such comment -- including
+            # answer_script.lifecycle_status, bundle.status, app_user.user_type
+            # and question_paper.source_type -- so every filter on them guessed.
+            allowed = getattr(col, "allowed_values", None)
+            enum_tag = f" [ONE OF: {', '.join(sorted(allowed))}]" if allowed else ""
+            lines.append(
+                f"  {col_name}: {col.data_type}{pk_tag}{null_tag}{enum_tag}{comment}{jsonb_note}"
+            )
 
         # JSONB column documentation (important — small models fail on JSONB without guidance)
         jsonb_cols = [c for c in inv.columns.values() if c.has_jsonb]
@@ -494,6 +506,12 @@ class ChunkGenerator:
             comment = inv.column_comments.get(col_name, "") or \
                       getattr(inv.columns.get(col_name), "comment", "")
             lines.append(f"\n{col_name}:")
+            # FIX-E1: the DDL-parsed CHECK value set is authoritative and always
+            # present when the constraint exists; the comment is optional prose
+            # that may be absent or stale. List the values first.
+            allowed = getattr(inv.columns.get(col_name), "allowed_values", None)
+            if allowed:
+                lines.append(f"  Legal values (CHECK-enforced): {', '.join(sorted(allowed))}")
             if comment:
                 lines.append(f"  {comment}")
 

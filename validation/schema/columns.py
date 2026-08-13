@@ -57,6 +57,26 @@ def _local_scope(select_node):
             alias = (this.alias or "").lower()
             if alias:
                 derived.add(alias)
+        elif getattr(this, "alias", ""):
+            # FIX-C1 (false positive, Q38 of batch run 20260812).
+            #
+            # Any FROM/JOIN target that is NOT a Table but DOES carry an alias
+            # is a derived, opaque scope: set-returning functions, LATERAL,
+            # VALUES, table functions. Previously these fell through to the
+            # find_all(exp.Table) fallback below, which finds no Table node, so
+            # the alias was never registered and every reference to it was
+            # reported as undeclared:
+            #
+            #   FROM unnest(rd.source_attempt_ids) AS sa(attempt_id)
+            #   JOIN evaluator_info ei ON ei.attempt_id = sa.attempt_id
+            #     → "Unknown table or alias 'sa' referenced in 'sa.attempt_id'"
+            #
+            # Verified with sqlglot 30.17: this parses as exp.Unnest with
+            # alias='sa'. Its output columns are not in the DDL, so the alias is
+            # registered as derived (opaque) — references through it are
+            # accepted without column-existence checking, which is the same
+            # treatment a derived table already receives.
+            derived.add(str(this.alias).lower())
         else:
             # Fallback: pull any direct Table children (unusual join shapes)
             for tbl in (this.find_all(exp.Table) if hasattr(this, "find_all") else []):

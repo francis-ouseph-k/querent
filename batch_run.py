@@ -263,6 +263,8 @@ def run_batch(dry_run: bool = False, start_from: int = 1, end_at: int | None = N
     # Counters
     success_count  = 0
     error_count    = 0
+    # FIX-P1: provider/transport failures counted apart from accuracy failures.
+    provider_error_count = 0
     written_count  = 0
     write_failures = 0
 
@@ -304,6 +306,13 @@ def run_batch(dry_run: bool = False, start_from: int = 1, end_at: int | None = N
                 "Generation ms":   0,
                 "Prompt tokens":   0,
                 "Completion tokens": 0,
+                # FIX-T1: the pipeline already executes generated SQL when
+                # dry_run=False, and the 20260812 run discarded the result. 64 of
+                # 173 "Successes" returned zero rows -- the only ground-truth
+                # signal available without a gold set. Recording it makes
+                # Success AND row_count == 0 a reviewable class instead of an
+                # invisible one.
+                "Row count":       0,
                 # PROVENANCE (FIX-F6) — which model/config produced this row
                 "Model":           model_id,
                 "LLM provider":    settings.llm.provider,
@@ -324,7 +333,16 @@ def run_batch(dry_run: bool = False, start_from: int = 1, end_at: int | None = N
             else:
                 t0 = time.perf_counter()
                 try:
-                    result     = runner.run(question, dry_run=dry_run)
+                    # FIX-G2: a batch run has nobody to ask for clarification.
+                    # Without this, an unresolved ambiguous term aborted the
+                    # question before retrieval and scored as an accuracy
+                    # failure (Q179 failed in 159 ms on a question whose enum
+                    # value the pipeline had already extracted).
+                    result     = runner.run(
+                        question,
+                        dry_run=dry_run,
+                        auto_resolve_ambiguity=True,
+                    )
                     elapsed_ms = round((time.perf_counter() - t0) * 1000)
                     result_row["Elapsed ms"] = elapsed_ms
                     result_row["Query Confidence"] = getattr(result, "confidence", 0.0)
@@ -334,6 +352,7 @@ def run_batch(dry_run: bool = False, start_from: int = 1, end_at: int | None = N
                     if hasattr(result, "retrieval_meta"):
                         result_row["Prompt tokens"] = result.retrieval_meta.get("llm_prompt_tokens", 0)
                         result_row["Completion tokens"] = result.retrieval_meta.get("llm_completion_tokens", 0)
+                    result_row["Row count"] = getattr(result, "row_count", 0)
 
                     if result.success:
                         result_row["Result"]          = "Success"
@@ -352,10 +371,18 @@ def run_batch(dry_run: bool = False, start_from: int = 1, end_at: int | None = N
                             retries=result.retries,
                         )
                     else:
-                        result_row["Result"]          = "Error"
-                        result_row["Error Message"]   = result.error or "Unknown pipeline error"
+                        # FIX-P1: transport failures are not accuracy failures.
+                        # Labelled separately so they can be excluded from the
+                        # accuracy denominator rather than silently depressing it.
+                        _err = result.error or "Unknown pipeline error"
+                        _is_provider = str(_err).startswith("provider_error:")
+                        result_row["Result"]          = "ProviderError" if _is_provider else "Error"
+                        result_row["Error Message"]   = _err
                         result_row["Generated query"] = result.sql or ""
-                        error_count += 1
+                        if _is_provider:
+                            provider_error_count += 1
+                        else:
+                            error_count += 1
                         print(f"  FAIL ({elapsed_ms}ms): {(result.error or '')[:120]}")
                         logger.warning(
                             component=COMPONENT,
@@ -391,11 +418,15 @@ def run_batch(dry_run: bool = False, start_from: int = 1, end_at: int | None = N
             wall_elapsed   = time.perf_counter() - batch_start
             avg_per_q      = wall_elapsed / idx
             est_remaining  = avg_per_q * (total - idx)
-            success_rate   = f"{success_count / idx * 100:.1f}%" if idx else "n/a"
+            # Accuracy is measured over questions the provider actually
+            # answered; a 429 says nothing about SQL quality.
+            scored         = idx - provider_error_count
+            success_rate   = f"{success_count / scored * 100:.1f}%" if scored else "n/a"
             print(
                 f"  Progress: {idx}/{total} | "
                 f"Success: {success_count} | "
                 f"Error: {error_count} | "
+                f"Provider: {provider_error_count} | "
                 f"Rate: {success_rate} | "
                 f"Elapsed: {_fmt_duration(wall_elapsed)} | "
                 f"ETA: {_fmt_duration(est_remaining)}"
@@ -421,8 +452,11 @@ def run_batch(dry_run: bool = False, start_from: int = 1, end_at: int | None = N
     print("\n" + "=" * 60)
     print(f"BATCH COMPLETE")
     print(f"  Total:      {total}")
-    print(f"  Success:    {success_count}  ({success_count/total*100:.1f}%)" if total else "")
+    scored_total = total - provider_error_count
+    print(f"  Success:    {success_count}  ({success_count/scored_total*100:.1f}% of {scored_total} scored)"
+          if scored_total else "")
     print(f"  Error:      {error_count}")
+    print(f"  Provider:   {provider_error_count}  (excluded from accuracy)")
     print(f"  Written:    {written_count}  (lost: {write_failures})")
     print(f"  Wall time:  {_fmt_duration(wall_total)}")
     print(f"  Avg/query:  {_fmt_duration(wall_total/total)}" if total else "")
@@ -441,6 +475,8 @@ def run_batch(dry_run: bool = False, start_from: int = 1, end_at: int | None = N
         total=total,
         success=success_count,
         error=error_count,
+        provider_errors=provider_error_count,
+        scored_total=total - provider_error_count,
         written=written_count,
         write_failures=write_failures,
         wall_seconds=round(wall_total),

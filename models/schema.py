@@ -191,6 +191,12 @@ class ParsedQuery:
     # Extracted suffix after the marker (e.g. "below 40%" or the chosen option).
     # prompt_builder injects this as a [CLARIFICATION] block when present.
     clarification_note: str | None        = None
+    # FIX-G1: the string sent to hybrid retrieval — clean_query plus canonical
+    # glossary terms appended (never substituted). The prompt still receives
+    # clean_query, so the LLM reads the question in the user's own words while
+    # BM25/dense retrieval also see the schema vocabulary. Defaults to
+    # clean_query when no glossary alias matched.
+    retrieval_query:    str               = ""
     # RapidFuzz course-code match result. None when no course code found or
     # rapidfuzz not installed. runner.py passes to prompt_builder for JOIN hint.
     course_code_match:  object            = None  # CourseCodeMatch | None
@@ -206,6 +212,10 @@ class ParsedQuery:
         # Default clean_query to normalised when not explicitly set
         if not self.clean_query:
             self.clean_query = self.normalised
+        # FIX-G1: retrieval falls back to the clean query when no expansion terms
+        # were found, so existing callers behave exactly as before.
+        if not self.retrieval_query:
+            self.retrieval_query = self.clean_query
 
 
 # ─────────────────────────────────────────────────────────────────────────────

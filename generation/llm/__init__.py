@@ -14,6 +14,7 @@ from generation.llm.base import (
     LLMConfigurationError,
     LLMProvider,
     LLMProviderError,
+    LLMRateLimitError,
     LLMResponse,
     ProviderInfo,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "LLMConfigurationError",
     "LLMProvider",
     "LLMProviderError",
+    "LLMRateLimitError",
     "LLMResponse",
     "ProviderInfo",
     "build_provider",

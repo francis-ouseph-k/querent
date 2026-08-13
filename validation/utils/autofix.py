@@ -361,3 +361,164 @@ def attempt_tautological_autofix(
         new_err=str(err)[:120] if err else None,
     )
     return None, None
+
+# ─────────────────────────────────────────────────────────────────────────────
+# attempt_near_miss_column_autofix()
+# ─────────────────────────────────────────────────────────────────────────────
+# FIX-N1 (batch run 20260812, Q69).
+#
+# attempt_pg_autofix() only fires on PostgreSQL's "Perhaps you meant..." hint,
+# which is produced at EXPLAIN time (Step 9). The schema validator runs earlier
+# (Step 4) and rejects hallucinated columns before EXPLAIN is ever reached, so
+# there is no planner hint to parse and no fixer runs at all:
+#
+#   Validation failed (schema): Hallucinated column(s):
+#     revaluation_extension_request.revalidation_request_id
+#
+# The real column is `revaluation_request_id` — Damerau-Levenshtein distance 2
+# from what the model wrote, and the ONLY column on that table within that
+# distance. An LLM retry was spent on a two-character transcription slip.
+#
+# Conditions are deliberately strict, because a wrong rename is worse than a
+# clean failure:
+#   * the bad name must not exist on the table (obviously),
+#   * exactly ONE candidate may lie within the distance threshold — ties are
+#     ambiguous and are refused,
+#   * the threshold scales with name length (short names are not fuzzy-matched:
+#     `id` vs `qp` is distance 2 but means something entirely different),
+#   * the rewrite is re-validated by the caller before it is trusted, exactly
+#     like the other two fixers in this module.
+
+_SCHEMA_HALLUCINATED_COL_RE = re.compile(
+    r"Hallucinated column\(s\):\s*([^.]+)\.(\w+)",
+    re.IGNORECASE,
+)
+
+
+def _damerau_levenshtein(a: str, b: str) -> int:
+    """Optimal string alignment distance (handles adjacent transpositions)."""
+    la, lb = len(a), len(b)
+    d = [[0] * (lb + 1) for _ in range(la + 1)]
+    for i in range(la + 1):
+        d[i][0] = i
+    for j in range(lb + 1):
+        d[0][j] = j
+    for i in range(1, la + 1):
+        for j in range(1, lb + 1):
+            cost = 0 if a[i - 1] == b[j - 1] else 1
+            d[i][j] = min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost)
+            if i > 1 and j > 1 and a[i - 1] == b[j - 2] and a[i - 2] == b[j - 1]:
+                d[i][j] = min(d[i][j], d[i - 2][j - 2] + cost)
+    return d[la][lb]
+
+
+def _max_distance_for(name: str) -> int:
+    """Edit budget by identifier length. Short names get no fuzzy matching."""
+    n = len(name)
+    if n < 6:
+        return 0
+    if n < 12:
+        return 1
+    return 2
+
+
+def attempt_near_miss_column_autofix(
+    sql: str,
+    error_msg: str,
+    schema_map: dict,
+) -> tuple[str | None, str | None]:
+    """
+    Repair a single near-miss column name reported by the schema validator.
+
+    Returns (fixed_sql, fix_description), or (None, None) when no unambiguous
+    single-candidate correction exists. The caller MUST re-validate the result.
+    """
+    m = _SCHEMA_HALLUCINATED_COL_RE.search(error_msg or "")
+    if not m:
+        return None, None
+
+    table = m.group(1).strip().strip('"').lower()
+    bad_col = m.group(2).strip().strip('"').lower()
+
+    inv = schema_map.get(table)
+    if inv is None or not hasattr(inv, "columns"):
+        return None, None
+
+    real_cols = {c.lower() for c in inv.columns}
+    if bad_col in real_cols:
+        return None, None
+
+    budget = _max_distance_for(bad_col)
+    if budget == 0:
+        return None, None
+
+    candidates = [c for c in real_cols if _damerau_levenshtein(bad_col, c) <= budget]
+    if len(candidates) != 1:
+        logger.info(
+            component="sql_validator",
+            event="near_miss_autofix_skipped",
+            table=table,
+            bad_column=bad_col,
+            candidate_count=len(candidates),
+            note="no unambiguous single candidate within edit budget",
+        )
+        return None, None
+
+    good_col = candidates[0]
+
+    try:
+        statements = sqlglot.parse(sql, dialect="postgres")
+    except Exception:
+        return None, None
+    if not statements:
+        return None, None
+
+    # Rename only columns that resolve to the offending table, so an identically
+    # named column on another table in the same query is left alone.
+    alias_to_table: dict[str, str] = {}
+    for stmt in statements:
+        if stmt is None:
+            continue
+        cte_names = {c.alias.lower() for c in stmt.find_all(exp.CTE) if c.alias}
+        for tbl in stmt.find_all(exp.Table):
+            name = (tbl.name or "").lower()
+            if not name or name in cte_names:
+                continue
+            alias = (tbl.alias or "").lower()
+            if alias:
+                alias_to_table[alias] = name
+            alias_to_table[name] = name
+
+    changed = 0
+    for stmt in statements:
+        if stmt is None:
+            continue
+        for col in stmt.find_all(exp.Column):
+            if (col.name or "").lower() != bad_col:
+                continue
+            qualifier = (col.table or "").lower()
+            if qualifier and alias_to_table.get(qualifier) != table:
+                continue
+            if not qualifier and len(alias_to_table) > 1:
+                continue  # unqualified and ambiguous — leave it for the LLM
+            col.set("this", exp.to_identifier(good_col))
+            changed += 1
+
+    if not changed:
+        return None, None
+
+    fixed_sql = ";\n".join(s.sql(dialect="postgres") for s in statements if s)
+    desc = (
+        f"renamed {table}.{bad_col} -> {table}.{good_col} "
+        f"(edit distance {_damerau_levenshtein(bad_col, good_col)}, "
+        f"{changed} reference(s))"
+    )
+    logger.info(
+        component="sql_validator",
+        event="near_miss_autofix_applied",
+        table=table,
+        bad_column=bad_col,
+        good_column=good_col,
+        references=changed,
+    )
+    return fixed_sql, desc

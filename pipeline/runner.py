@@ -361,12 +361,22 @@ class PipelineRunner:
         nl_query:     str,
         dry_run:      bool | None = None,   # LOW: corrected type hint
         user_context: dict | None = None,
+        auto_resolve_ambiguity: bool = False,
     ) -> QueryResult:
         """
         Execute the full NL→SQL pipeline for a user query.
 
         dry_run=True  — validate SQL without executing against the database
         dry_run=False — validate + execute (read-only replica)
+
+        auto_resolve_ambiguity=False (default) — an unresolved ambiguous term
+            returns early with clarifications for the CLI to present. This is
+            the correct interactive behaviour and is unchanged.
+        auto_resolve_ambiguity=True — non-interactive callers (batch_run.py)
+            adopt the first concrete option instead of aborting. There is no
+            user to ask in a batch run, so the previous behaviour turned a
+            clarification request into a scored accuracy failure (Q179 failed
+            in 159 ms with retrieval never executed).
         """
         dry_run      = settings.dry_run_default if dry_run is None else dry_run
         user_context = user_context or {}
@@ -384,6 +394,7 @@ class PipelineRunner:
                 request_id   = request_id,
                 t_start      = t_start,
                 timings      = timings,
+                auto_resolve_ambiguity = auto_resolve_ambiguity,
             )
         finally:
             structlog.contextvars.unbind_contextvars("request_id")
@@ -396,6 +407,7 @@ class PipelineRunner:
         request_id:   str,
         t_start:      float,
         timings:      dict,
+        auto_resolve_ambiguity: bool = False,
     ) -> QueryResult:
         """Inner pipeline body — always called from run() inside a try/finally."""
         logger.info(component="pipeline", event="request_start", query=nl_query[:100], dry_run=dry_run)
@@ -404,6 +416,28 @@ class PipelineRunner:
         t0     = time.time()
         parsed = self.query_understanding.process(nl_query)
         timings["understanding_ms"] = round((time.time() - t0) * 1000)
+
+        if parsed.is_ambiguous and auto_resolve_ambiguity:
+            # Non-interactive fallback. Options whose text starts with the
+            # INCOMPLETE_PREFIX are not interpretations — they are "the schema
+            # cannot answer this" markers — so prefer a concrete option and only
+            # fall back to the first entry if every option is incomplete.
+            concrete = [
+                c for c in parsed.clarifications
+                if not str(c).strip().upper().startswith("INCOMPLETE")
+            ]
+            chosen = (concrete or parsed.clarifications or [""])[0]
+            if chosen:
+                parsed.clarification_note = str(chosen)
+                parsed.is_ambiguous       = False
+                logger.info(
+                    component="pipeline",
+                    event="ambiguity_auto_resolved",
+                    chosen=str(chosen)[:120],
+                    option_count=len(parsed.clarifications),
+                    note="non-interactive run; adopted first concrete option "
+                         "instead of failing the query",
+                )
 
         if parsed.is_ambiguous:
             return QueryResult(
@@ -433,11 +467,16 @@ class PipelineRunner:
         # ── Step 2: Hybrid Retrieval ──────────────────────────────────────
         t0 = time.time()
         schema_chunks, retrieval_meta = self.orchestrator.retrieve(
-            query_text    = query_for_pipeline,   # Issue 5: clean, marker-free
+            # FIX-G1: clean_query PLUS canonical glossary terms. Schema chunks
+            # are indexed on schema vocabulary, so the expansion helps; the
+            # user's own wording is preserved rather than overwritten.
+            query_text    = parsed.retrieval_query,
             entity_tables = parsed.entities,
             intent        = parsed.intent.value,
         )
         few_shots = self.orchestrator.get_few_shot_examples(
+            # Few-shot chunks are embedded on NL question text, so they match
+            # best against the question as asked — no expansion here.
             query_text = query_for_pipeline,      # Issue 5: clean, marker-free
             top_k      = 3,
         )
@@ -493,9 +532,20 @@ class PipelineRunner:
             retrieval_meta["llm_completion_tokens"] = generated.completion_tokens
 
         if not generated.sql:
+            # FIX-P1: separate "the API did not answer" from "the model answered
+            # wrongly". Both previously surfaced as the same empty-SQL failure,
+            # which put four transport errors into the accuracy denominator of
+            # the 20260812 run.
+            if str(generated.explanation or "").startswith("provider_error:"):
+                error_msg = (
+                    f"provider_error: LLM provider did not return a completion "
+                    f"after bounded retries ({generated.explanation[len('provider_error:'):].strip()[:200]})"
+                )
+            else:
+                error_msg = "LLM produced empty SQL output."
             return self._failure_result(
                 nl_query      = nl_query,
-                error         = "LLM produced empty SQL output.",
+                error         = error_msg,
                 parsed_intent = parsed.intent.value,
                 timings       = timings,
                 retrieval_meta= retrieval_meta,
@@ -514,7 +564,6 @@ class PipelineRunner:
         def get_expanded_context(attempt_num: int, current_tables: list[str], error_message: str):
             base_budget = settings.retrieval.context_budget_tokens
             max_budget = settings.retrieval.max_context_budget_tokens
-            expanded_budget = min(int(base_budget * (1.3 ** attempt_num)), max_budget)
 
             # Fix 2: extract table names from error message so the retrieval
             # scope includes tables the LLM needs (e.g. the table where a
@@ -522,6 +571,20 @@ class PipelineRunner:
             error_tables = _extract_tables_from_error(
                 error_message, set(t.lower() for t in self.tables.keys())
             )
+
+            # FIX-R9: only grow the budget when there is a NAMED table to pull
+            # in. Budget growth was previously unconditional (1.3^n), including
+            # on errors that reference no table at all (observed:
+            # expanding_retry_context error_tables=[]). Extra context the model
+            # did not lack produced longer, more complex SQL and a larger error
+            # surface — one measured request went 11.5k→14.5k prompt tokens and
+            # 770→1365 completion tokens across four attempts while failing
+            # throughout. Semantic/aggregation errors are shape errors; they are
+            # fixed by the correction instruction, not by more schema.
+            if error_tables:
+                expanded_budget = min(int(base_budget * (1.3 ** attempt_num)), max_budget)
+            else:
+                expanded_budget = base_budget
 
             all_tables = list(set(
                 (parsed.entities or []) + current_tables + error_tables

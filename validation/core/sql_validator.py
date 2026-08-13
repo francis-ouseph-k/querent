@@ -22,6 +22,7 @@ from ..ast.safety import SafetyValidator
 from ..security.validation import SecurityTransformer
 from ..execution.cost import CostValidator
 from ..semantic.semantic_checks import SemanticValidator, HardcodedLiteralValidator
+from ..utils.autofix import attempt_near_miss_column_autofix
 
 logger = get_logger(__name__)
 
@@ -228,6 +229,36 @@ class RetryValidator:
 
         # Loop to correct/repair failed SQL candidate strings based on validation step failures.
         # This acts as a feedback loop between the validator (providing error diagnostics) and the generator (fixing errors).
+        # FIX-N1: a near-miss column name is a transcription slip, not a
+        # reasoning failure. Repair it deterministically and re-validate before
+        # spending an LLM retry on a two-character edit. The rewrite is only
+        # kept if it actually validates; otherwise the original error stands and
+        # the normal retry loop proceeds untouched.
+        if not result.passed and result.step == "schema":
+            fixed_sql, fix_desc = attempt_near_miss_column_autofix(
+                sql, result.message, self.validator.schema_map
+            )
+            if fixed_sql:
+                candidate = self.validator.validate(
+                    fixed_sql, tables_used, user_context, original_query=original_query
+                )
+                if candidate.passed:
+                    logger.info(
+                        component="retry_validator",
+                        event="near_miss_autofix_accepted",
+                        fix=fix_desc,
+                    )
+                    sql    = fixed_sql
+                    result = candidate
+                    last_error_sig = None
+                else:
+                    logger.info(
+                        component="retry_validator",
+                        event="near_miss_autofix_rejected",
+                        fix=fix_desc,
+                        new_error=candidate.message[:120],
+                    )
+
         while not result.passed and retries < max_retries:
             retries += 1
             logger.info(

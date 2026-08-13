@@ -263,6 +263,19 @@ class RetrievalOrchestrator:
         meta["total_ms"]           = round((time.time() - t_start) * 1000)
         meta["effective_budget"]   = budget_tokens   # M3: log actual budget used
 
+        # FIX-O3: close the instrumentation gap. On the 20260812 run the timed
+        # sub-stages summed to 19.3% of retrieve_complete.total_ms — dense 18.7%,
+        # BM25 0.1%, graph 0.0%, RRF 0.0%, budget 0.5% — leaving ~9.1 s per query
+        # (80.7%) unattributed and therefore un-actionable. Emitting the residual
+        # explicitly means the next profiling pass starts from a number rather
+        # than a guess. Most of it is expected to be query embedding: bge-small
+        # runs in-process and EMBED_DEVICE defaults to cpu.
+        _timed = sum(
+            v for k, v in meta.items()
+            if k.endswith("_ms") and k not in ("total_ms", "unattributed_ms")
+        )
+        meta["unattributed_ms"] = max(0, meta["total_ms"] - _timed)
+
         # Debug: store final prompt-ready chunks with their RRF scores
         if settings.debug_mode:
             meta["_debug_final_chunks"] = [

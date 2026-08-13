@@ -50,7 +50,7 @@ class AggregationValidator(BaseValidationStep):
             if select_node and select_node.expressions:
                 expressions = select_node.expressions
                 has_agg = any(
-                    expr.find(exp.AggFunc) for expr in expressions
+                    _contains_aggregate_in_scope(expr) for expr in expressions
                 )
                 if has_agg:
                     # Check if there are non-aggregate columns
@@ -58,7 +58,7 @@ class AggregationValidator(BaseValidationStep):
                     for expr in expressions:
                         # Unwrap aliases: SELECT COUNT(*) AS c is an Alias wrapping AggFunc
                         inner = expr.this if isinstance(expr, exp.Alias) else expr
-                        if inner.find(exp.AggFunc):
+                        if _contains_aggregate_in_scope(inner):
                             continue  # this expression is aggregate — skip
                         # exp.Column or exp.Alias wrapping a Column → non-aggregate
                         if isinstance(inner, exp.Column) or (
@@ -67,7 +67,8 @@ class AggregationValidator(BaseValidationStep):
                             has_non_agg = True
                             break
                         # Catch expressions that contain a Column but not inside an AggFunc
-                        if inner.find(exp.Column) and not inner.find(exp.AggFunc):
+                        if (_contains_column_in_scope(inner)
+                                and not _contains_aggregate_in_scope(inner)):
                             has_non_agg = True
                             break
 
@@ -85,34 +86,176 @@ class AggregationValidator(BaseValidationStep):
                         
                     # Check 3: Enforce grouping by entity IDs (per-table alias)
                     if group_by:
-                        grouped_cols = list(group_by.find_all(exp.Column))
-                        grouped_by_table = {}
-                        
-                        # 1. Group all columns found in the GROUP BY clause by their table alias.
-                        for c in grouped_cols:
-                            if c.name:
-                                tbl = (c.table or "").lower()
-                                if tbl not in grouped_by_table:
-                                    grouped_by_table[tbl] = []
-                                grouped_by_table[tbl].append(c.name.lower())
-                                
-                        # 2. Check each table independently.
-                        for tbl, cols in grouped_by_table.items():
-                            has_id = any(c in ("id", "board_id", "script_id", "course_id", "exam_id", "qp_id", "department_id", "urn", "email", "code") for c in cols)
-                            has_desc = any(c in ("name", "title", "display_name", "description") for c in cols)
-                            
-                            if has_desc and not has_id:
-                                return ValidationResult(
-                                    passed=False, step="aggregation",
-                                    message=(
-                                        f"GROUP BY uses a descriptive column from table/alias '{tbl}' "
-                                        f"without including a primary key or unique identifier (like id, urn, code) for that table. "
-                                        f"Names may not be unique. Always include the entity's unique ID column in the GROUP BY clause."
-                                    ),
-                                    sql=sql,
-                                )
+                        res = _check_group_by_identity(group_by, ctx, sql)
+                        if res:
+                            return res
 
         return ValidationResult(passed=True, step="aggregation", sql=sql)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scope-bounded AST walkers
+# ─────────────────────────────────────────────────────────────────────────────
+# FIX-A1 (false positive, Q155 of batch run 20260812).
+#
+# `expr.find(exp.AggFunc)` walks the WHOLE subtree, including any nested
+# subquery. A scalar subquery in the SELECT list therefore made the OUTER
+# projection look aggregate:
+#
+#     SELECT unit_type, has_children, unit_count,
+#            unit_count * 100.0 / NULLIF((SELECT SUM(unit_count)
+#                                         FROM counted_units), 0) AS pct
+#     FROM counted_units
+#     ORDER BY unit_type, has_children DESC
+#
+# The SUM belongs to the inner SELECT and has nothing to do with the outer
+# one, but Check 2 saw "aggregate + non-aggregate + no GROUP BY" and failed a
+# query whose GROUP BY lived (correctly) inside the CTE. Aggregate and column
+# detection must stop at subquery boundaries, exactly as SQL scoping does.
+
+_SCOPE_BOUNDARIES = (exp.Subquery, exp.Select)
+
+
+def _walk_in_scope(node: exp.Expression):
+    """Yield nodes under `node`, not descending into a nested SELECT/Subquery."""
+    if node is None:
+        return
+    yield node
+    for child in node.args.values():
+        children = child if isinstance(child, list) else [child]
+        for c in children:
+            if not isinstance(c, exp.Expression):
+                continue
+            if isinstance(c, _SCOPE_BOUNDARIES):
+                continue  # separate scope — not this SELECT's business
+            yield from _walk_in_scope(c)
+
+
+def _contains_aggregate_in_scope(node: exp.Expression) -> bool:
+    """True if an aggregate call appears in THIS scope (not a nested SELECT)."""
+    return any(isinstance(n, exp.AggFunc) for n in _walk_in_scope(node))
+
+
+def _contains_column_in_scope(node: exp.Expression) -> bool:
+    """True if a column reference appears in THIS scope (not a nested SELECT)."""
+    return any(isinstance(n, exp.Column) for n in _walk_in_scope(node))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GROUP BY identity check — DDL-derived
+# ─────────────────────────────────────────────────────────────────────────────
+# FIX-A2 (false positives, Q20 / Q123 / Q175 of batch run 20260812).
+#
+# The previous implementation asked "does this alias's GROUP BY column list
+# contain one of these ten hardcoded names?" That is not a schema question, it
+# is a naming-convention guess, and it was wrong three ways:
+#
+#   Q123  GROUP BY rtc.relationship_type, rtc.display_name
+#         `relationship_type` IS the PRIMARY KEY of relationship_type_config
+#         (DDL v10.10 L832) — it just isn't spelled "id".
+#
+#   Q175  GROUP BY uar.user_id, au.display_name, uar.auxiliary_role
+#         Valid PostgreSQL: au.display_name is itself grouped. The check
+#         evaluated alias `au` in isolation, ignoring that the descriptive
+#         column appears in the GROUP BY list.
+#
+#   Q20   GROUP BY b.id, au.name  — same shape, and this one is the expensive
+#         case: attempt 1 was CORRECT (all LEFT JOINs, board id grouped). The
+#         rejection drove four retries, and the final attempt had dropped
+#         au.name AND converted every LEFT JOIN to INNER JOIN — a wrong query
+#         produced by "fixing" a right one.
+#
+# Rules now applied, in order:
+#   1. A descriptive column that is itself in the GROUP BY is legal. This is
+#      what PostgreSQL enforces, and it is the end of the matter for
+#      executability. The remaining concern is purely "could two rows share a
+#      name and be wrongly merged", so this is now ADVISORY.
+#   2. Identity is resolved from the DDL: the table's real PRIMARY KEY, or any
+#      single-column UNIQUE index. No name guessing.
+#   3. If the table cannot be resolved (derived table, CTE, unknown alias) the
+#      check does not fire. Unknown is not the same as wrong.
+
+_DESCRIPTIVE_COLUMNS = frozenset({"name", "title", "display_name", "description"})
+
+
+def _identity_columns(inv) -> set[str]:
+    """PK columns plus single-column UNIQUE index columns, from the DDL."""
+    identity: set[str] = set()
+    cols = getattr(inv, "columns", None) or {}
+    for col_name, col in cols.items():
+        if getattr(col, "is_pk", False):
+            identity.add(col_name.lower())
+    for idx in (getattr(inv, "indexes", None) or []):
+        idx_cols = getattr(idx, "columns", None) or []
+        if getattr(idx, "is_unique", False) and len(idx_cols) == 1:
+            identity.add(str(idx_cols[0]).lower())
+    return identity
+
+
+def _check_group_by_identity(group_by, ctx: ValidationContext, sql: str):
+    """
+    Advisory-by-default identity check on GROUP BY (see FIX-A2 above).
+
+    Returns a failing ValidationResult only when a descriptive column is
+    grouped for a table whose real identity column is absent AND the
+    descriptive column is not itself in the GROUP BY — which, given rule 1,
+    cannot currently happen. Kept as a function so the rule has one home and
+    can be re-armed deliberately rather than by accident.
+    """
+    grouped_by_table: dict[str, list[str]] = {}
+    for c in group_by.find_all(exp.Column):
+        if not c.name:
+            continue
+        tbl = (c.table or "").lower()
+        grouped_by_table.setdefault(tbl, []).append(c.name.lower())
+
+    grouped_everywhere = {n for names in grouped_by_table.values() for n in names}
+
+    for tbl, cols in grouped_by_table.items():
+        desc = [c for c in cols if c in _DESCRIPTIVE_COLUMNS]
+        if not desc:
+            continue
+
+        # Rule 3: resolve alias → real table via the DDL inventory. Bail out
+        # quietly on derived tables, CTEs and anything unresolvable.
+        real_table = (ctx.alias_map or {}).get(tbl, tbl)
+        if tbl in (ctx.cte_names or set()) or real_table in (ctx.cte_names or set()):
+            continue
+        inv = (ctx.schema_map or {}).get(real_table)
+        if inv is None:
+            continue
+
+        identity = _identity_columns(inv)
+        if not identity:
+            continue
+        if identity & set(cols):
+            continue  # Rule 2: a real PK/UNIQUE column is grouped
+
+        # Rule 1: the descriptive column is grouped, so the SQL is legal and
+        # executable. Log the merge risk; do not fail the query.
+        if all(d in grouped_everywhere for d in desc):
+            logger.info(
+                component="sql_validator",
+                event="aggregation_group_by_identity_advisory",
+                table=real_table,
+                alias=tbl,
+                descriptive=desc,
+                identity=sorted(identity),
+                note="descriptive column is itself in GROUP BY — legal SQL; "
+                     "flagged only as a potential name-collision merge risk",
+            )
+            continue
+
+        return ValidationResult(
+            passed=False, step="aggregation",
+            message=(
+                f"GROUP BY uses a descriptive column from table/alias '{tbl}' "
+                f"({', '.join(desc)}) without including an identifying column "
+                f"for {real_table}. Add one of: {', '.join(sorted(identity))}."
+            ),
+            sql=sql,
+        )
+    return None
 
 
 _AGGREGATE_FUNC_NAMES = frozenset({

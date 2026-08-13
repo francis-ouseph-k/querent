@@ -7,7 +7,8 @@ system_prompt: |
       faculty_cache_id (BIGINT, NOT employee_id)
       student_id (BIGINT, NOT student_erp_id)
       exam_id (BIGINT, NOT exam_erp_id)
-    VARCHAR ERP identifiers (employee_erp_id, student_erp_id, exam_erp_id)
+    VARCHAR ERP identifiers (employee_erp_id, student_erp_id, exam_erp_id
+    on exam_cache, schedule_erp_id on exam_schedule_cache)
     are data columns for display/filtering only — NEVER use them as join keys.
     Specific FK column names per table:
       board_coordinator: faculty_cache_id (NOT employee_id, NOT employee_cache_id)
@@ -100,7 +101,7 @@ blocks:
         - Evaluator Roles: Primary evaluators, reviewers, and third evaluators map to attempt_type values ('PRIMARY', 'REVIEW', 'THIRD') in script_assignment, evaluation_attempt, or evaluator_pool.
         - Join Bridge: faculty_cache joins to app_user via app_user.faculty_cache_id = faculty_cache.id. Never join on employee_erp_id internally.
       - student_cache: its PK is id (BIGINT). The ERP identifier is student_erp_id (VARCHAR). Use sc.student_erp_id when filtering by ERP string.
-      - exam_schedule_cache: its PK is id (BIGINT). The ERP identifier is exam_erp_id (VARCHAR). Use esc.exam_erp_id when filtering by ERP string.
+      - exam_schedule_cache: its PK is id (BIGINT). Its ERP identifier is schedule_erp_id (VARCHAR) — RENAMED from exam_erp_id in DDL v10.5. exam_schedule_cache has NO exam_erp_id column. Use esc.schedule_erp_id when filtering by ERP string. The master exam's exam_erp_id lives on exam_cache; reach it via exam_schedule_cache.exam_cache_id -> exam_cache.id.
       - question_paper: its PK is id (BIGINT). The ERP identifier is qp_erp_id (VARCHAR).
       - app_user has display_name (NOT name). faculty_cache has name (NOT display_name). student_cache has name (NOT display_name).
       - board has NO code column, NO name column, NO academic_unit_id, NO synced_at, NO academic_year. Join to academic_unit via course_id. synced_at is on exam_schedule_cache. Board PK is id, NOT board_id.
@@ -154,7 +155,7 @@ blocks:
         - academic_unit_relationship: for PROGRAM_COURSE, from_unit_id = program, to_unit_id = course. To find programs with no courses, check from_unit_id = program_id (NOT to_unit_id).
         - script_assignment.script_id references answer_script.id (NOT board.id).
       - offline DEK wrapping: Never check wrapped_key IS NULL to detect re-wrapped DEKs; wrapped_key is NOT NULL. Instead, check if an audit_log entry exists: EXISTS (SELECT 1 FROM audit_log al WHERE al.entity_type = 'data_encryption_key' AND al.entity_id = dek.id AND al.action = 'DEK_REWRAP').
-      - exam_id is a BIGINT (e.g. 123). But exam_erp_id on exam_schedule_cache is a VARCHAR string (e.g. 'EXAM-2025-END'). NEVER cast exam_erp_id to numeric/integer.
+      - exam_id is a BIGINT (e.g. 123). But schedule_erp_id on exam_schedule_cache and exam_erp_id on exam_cache are VARCHAR strings (e.g. 'EX2025_CS101_END', 'EXAM-2025-ENDSEM-CSE'). NEVER cast either to numeric/integer.
       - For moderation rules, GROUP BY mr.rule_type (on moderation_rule). Never cast relationship_type to BIGINT.
       - For "exported to payroll" honorarium summaries, use approval_status = 'EXPORTED' (NOT 'APPROVED'). 'EXPORTED' means already pushed; 'APPROVED' means approved but not yet exported.
       - For "custom honorarium weight" on board coordinators, check bc.honorarium_weight <> 1.0 (not a join to rate card).

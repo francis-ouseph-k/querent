@@ -44,6 +44,20 @@ class LLMProviderError(RuntimeError):
     """Unrecoverable inference failure. Caller returns an empty GeneratedSQL."""
 
 
+class LLMRateLimitError(LLMProviderError):
+    """
+    Provider refused the request for capacity reasons (HTTP 429 / 5xx) after the
+    provider's own bounded retries were exhausted.
+
+    Kept distinct from LLMProviderError so callers can separate "the model got
+    the SQL wrong" from "the API did not answer". In the 20260812 benchmark this
+    conflation cost two scored failures (Q51, Q102 — the latter being
+    `bundle.expected_count > 50`, a one-table query) and silently consumed retry
+    budget on two more, because a 429 surfaced to the runner as the same empty
+    GeneratedSQL an accuracy failure produces.
+    """
+
+
 class LLMConfigurationError(RuntimeError):
     """Provider selected in .env but not usable (missing key / missing package)."""
 

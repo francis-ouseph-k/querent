@@ -75,11 +75,39 @@ def _predicate_has_literal_counterpart(col: "exp.Column") -> bool:
 #   * semantic_unprompted_filter / semantic_noun_missing — same failure mode.
 # Demoted to advisory: they still log (useful signal for corpus review) but do NOT
 # fail the query. To restore any as fatal, remove its event name from this set.
+#
+# Run-4 evidence (batch run 20260812, Mistral small, 191 questions). Four more
+# checks in this family rejected correct SQL for the same reason — they compare
+# NL surface keywords against SQL surface tokens:
+#
+#   * semantic_wrong_entity_count   — Q53: "the number of pages recorded in scan
+#     metadata" vs "the number of script_page rows" is a COMPARISON of two
+#     counts. The check read "How many pages" and demanded COUNT(answer_script);
+#     the query counted script_page rows on purpose.
+#   * semantic_per_by_missing_group — Q153: "average records held per purge job".
+#     purge_job_log holds exactly one row per job, so AVG(records_held) with no
+#     GROUP BY is the correct reading. "per X" named the metric, not a grouping.
+#   * semantic_avg_ordinal          — Q157: "average display order value" asks
+#     literally for AVG(display_order). The ordinal-column rule assumed the user
+#     must have meant an average count.
+#   * semantic_per_entity_inner_join — Q20: fired 18 times across the run. It is
+#     a real modelling concern, but it cannot distinguish "per X, include zeroes"
+#     from "per X, among those that have any", and the retry it forces is the
+#     step that converted Q20's correct LEFT JOIN query into an INNER JOIN one.
+#
+# All four still log, so the signal remains available for corpus review; none
+# fails the query. Rule of thumb established by this run: a check derived from
+# the DDL or the AST may hard-fail; a check that compares question words to SQL
+# words is advisory.
 _ADVISORY_SEMANTIC_EVENTS: set[str] = {
     "semantic_noun_missing",
     "semantic_unprompted_filter",
     "semantic_unprompted_enum_filter",
     "semantic_missing_scope_filter",
+    "semantic_wrong_entity_count",
+    "semantic_per_by_missing_group",
+    "semantic_avg_ordinal",
+    "semantic_per_entity_inner_join",
 }
 
 
@@ -380,15 +408,15 @@ class SemanticValidator(BaseValidationStep):
                 event="semantic_per_by_missing_group",
                 query_preview=original_query[:60],
             )
-            return ValidationResult(
-                passed=False, step="semantic",
-                message=(
-                    "The question asks for an aggregation 'per' or 'by' something, "
-                    "but the SQL lacks a GROUP BY clause. You MUST include a GROUP BY "
-                    "clause when grouping data."
-                ),
-                sql=sql,
+            _res = _advisory_or_fail(
+                "semantic_per_by_missing_group",
+                "The question asks for an aggregation 'per' or 'by' something, "
+                "but the SQL lacks a GROUP BY clause. You MUST include a GROUP BY "
+                "clause when grouping data.",
+                sql,
             )
+            if _res:
+                return _res
 
         # ── Check 8: "average duration/time" uses EXTRACT(EPOCH) ─────────────
         # FIX-R4: logic lives in avg_duration_epoch_error() at module top so
@@ -454,9 +482,9 @@ class SemanticValidator(BaseValidationStep):
                                 column=col.name,
                                 query_preview=original_query[:60],
                             )
-                            return ValidationResult(
-                                passed=False, step="semantic",
-                                message=(
+                            _res = _advisory_or_fail(
+                                "semantic_avg_ordinal",
+                                (
                                     f"SQL computes AVG({col.name}), but '{col.name}' is "
                                     f"an ordinal/sequence column (not a measure). "
                                     f"To compute an average count, use a subquery: "
@@ -465,6 +493,8 @@ class SemanticValidator(BaseValidationStep):
                                 ),
                                 sql=sql,
                             )
+                            if _res:
+                                return _res
         except Exception:
             pass
 
@@ -691,11 +721,9 @@ class SemanticValidator(BaseValidationStep):
                 component="sql_validator",
                 event="semantic_per_entity_inner_join"
             )
-            return ValidationResult(
-                passed=False, step="semantic",
-                message=_per_err,
-                sql=sql,
-            )
+            _res = _advisory_or_fail("semantic_per_entity_inner_join", _per_err, sql)
+            if _res:
+                return _res
 
         # ── Check 17: Subject Resolution ───────────────
         # 2026-06-25: Expanded to match 'count of', 'total', 'number of',
@@ -739,15 +767,17 @@ class SemanticValidator(BaseValidationStep):
                                             component="sql_validator",
                                             event="semantic_wrong_entity_count"
                                         )
-                                        return ValidationResult(
-                                            passed=False, step="semantic",
-                                            message=(
+                                        _res = _advisory_or_fail(
+                                            "semantic_wrong_entity_count",
+                                            (
                                                 f"The question asks 'How many {noun}...', implying you should count the '{target_tbl}' table. "
                                                 f"However, your query counts a column from '{resolved_tbl}'. "
                                                 f"Make sure you are counting the correct entity (e.g. COUNT({target_tbl}.id))."
                                             ),
-                                            sql=sql,
+                                            sql,
                                         )
+                                        if _res:
+                                            return _res
                 except Exception:
                     pass
 
