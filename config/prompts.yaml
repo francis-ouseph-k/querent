@@ -71,6 +71,15 @@ blocks:
 
   aggregation: |
     === AGGREGATION AND PERCENTAGE RULES ===
+    - STRING_AGG with DISTINCT: PostgreSQL requires the ORDER BY expression to be
+      IDENTICAL to the DISTINCT argument. Write
+      STRING_AGG(DISTINCT b.id::TEXT, ', ' ORDER BY b.id::TEXT) — the same cast on
+      both sides. STRING_AGG(DISTINCT b.id::TEXT, ', ' ORDER BY b.id) is rejected
+      with "in an aggregate with DISTINCT, ORDER BY expressions must appear in
+      argument list". Do NOT try to fix that error by removing the delimiter:
+      STRING_AGG requires two arguments, so STRING_AGG(DISTINCT x ORDER BY x) fails
+      with "function string_agg(text) does not exist". If you do not need ordering,
+      drop the ORDER BY entirely. The same rule applies to ARRAY_AGG.
     - Include LIMIT unless the query uses aggregation (COUNT, SUM, AVG, etc.) with GROUP BY. When mixing aggregates and non-aggregate columns, always add GROUP BY for every non-aggregated column.
     - Always calculate percentages using the `FILTER` clause: `COUNT(*) FILTER (WHERE <condition>) * 100.0 / NULLIF(COUNT(*), 0)`. The filtered subset MUST be in the numerator. Never put the numerator filter condition in the main `WHERE` clause (which would filter the denominator too).
     - When the question asks for "average X per Y" or "average count per X", you MUST use a subquery: SELECT AVG(cnt) FROM (SELECT COUNT(*) AS cnt ... GROUP BY y_col) sub. NEVER nest aggregate functions like AVG(COUNT(*)). NEVER use AVG() on id columns (e.g., AVG(student_id)) — that targets the wrong column.
@@ -90,6 +99,29 @@ blocks:
     - When calculating duration or age, ensure you subtract the earlier timestamp from the later timestamp (e.g. extension.created_at - request.created_at, since the extension is created after the request).
     - If the question asks for "average time" or "average duration", you MUST use EXTRACT(EPOCH FROM ...) / 86400. NEVER use AVG(timestamp - timestamp). Always wrap the epoch extraction in AVG().
     - For "time between X and Y" on the same entity (e.g. answer key creation to approval), use columns from the SAME table: answer_key.approved_at - answer_key.created_at. Do NOT join to another table to get a creation timestamp.
+    - A rolling window and a calendar window are DIFFERENT. "Last N days" / "last N
+      hours" / "in the past N weeks" is a ROLLING window ending now, and must be
+      written as col >= CURRENT_DATE - INTERVAL 'N days' (or CURRENT_TIMESTAMP for
+      hours) with no DATE_TRUNC. Only a named calendar period — "last week", "last
+      month", "this quarter" — uses DATE_TRUNC. Writing "last 7 days" as
+      DATE_TRUNC('week', ...) returns the previous calendar week, which is a
+      different set of rows on every day except one.
+    - "This semester" is NOT the calendar year and NOT the calendar quarter. The
+      schema stores no semester boundary column, so do not invent one: filter on
+      the academic_year column of the table being queried, or join to a table that
+      carries academic_year, and say nothing about semester in the predicate. If
+      neither is reachable, use the widest defensible window and project the date
+      column so the reader can see what was included.
+    - NEVER write an academic year as a literal string (e.g. '2025-2026'). A
+      hardcoded year silently returns zero rows once the year rolls over. When the
+      question says "this academic year" or "the current academic year", derive it
+      from the data: join on the academic_year column, or correlate with
+      (SELECT MAX(academic_year) FROM exam_schedule_cache). Use a literal year only
+      when the question itself names one.
+    - Do not compose an academic year arithmetically from CURRENT_DATE (e.g.
+      TO_CHAR(CURRENT_DATE,'YYYY') || '-' || TO_CHAR(CURRENT_DATE + INTERVAL '1
+      year','YYYY')). That expression changes answer on 1 January, not at the start
+      of the academic session, so it is wrong for part of every year.
     - "This year" means the current calendar year: created_at >= DATE_TRUNC('year', CURRENT_DATE) AND created_at < DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '1 year'. "Last month" means the previous calendar month: col >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') AND col < DATE_TRUNC('month', CURRENT_DATE). "This quarter" requires dynamic quarter detection: EXTRACT(QUARTER FROM col) = EXTRACT(QUARTER FROM CURRENT_DATE) AND EXTRACT(YEAR FROM col) = EXTRACT(YEAR FROM CURRENT_DATE).
 
   logic: |

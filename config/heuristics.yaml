@@ -1067,3 +1067,19 @@ trigger_words:
     # These are NOT temporal keywords. They caused ~200 tokens of temporal
     # noise to be injected into JSONB queries. JSONB queries get their
     # correct rules via trigger_tables.jsonb independently.
+
+# FIX-L6A. Enum-value words that must NOT be read as status literals when
+# they appear in adjective position before a domain noun. "Show the complete
+# question hierarchy" means 'entire', not lifecycle state COMPLETE; treating
+# it as a constraint drove a regeneration that invented a bogus
+# `title ILIKE '%COMPLETE%'` filter. An uppercase mention ("reaching
+# COMPLETE") or an explicit qualifier ("in COMPLETE status") still registers
+# the constraint normally -- only the adjective-position inference is
+# suppressed for these words.
+enum_adjective_exclusions:
+  - complete
+  - full
+  - entire
+  - total
+  - overall
+  - detailed

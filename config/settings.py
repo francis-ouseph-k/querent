@@ -492,6 +492,16 @@ class Settings(BaseSettings):
     # ── Tenant / security ──────────────────────────────────────────────────
     tenant_column: str = ""
     rls_variable:  str = "app.current_user_id"
+    # FIX-S1. Batch run 20260813: 125 of 191 questions touched a tenant-scoped
+    # table with no board_id / course_id / user_id in user_context, and every
+    # one was allowed through on a WARN. That is the correct behaviour for an
+    # admin reporting console and the wrong default for a multi-tenant service.
+    # When true, SecurityTransformer REJECTS such a query instead of logging it;
+    # a caller that legitimately spans tenants opts out per request by setting
+    # user_context["tenant_scope"] = "all".
+    require_tenant_context: bool = Field(
+        default=False, validation_alias="SECURITY_REQUIRE_TENANT_CONTEXT"
+    )
     hf_home:       str = Field(default="d:/hugging_face/hf_cache", validation_alias="HF_HOME")
 
     # ── Feature flags ──────────────────────────────────────────────────────

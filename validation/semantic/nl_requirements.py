@@ -88,6 +88,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from utils.heuristics import HEURISTICS
+
 
 # ─────────────────────────────────────────────────────────────────────────
 # Public dataclasses
@@ -171,6 +173,20 @@ class QuestionRequirements:
 # Adding a value here means "if the NL mentions this word, the SQL
 # must include it as a literal".  False positives are expensive
 # (degrade confidence on correct queries), so the list stays tight.
+# FIX-L6A. Words that read as completeness quantifiers when they sit in
+# adjective position ("the complete question hierarchy", "the full audit
+# trail"). They are excluded from the adjective-position branch of enum
+# extraction only -- an uppercase mention or an explicit "in X status"
+# qualifier still registers the constraint. Sourced from heuristics.yaml so
+# the vocabulary stays configurable alongside the other NL word lists.
+_ENUM_ADJECTIVE_EXCLUSIONS: frozenset[str] = frozenset(
+    w.lower() for w in (
+        HEURISTICS.get("enum_adjective_exclusions")
+        or ("complete", "full", "entire", "total", "overall", "detailed")
+    )
+)
+
+
 _ENUM_VALUE_TOKENS: dict[str, str] = {
     # answer_script.lifecycle_status
     "absent":         "ABSENT",
@@ -574,9 +590,28 @@ def _extract_filter_constraints(
             triggered = True
 
         # (b) Adjective-position before a domain noun.
-        if not triggered and re.search(
-            rf"\b{re.escape(nl_word)}\s+(?:{_DOMAIN_NOUN_RE})\b",
-            nl_lower,
+        #
+        # FIX-L6A (Q29/Q37 of batch run 20260813_192547). This branch reads
+        # "<word> <domain noun>" as a status literal, which is right for
+        # "active devices" or "expired KEKs" but wrong for completeness
+        # quantifiers: "Show the COMPLETE question hierarchy" means "entire",
+        # not lifecycle state COMPLETE. The audit then reported a missing
+        # enum constraint, drove a regeneration, and the model appeased it by
+        # inventing `AND title ILIKE '%COMPLETE%'` — corrupting a query that
+        # had been correct. Words that quantify completeness are excluded
+        # from THIS branch only; an explicit uppercase mention (branch a) or
+        # a qualifier like "in COMPLETE status" (branch c) still triggers,
+        # so a genuine reference to the enum value is never lost.
+        #
+        # The exclusion list is data, not code: config/heuristics.yaml ->
+        # enum_adjective_exclusions, alongside the other NL vocabulary lists.
+        if (
+            not triggered
+            and nl_word.lower() not in _ENUM_ADJECTIVE_EXCLUSIONS
+            and re.search(
+                rf"\b{re.escape(nl_word)}\s+(?:{_DOMAIN_NOUN_RE})\b",
+                nl_lower,
+            )
         ):
             triggered = True
 

@@ -74,17 +74,65 @@ def _outer_query_has_limit(sql: str) -> bool:
         return False
 
 
+# ── Structured identifier contexts in validator error text (FIX-T1) ──────────
+# A table name is only meaningful when the error names it AS an identifier.
+# These patterns cover every shape the validator actually emits:
+#   Hallucinated table: evaluator_change_log
+#   Hallucinated column(s): configuration.global_value
+#   Column 'blm.course_id' does not exist
+#   Invalid value: answer_script.block_status = 'BARRED'
+#   scan_history does NOT have bundle_id
+#   Join to bundle via: answer_script a ...
+#   use ONLY these columns from faculty_cache
+_ERROR_IDENT_PATTERNS: tuple[re.Pattern, ...] = (
+    re.compile(r"\b([a-z_][a-z0-9_]*)\.[a-z_][a-z0-9_]*"),          # qualified col
+    re.compile(r"['\"`]([a-z_][a-z0-9_]*)['\"`]"),                    # quoted ident
+    re.compile(r"\btable[s]?\s*:?\s+([a-z_][a-z0-9_]*)"),           # "table: X"
+    re.compile(r"\b([a-z_][a-z0-9_]*)\s+does\s+not\s+have\b"),      # "X does not have"
+    re.compile(r"\bjoin\s+to\s+([a-z_][a-z0-9_]*)\b"),             # "Join to X"
+    re.compile(r"\bvia\s*:?\s+([a-z_][a-z0-9_]*)\b"),              # "via: X a ON ..."
+    re.compile(r"\bfrom\s+([a-z_][a-z0-9_]*)\b"),                  # "columns from X"
+)
+
+
 def _extract_tables_from_error(error_message: str, valid_tables: set[str]) -> list[str]:
     """
-    Fix 2: Extract table names mentioned in validator error messages.
+    Extract table names mentioned in validator error messages.
 
     When the validator says 'Column X does not exist on table Y, suggests Z',
     the correct table (Z) may not be in tables_used.  This function finds
     valid table names in the error text so the expanded retrieval includes
     schema chunks for tables the LLM needs to fix the error.
+
+    FIX-T1 (batch run 20260813_144312). The previous implementation split the
+    message into bare words and returned every valid table name among them:
+
+        words = set(re.findall(r'[a-z_]+', error_message.lower()))
+        return [t for t in valid_tables if t in words]
+
+    25 of the 62 table names in this schema are also ordinary English words
+    that appear in the validator's own prose — question, board, result, bundle,
+    configuration, section, attempt, … So the anti-join message, which opens
+    "The question asks for items that are missing…", yielded:
+
+        expanding_retry_context error_tables=['question'] expanded_budget=15210
+
+    on a query about scanning bundles: the `question` table's schema was pushed
+    into the retry context, and because FIX-R9 grows the budget only when
+    error_tables is non-empty, the phantom table also bought a 69% budget
+    expansion. 'board' was picked up the same way twice in the same run.
+
+    A table name now counts only when the message names it as an IDENTIFIER —
+    qualified (t.col), quoted, or in one of the validator's fixed phrasings.
+    Free-standing English words are ignored, so a message that names no table
+    correctly yields [] and leaves the budget alone.
     """
-    words = set(re.findall(r'[a-z_]+', error_message.lower()))
-    return [t for t in valid_tables if t in words]
+    lowered = error_message.lower()
+    candidates: set[str] = set()
+    for pattern in _ERROR_IDENT_PATTERNS:
+        for match in pattern.findall(lowered):
+            candidates.add(match)
+    return [t for t in valid_tables if t in candidates]
 
 
 from config.settings import settings
@@ -937,10 +985,25 @@ class PipelineRunner:
                         tables_used = regenerated.tables_used,
                     )
                     re_cov = re_audit.requirement_coverage
+                    # FIX-AR1 (batch run 20260813_192547). The audit-driven
+                    # retry fired 13 times; in 11 of those the regenerated SQL
+                    # scored EXACTLY the same coverage as the original, and the
+                    # `>=` here swapped it in anyway. That is a pure downside
+                    # trade: a second LLM round-trip, a fresh chance to
+                    # introduce a defect, and no measured gain. Q29 is the
+                    # concrete cost -- coverage nudged 0.1 -> 0.2 only because
+                    # the regeneration invented a bogus ILIKE filter, and the
+                    # `>=` rule let that replace a correct query.
+                    #
+                    # A regeneration must now EARN its place by strictly
+                    # improving coverage. Equal coverage keeps the original,
+                    # which is the outcome the retry was unable to beat.
+                    # `re_cov is None` no longer counts as acceptance either:
+                    # an unscoreable retry is not evidence of improvement.
                     accept_regen = (
-                        re_cov is None
-                        or audit.requirement_coverage is None
-                        or re_cov >= audit.requirement_coverage
+                        re_cov is not None
+                        and audit.requirement_coverage is not None
+                        and re_cov > audit.requirement_coverage
                     )
                     if accept_regen:
                         validated_sql = re_val.sql or regenerated.sql
@@ -954,9 +1017,11 @@ class PipelineRunner:
                     else:
                         logger.info(
                             component="pipeline",
-                            event="audit_retry_rejected_regression",
+                            event="audit_retry_rejected_no_gain",
                             old_coverage=audit.requirement_coverage,
                             new_coverage=re_cov,
+                            note="regenerated SQL did not strictly improve "
+                                 "requirement coverage; keeping the original",
                         )
 
         # ── Step 6: Execution ─────────────────────────────────────────────

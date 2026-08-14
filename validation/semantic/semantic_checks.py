@@ -108,7 +108,76 @@ _ADVISORY_SEMANTIC_EVENTS: set[str] = {
     "semantic_per_by_missing_group",
     "semantic_avg_ordinal",
     "semantic_per_entity_inner_join",
+    # Run-5 evidence (batch run 20260813_144312, Mistral small, 191 questions).
+    # semantic_antijoin_mismatch — Q31: "in SCANNING status for more than 24
+    # hours without reaching COMPLETE". A bundle's status is a single column;
+    # "without reaching COMPLETE" is correctly encoded as status = 'SCANNING',
+    # not as an anti-join. The check read the word "without" in the question and
+    # the substring "join" in the SQL and rejected a correct query. Same
+    # question-words-vs-SQL-words shape as the eight above.
+    "semantic_antijoin_mismatch",
 }
+
+
+_ANTI_JOIN_TABLES = ("script_assignment", "evaluation_attempt")
+
+
+def _inner_join_tables(select_node: exp.Select) -> set[str]:
+    """
+    Table names reached by a genuine INNER join in THIS query block.
+
+    FIX-A2. The previous test was `'join' in sql_lower`, which is also true of
+    `LEFT JOIN` — the variable was named has_inner_join and could not tell the
+    two apart. sqlglot records the outer-ness on the Join node, so ask it.
+    """
+    inner: set[str] = set()
+    for join in select_node.args.get("joins", []) or []:
+        side = (getattr(join, "side", "") or "").upper()
+        kind = (getattr(join, "kind", "") or "").upper()
+        if side in ("LEFT", "RIGHT", "FULL") or kind == "CROSS":
+            continue
+        tbl = join.this if isinstance(join.this, exp.Table) else None
+        if tbl is not None and tbl.name:
+            inner.add(tbl.name.lower())
+    return inner
+
+
+def _has_anti_join_pattern(ast: exp.Expression) -> bool:
+    """True if the statement expresses absence structurally, anywhere."""
+    for node in ast.walk():
+        if isinstance(node, exp.Not) and node.find(exp.Exists):
+            return True
+        if isinstance(node, exp.Is) and isinstance(node.expression, exp.Null):
+            return True
+        if isinstance(node, exp.Except):
+            return True
+        if isinstance(node, exp.Join):
+            side = (getattr(node, "side", "") or "").upper()
+            if side in ("LEFT", "RIGHT", "FULL"):
+                return True
+    return False
+
+
+def _or_guarded_by_is_null(col: exp.Expression, alias: str) -> bool:
+    """
+    True when `col` sits inside an OR whose other branch is an IS NULL test on
+    the same table alias.
+
+    FIX-N1. `LEFT JOIN x ... WHERE (x.c IS NULL OR x.c <> 'V')` is the explicit
+    outer-join-preserving idiom; the rows with no match survive the filter, so
+    the LEFT JOIN is not silently an INNER JOIN.
+    """
+    node = col.parent
+    while node is not None:
+        if isinstance(node, exp.Or):
+            for is_node in node.find_all(exp.Is):
+                if not isinstance(is_node.expression, exp.Null):
+                    continue
+                target = is_node.this
+                if isinstance(target, exp.Column) and (target.table or '').lower() == alias:
+                    return True
+        node = node.parent
+    return False
 
 
 def _advisory_or_fail(event: str, message: str, sql: str) -> ValidationResult | None:
@@ -210,33 +279,51 @@ class SemanticValidator(BaseValidationStep):
         query_lower = original_query.lower()
 
         # ── Check 1: Anti-join mismatch ────────────────────────────────────
-        # Detect: question has negation words AND SQL uses only INNER JOINs
-        # (no LEFT JOIN, NOT EXISTS, or IS NULL pattern).
+        # Detect: question has negation words AND the SQL expresses no absence.
+        #
+        # FIX-A2 (false positive, Q31 of batch run 20260813_144312). Two defects,
+        # both from matching substrings instead of reading the AST:
+        #   * `has_inner_join = 'join' in sql_lower` is True for a query built
+        #     entirely from LEFT JOINs. The variable name asserted a distinction
+        #     the code never made.
+        #   * `'is null' in sql_lower` / `'not exists' in sql_lower` scan the
+        #     whole statement as text, so a guard inside an unrelated CTE counts
+        #     while a genuine one written as `NOT EXISTS(...)` across a line
+        #     break does not.
+        # Now AST-driven, and demoted to advisory: the trigger is a word in the
+        # question, which is the family this file already rules must not fail a
+        # query (see _ADVISORY_SEMANTIC_EVENTS above).
         negation_phrases = HEURISTICS.get('anti_join_negation_phrases', [])
         has_negation = any(phrase in query_lower for phrase in negation_phrases)
-        has_anti_pattern = (
-            'not exists' in sql_lower
-            or 'is null' in sql_lower
-            or 'except' in sql_lower
-        )
-        has_inner_join = 'join' in sql_lower and not has_anti_pattern
 
-        if has_negation and has_inner_join and not has_anti_pattern:
-            logger.warning(
-                component="sql_validator",
-                event="semantic_antijoin_mismatch",
-                query_preview=original_query[:60],
-            )
-            return ValidationResult(
-                passed=False, step="semantic",
-                message=(
+        if has_negation:
+            _anti_ok = True
+            try:
+                _ast = sqlglot.parse_one(sql, dialect="postgres")
+                if _ast is not None:
+                    _inner_joined = set()
+                    for _sel in _ast.find_all(exp.Select):
+                        _inner_joined |= _inner_join_tables(_sel)
+                    _anti_ok = _has_anti_join_pattern(_ast) or not _inner_joined
+            except Exception:
+                _anti_ok = True
+
+            if not _anti_ok:
+                logger.warning(
+                    component="sql_validator",
+                    event="semantic_antijoin_mismatch",
+                    query_preview=original_query[:60],
+                )
+                _adv = _advisory_or_fail(
+                    "semantic_antijoin_mismatch",
                     "The question asks for items that are missing/without/have no "
                     "related records, but the SQL uses INNER JOIN which silently "
                     "excludes those items. Use LEFT JOIN ... WHERE ... IS NULL "
-                    "or WHERE NOT EXISTS (...) to find items WITHOUT matches."
-                ),
-                sql=sql,
-            )
+                    "or WHERE NOT EXISTS (...) to find items WITHOUT matches.",
+                    sql,
+                )
+                if _adv is not None:
+                    return _adv
 
         # ── Check 2: Percentage without * 100 ──────────────────────────────
         # Only trigger when question explicitly mentions "percent" or "%"
@@ -291,39 +378,76 @@ class SemanticValidator(BaseValidationStep):
                 sql=sql,
             )
 
-        # ── Check 4: NOT_ASSIGNED + JOIN script_assignment/evaluation_attempt ──
-        # When evaluation_status = 'NOT_ASSIGNED', no script_assignment or
-        # evaluation_attempt row exists yet.  Joining those tables with an
-        # INNER JOIN produces zero rows.  The model must use the answer_script
-        # table alone, or use NOT EXISTS to verify absence of assignments.
-        has_not_assigned = (
-            "'not_assigned'" in sql_lower
-            or "= 'not_assigned'" in sql_lower
-        )
-        joins_assignment_tables = (
-            'script_assignment' in sql_lower
-            or 'evaluation_attempt' in sql_lower
-        )
-        uses_not_exists_pattern = 'not exists' in sql_lower
-        if has_not_assigned and joins_assignment_tables and not uses_not_exists_pattern:
-            # Check that it's actually an INNER JOIN (not a NOT EXISTS subquery referencing these tables)
-            logger.warning(
-                component="sql_validator",
-                event="semantic_not_assigned_join_conflict",
-                query_preview=original_query[:60],
-            )
-            return ValidationResult(
-                passed=False, step="semantic",
-                message=(
-                    "The SQL filters for evaluation_status = 'NOT_ASSIGNED' but also "
-                    "JOINs script_assignment or evaluation_attempt. When a script is "
-                    "NOT_ASSIGNED, no assignment or evaluation_attempt row exists — an "
-                    "INNER JOIN will return zero rows. Remove those JOINs and filter "
-                    "only on answer_script.evaluation_status = 'NOT_ASSIGNED', or use "
-                    "NOT EXISTS to verify the absence of assignments."
-                ),
-                sql=sql,
-            )
+        # ── Check 4: NOT_ASSIGNED + INNER JOIN script_assignment/attempt ──
+        # The schema guarantees this one: answer_script carries
+        #   CHECK (block_status IN ('NONE','MALPRACTICE') OR evaluation_status = 'NOT_ASSIGNED')
+        # and a script with evaluation_status = 'NOT_ASSIGNED' has no
+        # script_assignment or evaluation_attempt row yet, so an INNER JOIN to
+        # either returns zero rows. Being DDL-derived, this check may hard-fail
+        # — but only when it has actually established the pattern.
+        #
+        # FIX-A3 (false positive, Q43 of batch run 20260813_144312). The old
+        # implementation was three substring tests over the whole statement:
+        #   has_not_assigned      = "'not_assigned'" in sql_lower
+        #   joins_assignment_tables = 'evaluation_attempt' in sql_lower
+        #   uses_not_exists_pattern = 'not exists' in sql_lower
+        # so it fired on Q43, where the literal appears inside
+        #   s.evaluation_status IN ('NOT_ASSIGNED','ASSIGNED','IN_PROGRESS')
+        # — a membership test that explicitly admits assigned scripts — and the
+        # only reference to evaluation_attempt was a LEFT JOIN in a different
+        # CTE. Its own comment said "Check that it's actually an INNER JOIN" and
+        # then did not. Three conditions must now hold in the SAME query block:
+        # an equality (not IN) filter on the literal, and an INNER (not LEFT)
+        # join to one of the assignment tables.
+        try:
+            _ast = sqlglot.parse_one(sql, dialect="postgres")
+        except Exception:
+            _ast = None
+
+        if _ast is not None:
+            for _sel in _ast.find_all(exp.Select):
+                _where = _sel.args.get("where")
+                if _where is None:
+                    continue
+                _eq_not_assigned = False
+                for _eq in _where.find_all(exp.EQ):
+                    _col = _eq.this if isinstance(_eq.this, exp.Column) else None
+                    _lit = _eq.expression
+                    if _col is None or not isinstance(_lit, exp.Literal):
+                        continue
+                    if (_col.name or "").lower() != "evaluation_status":
+                        continue
+                    if str(_lit.this).upper() == "NOT_ASSIGNED":
+                        _eq_not_assigned = True
+                        break
+                if not _eq_not_assigned:
+                    continue
+
+                _inner = _inner_join_tables(_sel)
+                _conflict = _inner & set(_ANTI_JOIN_TABLES)
+                if not _conflict:
+                    continue
+                if _sel.find(exp.Exists) is not None:
+                    continue
+
+                logger.warning(
+                    component="sql_validator",
+                    event="semantic_not_assigned_join_conflict",
+                    query_preview=original_query[:60],
+                    joined=sorted(_conflict),
+                )
+                return ValidationResult(
+                    passed=False, step="semantic",
+                    message=(
+                        f"The SQL filters evaluation_status = 'NOT_ASSIGNED' and "
+                        f"INNER JOINs {', '.join(sorted(_conflict))} in the same "
+                        f"query block. A NOT_ASSIGNED script has no row in that "
+                        f"table, so the join returns zero rows. Filter on "
+                        f"answer_script.evaluation_status alone, use a LEFT JOIN, "
+                        f"or use NOT EXISTS to assert the absence of assignments."
+                    ),
+                    sql=sql,
+                )
 
         # ── Check 5: Tautology Check ───────────────────────────────────────
         # Fixes Pattern B: Semantic Misunderstanding of Aggregations
@@ -632,46 +756,119 @@ class SemanticValidator(BaseValidationStep):
         except Exception:
             pass
 
-        # ── Check 14: Cartesian Product of Child Tables ───────────────
-        # Joining multiple child fact tables directly to a parent without pre-aggregation
-        # causes Cartesian explosions (e.g., honorarium_summary + evaluation_marks).
+        # ── Check 14: Cartesian Product of SIBLING Child Tables ───────────
+        # A genuine fan-out is two or more child fact tables joined to the SAME
+        # parent alias in the SAME query block, with a non-DISTINCT aggregate
+        # over one of them: each child multiplies the other's rows.
+        #
+        # FIX-F1 (false positive, Q43 / Q49 of batch run 20260813). The previous
+        # implementation counted child tables per exp.Select without regard to
+        # what they joined TO, and `ast.find_all(exp.Select)` descends into CTE
+        # bodies. Two consequences:
+        #   1. A CHAIN (answer_script -> evaluation_attempt -> evaluation_marks)
+        #      was read as a fan-out. It is not: each hop is parent -> child, so
+        #      no measure is duplicated.
+        #   2. The correct remediation — pre-aggregating each child in its own
+        #      CTE — was itself rejected, because the check fired inside the CTE.
+        #      The correction prompt then asked the model to do what it had
+        #      already done, and the retry loop stalled.
+        # The check now inspects the ON clause of each joined child to find its
+        # anchor alias, and fires only when two children share one anchor.
         try:
             ast = sqlglot.parse_one(sql, dialect="postgres")
             if ast:
+                child_tables = {
+                    'evaluation_marks', 'honorarium_summary', 'script_assignment',
+                    'evaluation_attempt', 'script_page',
+                }
                 for select_node in ast.find_all(exp.Select):
-                    tables = []
-                    from_node = select_node.args.get("from")
+                    # alias -> table name for every source in THIS block
+                    alias_to_table: dict[str, str] = {}
+                    # sqlglot renamed this arg from "from" to "from_" in 30.x;
+                    # the codebase targets >=23.0, so accept both spellings.
+                    from_node = (select_node.args.get("from")
+                                 or select_node.args.get("from_"))
+                    root_aliases: list[str] = []
                     if from_node:
                         for tbl in from_node.find_all(exp.Table):
-                            if tbl.name: tables.append(tbl.name.lower())
-                    for join in select_node.args.get("joins", []):
+                            if not tbl.name:
+                                continue
+                            alias = (tbl.alias or tbl.name).lower()
+                            alias_to_table[alias] = tbl.name.lower()
+                            root_aliases.append(alias)
+                    joins = select_node.args.get("joins", []) or []
+                    for join in joins:
                         for tbl in join.find_all(exp.Table):
-                            if tbl.name: tables.append(tbl.name.lower())
+                            if not tbl.name:
+                                continue
+                            alias = (tbl.alias or tbl.name).lower()
+                            alias_to_table.setdefault(alias, tbl.name.lower())
 
-                    child_tables = {'evaluation_marks', 'honorarium_summary', 'script_assignment', 'evaluation_attempt', 'script_page'}
-                    joined_children = sum(1 for t in tables if t in child_tables)
+                    # anchor alias -> child aliases hanging off it
+                    anchors: dict[str, set[str]] = {}
+                    for join in joins:
+                        tbl = join.this if isinstance(join.this, exp.Table) else None
+                        if tbl is None or not tbl.name:
+                            continue
+                        joined_alias = (tbl.alias or tbl.name).lower()
+                        if alias_to_table.get(joined_alias) not in child_tables:
+                            continue
+                        on_clause = join.args.get("on")
+                        if on_clause is None:
+                            continue
+                        referenced = {
+                            (c.table or '').lower()
+                            for c in on_clause.find_all(exp.Column)
+                            if c.table
+                        }
+                        for anchor in referenced - {joined_alias}:
+                            if anchor in alias_to_table:
+                                anchors.setdefault(anchor, set()).add(joined_alias)
 
-                    if joined_children >= 2:
-                        has_agg = False
-                        for expr in select_node.expressions:
-                            if list(expr.find_all(exp.AggFunc)):
-                                has_agg = True
-                                break
-                        if has_agg:
-                            logger.warning(
-                                component="sql_validator",
-                                event="semantic_cartesian_explosion"
-                            )
-                            return ValidationResult(
-                                passed=False, step="semantic",
-                                message=(
-                                    "SQL joins multiple child fact tables (e.g., marks, assignments, honorarium) "
-                                    "in the same flat query block. This causes a Cartesian product and inflates "
-                                    "aggregate counts. You MUST pre-aggregate child tables in separate CTEs "
-                                    "before joining them to the parent entity."
-                                ),
-                                sql=sql,
-                            )
+                    siblings = {a: kids for a, kids in anchors.items() if len(kids) >= 2}
+                    if not siblings:
+                        continue
+
+                    # Only a non-DISTINCT aggregate is inflated by the fan-out.
+                    # COUNT(DISTINCT x) is duplicate-safe by construction.
+                    inflatable = False
+                    for expr in select_node.expressions:
+                        for agg in expr.find_all(exp.AggFunc):
+                            # COUNT(DISTINCT x) is duplicate-safe. sqlglot models
+                            # the DISTINCT either as an arg or as an exp.Distinct
+                            # child depending on version — test both.
+                            if agg.args.get("distinct") or agg.find(exp.Distinct):
+                                continue
+                            inflatable = True
+                            break
+                        if inflatable:
+                            break
+                    if not inflatable:
+                        continue
+
+                    anchor_alias, kid_aliases = next(iter(siblings.items()))
+                    kid_names = sorted(
+                        alias_to_table.get(k, k) for k in kid_aliases
+                    )
+                    logger.warning(
+                        component="sql_validator",
+                        event="semantic_cartesian_explosion",
+                        anchor=anchor_alias,
+                        children=kid_names,
+                    )
+                    return ValidationResult(
+                        passed=False, step="semantic",
+                        message=(
+                            f"SQL joins sibling child fact tables "
+                            f"({', '.join(kid_names)}) to the same parent alias "
+                            f"'{anchor_alias}' in one query block. Each child "
+                            f"multiplies the other's rows, so the non-DISTINCT "
+                            f"aggregates are inflated. Pre-aggregate each child "
+                            f"in its own CTE keyed on the parent, then LEFT JOIN "
+                            f"those CTEs to the parent."
+                        ),
+                        sql=sql,
+                    )
         except Exception:
             pass
 
@@ -1045,9 +1242,23 @@ class SemanticValidator(BaseValidationStep):
         try:
             ast = sqlglot.parse_one(sql, dialect="postgres")
             if ast:
-                # Collect right-side aliases from LEFT JOINs
-                left_join_aliases: set[str] = set()
+                # FIX-N2 (false positive, Q51 of batch run 20260813_192547). A
+                # LEFT JOIN alias and the WHERE clause it's paired against must
+                # come from the SAME select block. The previous implementation
+                # collected left_join_aliases as one set across every Select in
+                # the statement -- including the bodies of CTEs -- and then
+                # scanned every top-level WHERE the same way. A query joining
+                # `LEFT JOIN bundles_opened b ON ...` in the outer SELECT, where
+                # a CTE named bundles_opened *itself* does
+                # `FROM bundle b WHERE b.created_at >= ...`, has two unrelated
+                # aliases that both happen to be spelled "b". The global sets
+                # matched them across scopes and flagged a LEFT JOIN that was
+                # never nullified -- the WHERE belonged to the CTE, not to the
+                # query that joins it. Iterate per select_node and only check a
+                # WHERE against the LEFT JOIN aliases declared in that same
+                # select_node's own joins.
                 for select_node in ast.find_all(exp.Select):
+                    left_join_aliases: set[str] = set()
                     for join in select_node.args.get("joins", []):
                         side = getattr(join, 'side', None) or ''
                         if isinstance(side, str) and side.upper() == 'LEFT':
@@ -1062,53 +1273,59 @@ class SemanticValidator(BaseValidationStep):
                                     if alias:
                                         left_join_aliases.add(alias)
 
-                if left_join_aliases:
-                    # Walk WHERE clause for references to LEFT JOIN aliases
-                    for where in ast.find_all(exp.Where):
-                        # FIX (Q16): a genuine WHERE filter is a direct child of a
-                        # SELECT. sqlglot also represents the WHERE inside an
-                        # aggregate FILTER clause -- COUNT(*) FILTER (WHERE ...) --
-                        # as an exp.Where whose parent is exp.Filter. That inner
-                        # WHERE does NOT nullify a LEFT JOIN; skip it.
-                        if not isinstance(where.parent, exp.Select):
-                            continue
-                        for col in where.find_all(exp.Column):
-                            col_table = (col.table or '').lower()
-                            if col_table in left_join_aliases:
-                                # Skip IS NULL pattern (anti-join is correct)
-                                parent = col.parent
-                                if isinstance(parent, exp.Is):
-                                    continue
-                                # Skip NOT (col IS NULL) too
-                                grandparent = getattr(parent, 'parent', None)
-                                if isinstance(grandparent, exp.Not) and isinstance(parent, exp.Is):
-                                    continue
-                                # FIX (Q126): a LEFT JOIN is only nullified when the
-                                # left column is filtered against a LITERAL value
-                                # (e.g. WHERE hs.status = 'PENDING'). When the column
-                                # is compared to ANOTHER COLUMN -- e.g. a correlated
-                                # join key inside NOT EXISTS (WHERE q2.parent = q.id) --
-                                # NULL rows are not eliminated and the pattern is fine.
-                                if not _predicate_has_literal_counterpart(col):
-                                    continue
-                                col_name = (col.name or '').lower()
-                                logger.warning(
-                                    component="sql_validator",
-                                    event="semantic_left_join_nullified",
-                                    alias=col_table,
-                                    column=col_name,
-                                )
-                                return ValidationResult(
-                                    passed=False, step="semantic",
-                                    message=(
-                                        f"LEFT JOIN on alias '{col_table}' is nullified by "
-                                        f"'WHERE {col_table}.{col_name} = ...' which eliminates "
-                                        f"NULL rows. Move the filter into the ON clause: "
-                                        f"LEFT JOIN ... ON ... AND {col_table}.{col_name} = ..., "
-                                        f"or change to INNER JOIN if zero-match rows should be excluded."
-                                    ),
-                                    sql=sql,
-                                )
+                    if not left_join_aliases:
+                        continue
+
+                    where = select_node.args.get("where")
+                    if where is None:
+                        continue
+                    for col in where.find_all(exp.Column):
+                        col_table = (col.table or '').lower()
+                        if col_table in left_join_aliases:
+                            # Skip IS NULL pattern (anti-join is correct)
+                            parent = col.parent
+                            if isinstance(parent, exp.Is):
+                                continue
+                            # Skip NOT (col IS NULL) too
+                            grandparent = getattr(parent, 'parent', None)
+                            if isinstance(grandparent, exp.Not) and isinstance(parent, exp.Is):
+                                continue
+                            # FIX-N1 (false positive, Q42 of batch run
+                            # 20260813). A predicate that is OR-ed with an
+                            # IS NULL test on the same alias preserves the
+                            # unmatched rows:
+                            #   WHERE (ea.status IS NULL OR ea.status != 'X')
+                            # The LEFT JOIN is explicitly guarded, not
+                            # nullified. Walk up to the enclosing OR and
+                            # look for the guard before failing.
+                            if _or_guarded_by_is_null(col, col_table):
+                                continue
+                            # FIX (Q126): a LEFT JOIN is only nullified when the
+                            # left column is filtered against a LITERAL value
+                            # (e.g. WHERE hs.status = 'PENDING'). When the column
+                            # is compared to ANOTHER COLUMN -- e.g. a correlated
+                            # join key inside NOT EXISTS (WHERE q2.parent = q.id) --
+                            # NULL rows are not eliminated and the pattern is fine.
+                            if not _predicate_has_literal_counterpart(col):
+                                continue
+                            col_name = (col.name or '').lower()
+                            logger.warning(
+                                component="sql_validator",
+                                event="semantic_left_join_nullified",
+                                alias=col_table,
+                                column=col_name,
+                            )
+                            return ValidationResult(
+                                passed=False, step="semantic",
+                                message=(
+                                    f"LEFT JOIN on alias '{col_table}' is nullified by "
+                                    f"'WHERE {col_table}.{col_name} = ...' which eliminates "
+                                    f"NULL rows. Move the filter into the ON clause: "
+                                    f"LEFT JOIN ... ON ... AND {col_table}.{col_name} = ..., "
+                                    f"or change to INNER JOIN if zero-match rows should be excluded."
+                                ),
+                                sql=sql,
+                            )
         except Exception:
             pass
 

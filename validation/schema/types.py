@@ -115,11 +115,41 @@ def validate_types(ctx: ValidationContext) -> ValidationResult | None:
                 if col_info is None:
                     continue
 
+                # FIX-E2: `family` may be None for a type this classifier does not
+                # model, but an unmodelled type can still carry a CHECK
+                # constraint. Resolve it without gating on the type family so the
+                # enum test is not skipped for such columns.
                 family = _classify_pg_type(col_info.data_type)
-                if family is None:
-                    continue
 
+                # FIX-E2. Enum membership was checked for `col = 'X'` / `col <> 'X'`
+                # but not for `col IN ('X','Y')`, so an invalid value hid inside a
+                # list. Observed: honorarium_summary.role_in_board IN
+                # ('EVALUATOR','REVIEWER','THIRD') passed validation, though the
+                # CHECK constraint permits only EVALUATOR / REVIEWER /
+                # BOARD_COORDINATOR. The query returned a silently truncated
+                # per-role breakdown. IN is the same membership assertion as =,
+                # so it gets the same check, over every element of the list.
+                #
+                # A subquery IN (`col IN (SELECT ...)`) has no literal elements to
+                # test; `in_node.expressions` is empty there, so it is naturally
+                # skipped rather than special-cased.
+                allowed = getattr(col_info, "allowed_values", None)
                 for val_node in in_node.expressions:
+                    if (
+                        allowed is not None
+                        and isinstance(val_node, exp.Literal)
+                        and val_node.is_string
+                        and val_node.this not in allowed
+                    ):
+                        enum_errors.append(
+                            f"{resolved}.{col_name} IN (... '{val_node.this}' ...) "
+                            f"is not a valid value for this column. Allowed "
+                            f"values: {', '.join(sorted(allowed))}"
+                        )
+                        continue
+
+                    if family is None:
+                        continue
                     err = _check_literal_type_compat(family, val_node)
                     if err:
                         type_errors.append(

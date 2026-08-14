@@ -1,5 +1,5 @@
 """
-validation/sql_validator.py
+validation/core/sql_validator.py
 ────────────────────────────
 10-step SQL validation pipeline orchestrator.
 """
@@ -8,6 +8,7 @@ from __future__ import annotations
 from config.settings import settings
 from typing import Any, Callable
 
+import re
 import sqlglot
 
 from models.schema import ValidationResult
@@ -143,6 +144,43 @@ class SQLValidator:
         )
         return ValidationResult(passed=True, sql=final_sql)
 
+# ── Stall-detection signature (FIX-C1) ───────────────────────────────────────
+# Comparing (step, message) verbatim misses a correction loop that oscillates
+# between spellings of the SAME defect. Q63 of batch run 20260813_144312 burned
+# all five attempts on one problem:
+#
+#   attempt 3  in an aggregate with DISTINCT, ORDER BY expressions must appear
+#              in argument list
+#              LINE 57: ...board_id AS VARCHAR) ELSE NULL END, ', ' ORDER BY...
+#   attempt 4  function string_agg(text) does not exist            (dropped the
+#                                                                   delimiter)
+#   attempt 5  in an aggregate with DISTINCT, ORDER BY expressions must appear
+#              in argument list
+#              LINE 57: ...DISTINCT CAST(fp.board_id AS TEXT), ', ' ORDER BY...
+#
+# Attempts 3 and 5 are the same PostgreSQL error. The verbatim comparison did
+# not fire because the `LINE n: ...` fragment quotes the offending SQL, which
+# the model had rewritten in between. Normalising the message strips that
+# quoted tail and the volatile identifiers, so the signature describes the
+# DEFECT rather than the attempt.
+#
+# The history is a set, not just the previous signature: a loop that alternates
+# A → B → A never repeats consecutively and so never stalled under the old test.
+_LINE_FRAGMENT_RE = re.compile(r"\bline\s+\d+\s*:.*", re.IGNORECASE | re.DOTALL)
+_QUOTED_IDENT_RE  = re.compile(r"['\"`][^'\"`]*['\"`]")
+_WHITESPACE_RE    = re.compile(r"\s+")
+
+
+def _error_signature(result) -> tuple[str, str] | None:
+    """Normalised (step, message) signature, or None when the result passed."""
+    if result is None or result.passed:
+        return None
+    message = _LINE_FRAGMENT_RE.sub("", result.message or "")
+    message = _QUOTED_IDENT_RE.sub("?", message)
+    message = _WHITESPACE_RE.sub(" ", message).strip().lower()
+    return (result.step, message[:200])
+
+
 class RetryValidator:
     """
     Wraps SQLValidator with self-correction retry / repair loop logic.
@@ -225,7 +263,11 @@ class RetryValidator:
         # (observed: 48 queries hitting max retries with an identical message).
         # Bailing on the first identical repeat saves ~75% of failure latency and
         # stops the Phase-2 failure corpus filling with duplicate dead-ends.
-        last_error_sig = (result.step, result.message) if not result.passed else None
+        # FIX-C1: normalised signature + full history (see _error_signature).
+        last_error_sig = _error_signature(result)
+        seen_error_sigs: set[tuple[str, str]] = set()
+        if last_error_sig is not None:
+            seen_error_sigs.add(last_error_sig)
 
         # Loop to correct/repair failed SQL candidate strings based on validation step failures.
         # This acts as a feedback loop between the validator (providing error diagnostics) and the generator (fixing errors).
@@ -251,6 +293,7 @@ class RetryValidator:
                     sql    = fixed_sql
                     result = candidate
                     last_error_sig = None
+                    seen_error_sigs.clear()
                 else:
                     logger.info(
                         component="retry_validator",
@@ -354,16 +397,21 @@ class RetryValidator:
 
             # Stall detection: if the correction reproduced the exact same error,
             # further identical retries will not help -- stop and return.
-            new_sig = (result.step, result.message) if not result.passed else None
-            if new_sig is not None and new_sig == last_error_sig:
+            new_sig = _error_signature(result)
+            if new_sig is not None and new_sig in seen_error_sigs:
                 logger.info(
                     component="retry_validator",
                     event="retry_stalled",
                     attempt=retries,
                     step=result.step,
-                    note="identical error reproduced; aborting retries early",
+                    repeat_of="previous_attempt" if new_sig == last_error_sig
+                              else "earlier_attempt",
+                    note="equivalent error reproduced (normalised); aborting "
+                         "retries early",
                 )
                 break
+            if new_sig is not None:
+                seen_error_sigs.add(new_sig)
             last_error_sig = new_sig
 
         return result, retries

@@ -49,8 +49,14 @@ class AggregationValidator(BaseValidationStep):
             select_node = stmt if isinstance(stmt, exp.Select) else stmt.find(exp.Select)
             if select_node and select_node.expressions:
                 expressions = select_node.expressions
+                # FIX-W1 (false positive, Q51 of batch run 20260813).
+                # sqlglot models LAG/LEAD/ROW_NUMBER/RANK as exp.AggFunc
+                # subclasses wrapped in exp.Window, so the old test read a pure
+                # window query as "has aggregate" and then demanded a GROUP BY
+                # that PostgreSQL does not require. Only a BARE aggregate (one
+                # not inside an OVER (...) clause) forces a GROUP BY.
                 has_agg = any(
-                    _contains_aggregate_in_scope(expr) for expr in expressions
+                    _contains_bare_aggregate_in_scope(expr) for expr in expressions
                 )
                 if has_agg:
                     # Check if there are non-aggregate columns
@@ -58,7 +64,13 @@ class AggregationValidator(BaseValidationStep):
                     for expr in expressions:
                         # Unwrap aliases: SELECT COUNT(*) AS c is an Alias wrapping AggFunc
                         inner = expr.this if isinstance(expr, exp.Alias) else expr
-                        if _contains_aggregate_in_scope(inner):
+                        # FIX-W1: a window expression is neither an aggregate
+                        # that satisfies GROUP BY nor a bare column that
+                        # requires it — PostgreSQL evaluates it after grouping.
+                        # Skip it in both directions.
+                        if _contains_window_in_scope(inner):
+                            continue
+                        if _contains_bare_aggregate_in_scope(inner):
                             continue  # this expression is aggregate — skip
                         # exp.Column or exp.Alias wrapping a Column → non-aggregate
                         if isinstance(inner, exp.Column) or (
@@ -139,6 +151,26 @@ def _contains_aggregate_in_scope(node: exp.Expression) -> bool:
 def _contains_column_in_scope(node: exp.Expression) -> bool:
     """True if a column reference appears in THIS scope (not a nested SELECT)."""
     return any(isinstance(n, exp.Column) for n in _walk_in_scope(node))
+
+
+def _contains_window_in_scope(node: exp.Expression) -> bool:
+    """True if an OVER (...) window expression appears in THIS scope."""
+    return any(isinstance(n, exp.Window) for n in _walk_in_scope(node))
+
+
+def _contains_bare_aggregate_in_scope(node: exp.Expression) -> bool:
+    """
+    True if an aggregate call appears in THIS scope OUTSIDE any window frame.
+
+    FIX-W1. `_contains_aggregate_in_scope` answers "is there an AggFunc node
+    here", which is True for LAG(x) OVER (...) because sqlglot derives the
+    window functions from exp.AggFunc. Only a bare aggregate — SUM(x), not
+    SUM(x) OVER (...) — collapses rows and therefore forces a GROUP BY.
+    """
+    for n in _walk_in_scope(node):
+        if isinstance(n, exp.AggFunc) and not _node_inside_window(n):
+            return True
+    return False
 
 
 # ─────────────────────────────────────────────────────────────────────────────

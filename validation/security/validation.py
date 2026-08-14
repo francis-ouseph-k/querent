@@ -122,6 +122,40 @@ class SecurityTransformer(BaseValidationStep):
             )
             return ValidationResult(passed=True, step="security", sql=sql)
 
+        # FIX-S1: fail closed when configured to, unless the caller has
+        # explicitly declared an all-tenant (admin) query. The bypass is
+        # recorded so an auditor can separate deliberate cross-tenant reads
+        # from ones that merely lacked a tenant context.
+        if settings.require_tenant_context:
+            if str(ctx.user_context.get("tenant_scope", "")).lower() == "all":
+                logger.warning(
+                    component="sql_validator",
+                    event="tenant_filter_admin_bypass",
+                    tables=ctx.tables_used,
+                    sql_preview=sql[:120],
+                    note="Cross-tenant query explicitly authorised by "
+                         "user_context['tenant_scope']='all'.",
+                )
+                return ValidationResult(passed=True, step="security", sql=sql)
+            logger.warning(
+                component="sql_validator",
+                event="tenant_filter_rejected",
+                tables=ctx.tables_used,
+                sql_preview=sql[:120],
+                user_context_keys=list(ctx.user_context.keys()),
+            )
+            return ValidationResult(
+                passed=False, step="security",
+                message=(
+                    "Query touches tenant-scoped tables but no board_id / "
+                    "course_id / user_id was supplied in the user context. "
+                    "Supply a tenant context, or set "
+                    "user_context['tenant_scope']='all' for an authorised "
+                    "cross-tenant admin query."
+                ),
+                sql=sql,
+            )
+
         logger.warning(
             component="sql_validator",
             event="tenant_filter_unavailable",
