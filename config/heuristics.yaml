@@ -1034,6 +1034,16 @@ confidence_calibration:
   excessive_nesting:
     max_select_count: 3
     penalty: 0.10
+  # FIX-A6 (2026-08-14). Deterministic, already-computed effort signals that
+  # previously never reduced confidence: how many validator-driven retries
+  # this query needed, and whether a deterministic autofix had to rewrite
+  # the SQL to reach a passing state. Both are facts about THIS query's
+  # generation, not a claim about correctness this system can't measure
+  # without a gold set -- deliberately small, additive nudges.
+  retries_needed:
+    penalty_per_retry: 0.03
+  autofix_applied:
+    penalty: 0.05
 
 
 trigger_words:
@@ -1083,3 +1093,50 @@ enum_adjective_exclusions:
   - total
   - overall
   - detailed
+
+# ── Security: denied server-side functions (G4) ──────────────────────────────
+# Consumed by validation/security/exposure.py. Overrides the module default
+# entirely when present — copy the module list before trimming it.
+denied_sql_functions:
+  - pg_read_file
+  - pg_read_binary_file
+  - pg_ls_dir
+  - pg_stat_file
+  - pg_ls_logdir
+  - pg_ls_waldir
+  - pg_ls_tmpdir
+  - lo_import
+  - lo_export
+  - lo_get
+  - lo_put
+  - dblink
+  - dblink_exec
+  - dblink_connect
+  - dblink_send_query
+  - query_to_xml
+  - query_to_xmlschema
+  - table_to_xml
+  - database_to_xml
+  - pg_sleep
+  - pg_sleep_for
+  - pg_sleep_until
+  - set_config
+  - pg_reload_conf
+  - pg_terminate_backend
+  - pg_cancel_backend
+  - current_setting
+
+# ── Security: columns that must never be projected (G5) ──────────────────────
+# Key material, object-store locators, and external identity references. These
+# may still be used in WHERE / ON / COUNT — only the SELECT list is denied.
+sensitive_columns:
+  - {table: data_encryption_key, column: wrapped_key}
+  - {table: data_encryption_key, column: iv}
+  - {table: key_encryption_key,  column: external_id}
+  - {table: app_user,            column: external_idp_user_id}
+  - {table: answer_script,       column: s3_key}
+  - {table: answer_script,       column: s3_version_id}
+  - {table: script_page,         column: s3_key}
+  - {table: answer_key,          column: s3_key}
+  - {table: scan_history,        column: s3_key}
+  - {table: scan_history,        column: s3_version_id}

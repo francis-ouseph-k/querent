@@ -99,10 +99,35 @@ def _predicate_has_literal_counterpart(col: "exp.Column") -> bool:
 # fails the query. Rule of thumb established by this run: a check derived from
 # the DDL or the AST may hard-fail; a check that compares question words to SQL
 # words is advisory.
+#
+# Run-6 (batch run 20260814_102207, Mistral small, 191 questions). ONE check
+# leaves this set: semantic_unprompted_enum_filter, promoted back to fatal.
+#
+#   The Run-3 justification for demoting it was Q56 — "already expired"
+#   correctly encoded as status = 'EXPIRED', flagged because the check only
+#   looked for the word "status". That justification is now STALE: the check
+#   was subsequently rewritten to test the VALUE, not the column name, and
+#   'expired' is a substring of "already expired", so Q56 is justified and
+#   silent under the current code. The comment outlived the defect.
+#
+#   Meanwhile the check fired 59 times in this run and was right about the
+#   ones that mattered: Q39 ("broken down by evaluator role" -> WHERE
+#   role_in_board = 'EVALUATOR', collapsing a group-by into a filter),
+#   Q138 ("distribution across entity types" -> silent is_critical = TRUE),
+#   Q42 ("not yet frozen" -> status = 'ASSIGNED', dropping IN_PROGRESS).
+#   Each shipped as Success with a wrong population.
+#
+#   To keep the false-positive rate at the level that justified the original
+#   demotion, _enum_value_justified() below adds morphological tolerance
+#   (SCANNED/scanning, APPROVED/approve) on top of the existing surface-form
+#   match. A value the question gestures at in ANY of those forms is accepted.
+#
+# semantic_per_entity_inner_join deliberately STAYS advisory: it cannot
+# distinguish "per X, include zeroes" from "per X, among those that have any",
+# and Run-4 showed the retry it forces makes correct queries worse.
 _ADVISORY_SEMANTIC_EVENTS: set[str] = {
     "semantic_noun_missing",
     "semantic_unprompted_filter",
-    "semantic_unprompted_enum_filter",
     "semantic_missing_scope_filter",
     "semantic_wrong_entity_count",
     "semantic_per_by_missing_group",
@@ -177,6 +202,40 @@ def _or_guarded_by_is_null(col: exp.Expression, alias: str) -> bool:
                 if isinstance(target, exp.Column) and (target.table or '').lower() == alias:
                     return True
         node = node.parent
+    return False
+
+
+def _enum_value_justified(value: str, nl_lower: str, nl_under_to_space: str) -> bool:
+    """
+    Does the question gesture at this enum value in ANY reasonable surface form?
+
+    Exact and separator variants were already tested by the caller. This adds
+    the morphological cases that made the check feel unsafe: an English question
+    says "scanning" where the enum says SCANNED, "approve" where it says
+    APPROVED, "hold" where it says HELD. Stem comparison rather than a synonym
+    table, because the enum values in this schema are overwhelmingly regular
+    past participles.
+
+    Deliberately generous: a false NEGATIVE here blocks a correct query, which
+    is the failure mode that got this check demoted in the first place.
+    """
+    haystacks = (nl_lower, nl_under_to_space)
+    for token in str(value).lower().replace("-", "_").split("_"):
+        if len(token) < 4:
+            continue
+        stems = {token}
+        for suffix in ("ed", "d", "s", "ing", "en"):
+            if token.endswith(suffix) and len(token) - len(suffix) >= 3:
+                stems.add(token[: -len(suffix)])
+        # Re-inflect each stem so SCANNED also matches "scanning"/"scans".
+        for stem in list(stems):
+            base = stem.rstrip("n") if stem.endswith("nn") else stem
+            stems.update({base + "ing", base + "s", base + "e", base + "ed"})
+        for stem in stems:
+            if len(stem) < 4:
+                continue
+            if any(stem in hay for hay in haystacks):
+                return True
     return False
 
 
@@ -1209,6 +1268,10 @@ class SemanticValidator(BaseValidationStep):
                         or val_lo  in nl_under_to_space
                         or val_spc in nl_under_to_space
                     )
+                    if not justified:
+                        justified = _enum_value_justified(
+                            val_raw, nl_lower, nl_under_to_space,
+                        )
                     if justified:
                         continue
 

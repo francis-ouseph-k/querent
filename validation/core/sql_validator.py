@@ -1,7 +1,7 @@
 """
 validation/core/sql_validator.py
 ────────────────────────────
-10-step SQL validation pipeline orchestrator.
+14-step SQL validation pipeline orchestrator.
 """
 
 from __future__ import annotations
@@ -20,7 +20,9 @@ from ..ast.aggregation import AggregationValidator, GroupByAlignmentValidator
 from ..schema.schema_validator import SchemaValidator
 from ..ast.joins import JoinValidator
 from ..ast.safety import SafetyValidator
+from ..ast.cardinality import CardinalityValidator
 from ..security.validation import SecurityTransformer
+from ..security.exposure import ExposureValidator
 from ..execution.cost import CostValidator
 from ..semantic.semantic_checks import SemanticValidator, HardcodedLiteralValidator
 from ..utils.autofix import attempt_near_miss_column_autofix
@@ -45,8 +47,15 @@ def build_default_pipeline(
         SchemaValidator(),
         JoinValidator(fk_graph=fk_graph),
         SafetyValidator(),
+        # 6b: function allowlist + sensitive-column projection (G4, G5).
+        # Runs before SecurityTransformer — no point rewriting a query for
+        # tenant isolation that is going to be rejected outright.
+        ExposureValidator(),
         SecurityTransformer(tenant_scoped_tables=tenant_scoped_tables),
         GroupByAlignmentValidator(),
+        # Item #6: aggregate-over-join-fan-out. Placed before CostValidator so
+        # a query that is arithmetically wrong never reaches EXPLAIN.
+        CardinalityValidator(),
         CostValidator(get_conn=get_conn, release_conn=release_conn, db_dsn=db_dsn),
         SemanticValidator(),
         HardcodedLiteralValidator(),
@@ -106,9 +115,35 @@ class SQLValidator:
         tables_used  = tables_used  or []
         user_context = user_context or {}
 
+        # FIX-P1 (2026-08-14). The except clause caught ParseError only, but
+        # sqlglot raises TokenError from the LEXER, before any parsing begins,
+        # and TokenError is a sibling of ParseError under SqlglotError rather
+        # than a subclass. Q61 of batch run 20260814_155341 died on an
+        # UNHANDLED exception that unwound all the way to batch_run:
+        #
+        #   the model broke the JSON contract twice, the SQL extractor fell
+        #   back to scraping prose, and scraped the fragment `SELECT list.",`
+        #   out of the model's own explanation — which quotes the L7 warning
+        #   text "the SQL's SELECT list". One unterminated double quote, and
+        #   TokenError propagated out of the validator.
+        #
+        # A malformed model output must produce a validation FAILURE, never a
+        # crash: a failure is retryable and logged as a result, an exception
+        # loses the question entirely. Catch SqlglotError, the common base, and
+        # keep a bare Exception guard so no lexer edge case can take the run
+        # down again.
         try:
             ast_list = sqlglot.parse(sql, dialect="postgres")
-        except sqlglot.errors.ParseError:
+        except sqlglot.errors.SqlglotError:
+            ast_list = None
+        except Exception as exc:
+            logger.warning(
+                component="sql_validator",
+                event="sql_parse_unexpected_error",
+                error=f"{type(exc).__name__}: {exc}",
+                sql_preview=sql[:120],
+                note="treated as unparseable; downstream steps use the regex path",
+            )
             ast_list = None
 
         ctx = ValidationContext(
@@ -142,7 +177,9 @@ class SQLValidator:
             sql_preview=final_sql[:80],
             tables=tables_used,
         )
-        return ValidationResult(passed=True, sql=final_sql)
+        return ValidationResult(
+            passed=True, sql=final_sql, autofix_applied=ctx.autofix_applied,
+        )
 
 # ── Stall-detection signature (FIX-C1) ───────────────────────────────────────
 # Comparing (step, message) verbatim misses a correction loop that oscillates
@@ -169,6 +206,30 @@ class SQLValidator:
 _LINE_FRAGMENT_RE = re.compile(r"\bline\s+\d+\s*:.*", re.IGNORECASE | re.DOTALL)
 _QUOTED_IDENT_RE  = re.compile(r"['\"`][^'\"`]*['\"`]")
 _WHITESPACE_RE    = re.compile(r"\s+")
+
+
+# ── Steps the LLM cannot repair (FIX-S1c) ────────────────────────────────────
+# A failure is retryable only if REWRITING THE SQL could plausibly fix it. A
+# missing tenant context is a property of the CALLER, not of the query: no
+# rewrite supplies a board_id the request never carried. Feeding such an error
+# to the correction loop is worse than useless, and batch run 20260814_132132
+# showed both failure modes:
+#
+#   Cost   — every rejected question burned one or two extra inferences before
+#            retry_stalled noticed the error was identical. Q10 spent 61.9s and
+#            Q20 80.4s producing nothing.
+#
+#   Danger — Q22 "Count result history entries per result." The first attempt
+#            was correct. Told that a tenant filter was missing, the model
+#            INVENTED one: `WHERE r.board_id = 1`. It hallucinated a tenant
+#            identifier to satisfy the validator. A correction loop that can be
+#            talked into fabricating an access-control predicate is a liability,
+#            not a safety net.
+#
+# Such failures now return immediately with the original SQL and the original
+# message, which names the fix (supply a tenant context, or set
+# tenant_scope='all').
+NON_RETRYABLE_STEPS: frozenset[str] = frozenset({"security"})
 
 
 def _error_signature(result) -> tuple[str, str] | None:
@@ -301,6 +362,17 @@ class RetryValidator:
                         fix=fix_desc,
                         new_error=candidate.message[:120],
                     )
+
+        if not result.passed and result.step in NON_RETRYABLE_STEPS:
+            logger.info(
+                component="retry_validator",
+                event="non_retryable_failure",
+                step=result.step,
+                error=(result.message or "")[:120],
+                note="caller-side precondition; no SQL rewrite can satisfy it, "
+                     "so the correction loop is skipped",
+            )
+            return result, retries
 
         while not result.passed and retries < max_retries:
             retries += 1

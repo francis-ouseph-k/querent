@@ -18,7 +18,12 @@ from ..core.base import BaseValidationStep
 from models.schema import ValidationResult
 from config.settings import settings
 from utils.logging_config import get_logger
-from .tenant_injector import has_eq_predicate, inject_where
+from .tenant_injector import (
+    has_eq_predicate,
+    inject_where,
+    inject_where_all_scopes,
+    scopes_requiring_tenant_filter,
+)
 
 logger = get_logger(__name__)
 
@@ -75,17 +80,9 @@ class SecurityTransformer(BaseValidationStep):
                     sql=sql,
                 )
             
-            if not has_eq_predicate(sql, "board_id", safe_board_id):
-                injected_sql = inject_where(sql, "board_id", safe_board_id, ctx.schema_map)
-                if injected_sql:
-                    logger.info(
-                        component="sql_validator",
-                        event="tenant_filter_injected",
-                        scope="board_id",
-                        value=safe_board_id,
-                    )
-                    ctx.working_sql = injected_sql
-                    return ValidationResult(passed=True, step="security", sql=injected_sql)
+            result = self._inject_all_scopes(ctx, sql, "board_id", safe_board_id)
+            if result is not None:
+                return result
 
         # ── Path 2: Scoping by course_id ──────────────────────────────────
         course_id = ctx.user_context.get("course_id")
@@ -99,17 +96,9 @@ class SecurityTransformer(BaseValidationStep):
                     sql=sql,
                 )
             
-            if not has_eq_predicate(sql, "course_id", safe_course_id):
-                injected_sql = inject_where(sql, "course_id", safe_course_id, ctx.schema_map)
-                if injected_sql:
-                    logger.info(
-                        component="sql_validator",
-                        event="tenant_filter_injected",
-                        scope="course_id",
-                        value=safe_course_id,
-                    )
-                    ctx.working_sql = injected_sql
-                    return ValidationResult(passed=True, step="security", sql=injected_sql)
+            result = self._inject_all_scopes(ctx, sql, "course_id", safe_course_id)
+            if result is not None:
+                return result
 
         # ── Path 3: Scoping by user_id via Row Level Security (RLS) ────────
         user_id = ctx.user_context.get("user_id")
@@ -167,3 +156,60 @@ class SecurityTransformer(BaseValidationStep):
                  "an admin query.",
         )
         return ValidationResult(passed=True, step="security", sql=sql)
+
+    def _inject_all_scopes(
+        self,
+        ctx: ValidationContext,
+        sql: str,
+        col_name: str,
+        value: int,
+    ) -> ValidationResult | None:
+        """
+        Scope EVERY SELECT that reads a tenant-scoped table, and fail closed if
+        any of them could not be scoped.
+
+        G2 fix. Returning a partially-scoped query as passed=True is worse than
+        returning no query at all: the caller believes isolation was applied.
+        Returns None to mean "this scoping path does not apply, try the next
+        one" — the same contract the inline blocks it replaces had.
+        """
+        required = scopes_requiring_tenant_filter(sql, self.tenant_scoped_tables)
+        if not required:
+            return None
+
+        injected_sql, unscoped = inject_where_all_scopes(
+            sql, col_name, value, ctx.schema_map, self.tenant_scoped_tables,
+        )
+
+        if injected_sql is None or unscoped:
+            logger.warning(
+                component="sql_validator",
+                event="tenant_filter_incomplete",
+                scope=col_name,
+                value=value,
+                unscoped_tables=unscoped,
+                sql_preview=sql[:120],
+                note="one or more SELECT scopes could not be tenant-scoped; "
+                     "failing closed rather than shipping a partial filter",
+            )
+            return ValidationResult(
+                passed=False, step="security",
+                message=(
+                    f"Tenant isolation could not be applied to every part of "
+                    f"this query. Unscoped tables: {unscoped or ['<unparseable>']}. "
+                    f"Rewrite the query so each subquery/CTE that reads a "
+                    f"tenant-scoped table selects its {col_name}, or restrict "
+                    f"the query to tables carrying {col_name}."
+                ),
+                sql=sql,
+            )
+
+        logger.info(
+            component="sql_validator",
+            event="tenant_filter_injected",
+            scope=col_name,
+            value=value,
+            scopes_scoped=len(required),
+        )
+        ctx.working_sql = injected_sql
+        return ValidationResult(passed=True, step="security", sql=injected_sql)

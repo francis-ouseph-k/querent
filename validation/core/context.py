@@ -41,6 +41,12 @@ class ValidationContext:
     cte_names: set[str] = field(default_factory=set)
 
     working_sql: str | None = None
+
+    # FIX-A6b. Set by any step that accepts a deterministic autofix rewrite
+    # (CostValidator, SyntaxValidator). Read by SQLValidator when building the
+    # final success result, so the pipeline can tell an autofixed query from a
+    # merely tenant-scoped one.
+    autofix_applied: bool = False
     
     # Diagnostic trace
     trace: list[str] = field(default_factory=list)

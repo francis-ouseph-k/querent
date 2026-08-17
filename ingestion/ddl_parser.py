@@ -68,6 +68,36 @@ logger = get_logger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _is_comment_only(chunk: str) -> bool:
+    """
+    True when a chunk contains no SQL statement at all -- only `--` line
+    comments, `/* */` block comments, and whitespace.
+
+    FIX-A5 (2026-08-14). `_split_ddl` splits on top-level semicolons, so any
+    text AFTER the last real statement's trailing `;` -- including an entire
+    multi-thousand-character block of trailing documentation with no
+    semicolon of its own -- becomes one final chunk. This schema's own
+    SECTION 15 onward (usage-insight notes, an identity-model diagram,
+    an abbreviations glossary, and a historical migration reference full of
+    commented-out example SQL) is exactly that: real, valuable prose, and
+    genuinely zero DDL objects. `sqlglot.parse_one` on a comment-only string
+    correctly raises "No expression was parsed" -- the warning was accurate,
+    not a parser bug -- but it fired on every run because there was never
+    anything to ingest there in the first place, training the operator to
+    ignore a warning that will never resolve on its own.
+
+    A permanent warning nobody can act on is worse than no warning: it
+    conditions people to skim past the NEXT one, which might be real. This
+    function lets the caller distinguish "nothing here, silently skip" from
+    "something here that should have parsed and didn't," which is the
+    warning worth keeping.
+    """
+    stripped = chunk
+    stripped = re.sub(r"--[^\n]*", "", stripped)
+    stripped = re.sub(r"/\*.*?\*/", "", stripped, flags=re.DOTALL)
+    return not stripped.strip()
+
+
 def _split_ddl(ddl_text: str) -> tuple[list[str], list[str]]:
     """
     Split DDL text into structural chunks and DML chunks using a
@@ -595,8 +625,19 @@ class DDLParser:
         # ')' inside a single-quoted string from a real closing parenthesis.
 
         statements: list[exp.Expression] = []
+        comment_only_chunks_skipped = 0
         for chunk in struct_chunks:
             if not chunk.strip():
+                continue
+
+            if _is_comment_only(chunk):
+                # FIX-A5: nothing to parse here, and nothing was ever lost --
+                # do not attempt sqlglot.parse_one (which would fail) and do
+                # not log parse_failed (which would be a false alarm every
+                # single run). Counted, not silenced entirely: a SUDDEN jump
+                # in this count across schema versions is still worth
+                # noticing, just not at WARNING level for the expected case.
+                comment_only_chunks_skipped += 1
                 continue
 
             parse_chunk = _strip_exclude_constraints(chunk)
@@ -667,6 +708,14 @@ class DDLParser:
                 event="parse_errors_summary",
                 count=len(self.parse_errors),
                 note="Schema objects in failed statements were not ingested",
+            )
+        if comment_only_chunks_skipped:
+            logger.info(
+                component="ddl_parser",
+                event="comment_only_chunks_skipped",
+                count=comment_only_chunks_skipped,
+                note="trailing/embedded documentation blocks with no DDL "
+                     "objects; not an error",
             )
 
         # ── Pass 2: CREATE TABLE and CREATE VIEW ──────────────────────────

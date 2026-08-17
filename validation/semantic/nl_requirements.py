@@ -441,6 +441,11 @@ _OUTPUT_HEADERS = re.compile(
     r"\b(?:show|list|display|return|give\s+(?:me\s+)?the|including)\b",
     re.IGNORECASE,
 )
+# Matched SEPARATELY from _OUTPUT_HEADERS and preferred over it when both are
+# present (see FIX-A4 in _extract_output_columns): "including" is unambiguous
+# as a list-introducer, unlike "display", which also occurs as a plain noun
+# modifier ("display name").
+_INCLUDING_RE = re.compile(r"\bincluding\b", re.IGNORECASE)
 _OUTPUT_TERMINATORS = re.compile(
     r"\b(where|with|when|filtering|filter|that\s+have|having|"
     r"order(?:ed)?\s+by|grouped\s+by|sorted|broken\s+down)\b|[?.]",
@@ -458,10 +463,45 @@ def _extract_output_columns(nl_lower: str) -> list[str]:
     The L7 audit check only runs when this list is non-empty, so
     silently returning [] effectively disables the check for queries
     that don't have an explicit projection list.
+
+    FIX-A4 (2026-08-14). Two structural changes, both generalising beyond
+    the single query that surfaced them (Q29 of batch run 20260814_155341):
+
+    1. Prefer an "including" clause over an earlier header verb -- but ONLY
+       "including" specifically, not "whichever header word appears last".
+       A first attempt at this fix took the LAST match among ALL header
+       words (show/list/display/return/give-the/including), reasoning that
+       "show ... including A, B, C" should split at "including". That broke
+       immediately on a DIFFERENT real query: "...and the display name of
+       the user who approved the hold." -- "display" is a header VERB in
+       "Display the boards" but a plain NOUN MODIFIER in "display name",
+       and blindly taking the last match picked the noun usage, discarding
+       every real item before it. "including" has no equivalent second
+       meaning; it is used in this corpus (and in English generally) almost
+       exclusively to introduce an appositive list, so it alone is safe to
+       prefer. Every other header word keeps its original first-match
+       behaviour, so a sentence with no "including" clause is handled
+       exactly as before.
+
+    2. DROP oversized items instead of truncating them. The previous rule
+       kept an item verbatim unless it exceeded 6 words, in which case it
+       kept only the LAST 4 -- silently manufacturing a plausible-looking
+       but disconnected fragment rather than admitting the extraction
+       produced something that isn't a column reference. An item that is
+       still a multi-clause fragment after stopword removal is not a column
+       name under any interpretation; the safe response is to stop treating
+       it as a requirement, not to guess which 4 words of it might be one.
+       This only ever REDUCES what L7 checks (never turns a correct query
+       into a flagged one), which is the right direction for a check with
+       retry authority via requirement_coverage.
     """
-    m = _OUTPUT_HEADERS.search(nl_lower)
-    if not m:
-        return []
+    including_match = _INCLUDING_RE.search(nl_lower)
+    if including_match:
+        m = including_match
+    else:
+        m = _OUTPUT_HEADERS.search(nl_lower)
+        if not m:
+            return []
 
     tail = nl_lower[m.end():]
     term = _OUTPUT_TERMINATORS.search(tail)
@@ -477,12 +517,13 @@ def _extract_output_columns(nl_lower: str) -> list[str]:
             continue
         # Drop the leading article/possessive
         words = [w for w in it.split() if w not in _OUTPUT_STOP]
-        if words:
-            cleaned.append(" ".join(words))
-    # If the very first item still has the verb attached (because
-    # there was no comma after it), drop it.
-    if cleaned and len(cleaned[0].split()) > 6:
-        cleaned[0] = " ".join(cleaned[0].split()[-4:])
+        if not words:
+            continue
+        if len(words) > 6:
+            # Still a clause, not a column reference -- drop rather than
+            # guess. See point 2 above.
+            continue
+        cleaned.append(" ".join(words))
     return cleaned
 
 

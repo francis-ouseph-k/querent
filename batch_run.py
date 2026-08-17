@@ -338,10 +338,19 @@ def run_batch(dry_run: bool = False, start_from: int = 1, end_at: int | None = N
                     # question before retrieval and scored as an accuracy
                     # failure (Q179 failed in 159 ms on a question whose enum
                     # value the pipeline had already extracted).
+                    # FIX-S1c: a benchmark run is BY DEFINITION cross-tenant —
+                    # it asks questions spanning every board and course, and
+                    # there is no signed-in user to scope it to. Declare that
+                    # explicitly so the harness keeps working when
+                    # SECURITY_REQUIRE_TENANT_CONTEXT=true in the served
+                    # deployment. Each such query is logged as
+                    # tenant_filter_admin_bypass, so the bypass stays auditable
+                    # rather than silent.
                     result     = runner.run(
                         question,
                         dry_run=dry_run,
                         auto_resolve_ambiguity=True,
+                        user_context={"tenant_scope": "all"},
                     )
                     elapsed_ms = round((time.perf_counter() - t0) * 1000)
                     result_row["Elapsed ms"] = elapsed_ms

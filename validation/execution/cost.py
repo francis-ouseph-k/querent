@@ -21,7 +21,12 @@ from config.settings import settings
 from utils.logging_config import get_logger
 from validation.utils.blocklist import classify_pg_error as _classify_pg_error, outer_query_has_limit as _outer_query_has_limit
 from mcp_tools.client import call_postgres_explain, MCPCallError
-from ..utils.autofix import attempt_pg_autofix
+from ..utils.autofix import (
+    attempt_pg_autofix,
+    attempt_distinct_order_by_autofix,
+    attempt_missing_group_by_autofix,
+    attempt_duplicate_alias_autofix,
+)
 
 logger = get_logger(__name__)
 
@@ -62,16 +67,55 @@ class CostValidator(BaseValidationStep):
         def check_pgcode(pgcode: str, error_msg: str, run_explain=None) -> ValidationResult | None:
             if pgcode.startswith("42") or pgcode.startswith("22"):
                 if run_explain is not None:
+                    # FIX-A1 (2026-08-14). Try each deterministic fixer in turn
+                    # before falling through to a failure the model has to
+                    # regenerate from scratch. None of these need the model to
+                    # reason better; they are each a single, unambiguous
+                    # PostgreSQL rule (string_agg DISTINCT/ORDER BY mismatch, a
+                    # column missing from GROUP BY, a duplicate table alias),
+                    # named repeatedly across benchmark runs.
+                    #
+                    # attempt_pg_autofix already re-verifies its own rewrite
+                    # against run_explain internally and only returns non-None
+                    # on success, so it needs no outer re-check. The three new
+                    # fixers only re-PARSE their output (they don't have a live
+                    # EXPLAIN inside them), so THEY are re-verified here before
+                    # being trusted -- a rewrite that merely parses can still be
+                    # semantically wrong (e.g. a renamed alias redirecting a
+                    # reference to a column that doesn't exist on that table),
+                    # and only EXPLAIN catches that.
                     fixed_sql, desc = attempt_pg_autofix(
-                        sql, error_msg, ctx.schema_map, run_explain
+                        sql, error_msg, ctx.schema_map, run_explain,
                     )
                     if fixed_sql is not None:
                         ctx.working_sql = fixed_sql
                         return ValidationResult(
-                            passed  = True,
-                            step    = "cost",
-                            message = desc or "PG planner autofix accepted",
-                            sql     = fixed_sql,
+                            passed=True, step="cost",
+                            message=desc or "PG planner autofix accepted",
+                            sql=fixed_sql,
+                        )
+
+                    for fixer, args in (
+                        (attempt_distinct_order_by_autofix, (sql, error_msg)),
+                        (attempt_missing_group_by_autofix, (sql, error_msg)),
+                        (attempt_duplicate_alias_autofix, (sql,)),
+                    ):
+                        candidate_sql, desc = fixer(*args)
+                        if candidate_sql is None:
+                            continue
+                        re_pgcode, re_err = run_explain(candidate_sql)
+                        if re_pgcode is None and re_err is None:
+                            ctx.working_sql = candidate_sql
+                            return ValidationResult(
+                                passed=True, step="cost",
+                                message=desc or "deterministic autofix accepted",
+                                sql=candidate_sql,
+                            )
+                        logger.info(
+                            component="sql_validator",
+                            event="autofix_re_explain_failed",
+                            fixer=fixer.__name__,
+                            new_err=str(re_err)[:120] if re_err else None,
                         )
 
                 step, message = _classify_pg_error(error_msg)

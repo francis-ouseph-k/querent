@@ -35,6 +35,11 @@ DESIGN DECISIONS:
 
 from __future__ import annotations
 
+from .ast_checks import (
+    check_left_join_on_filter_ast,
+    check_tautological_aggregation_ast,
+)
+
 import re
 from dataclasses import dataclass, field
 from typing import Sequence
@@ -536,7 +541,41 @@ def _check_tautological_aggregation(sql: str, result: AuditResult) -> None:
     """
     sql_low = _sql_lower(sql)
 
-    group_by_match = re.search(r'group\s+by\s+(.+?)(?:\s+order|\s+having|\s+limit|$)', sql_low)
+    # FIX-L5b (2026-08-14). The terminator set was `order|having|limit|$`, so a
+    # GROUP BY inside a CTE ran past the closing paren and swallowed the whole
+    # outer SELECT. Q138 of batch run 20260814_132132:
+    #
+    #   WITH action_counts AS (... GROUP BY al.entity_type, al.action)
+    #   SELECT ..., SUM(ac.action_count) OVER (PARTITION BY ac.entity_type) ...
+    #
+    # captured 'al.entity_type, al.action ) select ac.entity_type, ...,
+    # sum(ac.action_count) over ...' as the GROUP BY list. Splitting that on
+    # commas produced a token containing `ac.action_count`, which matched
+    # SUM(ac.action_count) and hard-blocked a correct window aggregate. Stop at
+    # a closing paren or a new SELECT/FROM/WINDOW/UNION as well.
+    # REVERTED 2026-08-14 (FIX-L5c). The previous revision used finditer and
+    # unioned every GROUP BY column in the statement, on the reasoning that
+    # scanning only the first made the check depend on CTE ordering. That was
+    # a worse cure than the disease: a union matches an aggregate in one scope
+    # against a GROUP BY in an unrelated one. Q43 of batch run 20260814_155341
+    # was hard-blocked by exactly that:
+    #
+    #   scripts_in_evaluation AS (
+    #     SELECT d.id, COUNT(DISTINCT ans_scr.id) ... GROUP BY d.id ),   <- correct
+    #   script_marks AS (
+    #     SELECT ... GROUP BY d.id, ans_scr.id )                        <- different CTE
+    #
+    # The union pulled `ans_scr.id` out of script_marks and reported
+    # COUNT(DISTINCT ans_scr.id) as tautological. Correct scoping needs the
+    # AST, not a regex; until L5 is rewritten against sqlglot, the narrow
+    # first-clause behaviour is the safe one for a check that hard-fails.
+    # The terminator fix and the window-aggregate exemption below are kept —
+    # both are unambiguous and neither depends on scope.
+    group_by_match = re.search(
+        r'group\s+by\s+(.+?)'
+        r'(?:\s+order|\s+having|\s+limit|\s+window|\s+union|\s+select|\s+from|\)|$)',
+        sql_low,
+    )
     if not group_by_match:
         return
 
@@ -564,8 +603,18 @@ def _check_tautological_aggregation(sql: str, result: AuditResult) -> None:
                 return True
         return False
 
+    def _is_window_aggregate(match_end: int) -> bool:
+        """
+        `SUM(x) OVER (...)` is a WINDOW function, not a GROUP BY aggregate: it
+        computes across the partition's rows and can never be tautological with
+        the GROUP BY list. Look just past the closing paren for OVER.
+        """
+        return bool(re.match(r'\s*over\s*[\(a-z_]', sql_low[match_end:]))
+
     # COUNT(DISTINCT col)
     for m in re.finditer(r'count\s*\(\s*distinct\s+(?:(\w+)\.)?(\w+)\s*\)', sql_low):
+        if _is_window_aggregate(m.end()):
+            continue
         tbl, col = m.group(1), m.group(2)
         if _col_in_group_by(tbl, col):
             ref = f"{tbl}.{col}" if tbl else col
@@ -580,6 +629,8 @@ def _check_tautological_aggregation(sql: str, result: AuditResult) -> None:
     # AVG(col) / SUM(col) -- single-table self-tautology
     for fn in ("avg", "sum"):
         for m in re.finditer(rf'{fn}\s*\(\s*(?:(\w+)\.)?(\w+)\s*\)', sql_low):
+            if _is_window_aggregate(m.end()):
+                continue
             tbl, col = m.group(1), m.group(2)
             if _col_in_group_by(tbl, col):
                 ref = f"{tbl}.{col}" if tbl else col
@@ -897,6 +948,37 @@ def _check_left_join_on_filter(sql: str, result: AuditResult) -> None:
         if is_null_in_where:
             continue
 
+        # CHAINED ANTI-JOIN (2026-08-14). The IS NULL may sit on a
+        # DOWNSTREAM alias rather than this one. Q1:
+        #   LEFT JOIN answer_key ak      ON ak.qp_id = qp.id
+        #                                AND ak.status = 'APPROVED'
+        #   LEFT JOIN answer_key_rubric akr ON akr.answer_key_id = ak.id
+        #   WHERE akr.id IS NULL
+        # A question with no APPROVED key nulls `ak`, which nulls `akr`,
+        # which satisfies the anti-join — so the ON-clause filter is NOT
+        # silently dropped, it is load-bearing. Flagging this was a false
+        # positive, and it is exactly the kind of false positive that must
+        # not survive promoting L8 to hard_fail below. Walk one hop: is
+        # there another alias that (a) joins to THIS alias in an ON clause
+        # and (b) is IS NULL-tested in WHERE?
+        downstream_anti_join = False
+        for other in re.finditer(
+            rf"\bjoin\s+\w+\s+(?:as\s+)?(\w+)\s+on\b([^\n]*?)"
+            rf"(?=\bjoin\b|\bwhere\b|\bgroup\s+by\b|$)",
+            sql_low, re.DOTALL,
+        ):
+            other_alias, other_on = other.group(1), other.group(2) or ""
+            if other_alias == alias:
+                continue
+            if f"{alias}." not in other_on:
+                continue
+            if re.search(rf"\b{re.escape(other_alias)}\.\w+\s+is\s+null\b",
+                         where_body):
+                downstream_anti_join = True
+                break
+        if downstream_anti_join:
+            continue
+
         # AGGREGATION PATTERN: if the SQL aggregates over the joined
         # alias (`COUNT(<alias>.id)`, `SUM(<alias>.amount)`,
         # `MAX(<alias>.created_at)`, etc.) then the LEFT JOIN is
@@ -920,7 +1002,44 @@ def _check_left_join_on_filter(sql: str, result: AuditResult) -> None:
         if agg_over_alias:
             continue
 
-        # Genuine miss.  Report it.
+        # OPTIONAL-ATTACHMENT PATTERN (2026-08-14, FIX-L8b). If a column of
+        # this alias is PROJECTED in the SELECT list, the LEFT JOIN is being
+        # used to optionally attach a row and the ON-clause filter is scoping
+        # WHICH row attaches. Moving that filter to WHERE would delete the
+        # left-side rows that have no match — the opposite of what the query
+        # asks for. Batch run 20260814_132132 blocked two correct queries this
+        # way once L8 became hard_fail:
+        #
+        #   Q47  LEFT JOIN evaluation_policy ep ON ep.board_id = b.id
+        #             AND ep.effective_from <= CURRENT_DATE ...
+        #        projects ep.deviation_threshold and ep.review_required, and
+        #        must still list boards whose policy is not currently effective.
+        #   Q35  LEFT JOIN academic_unit d ON d.id = fc.department_id
+        #             AND d.unit_type = 'DEPARTMENT'
+        #        projects d.name AS department_name.
+        #
+        # Promoting L8 to a hard block without this exemption traded two silent
+        # wrong answers for two blocked right ones. Projection is the signal
+        # that the join is an attachment rather than a filter.
+        # Only the SELECT LISTS count. A naive `select .* alias\.` search spans
+        # past FROM and matches the alias inside the very ON clause being
+        # judged, exempting every LEFT JOIN in the query.
+        alias_projected = any(
+            re.search(rf"\b{re.escape(alias)}\.\w+", seg)
+            for seg in re.findall(r"\bselect\b(.*?)\bfrom\b", sql_low, re.DOTALL)
+        )
+        if alias_projected:
+            continue
+
+        # Genuine miss. AST/structure-derived, not keyword-derived: once the
+        # three idiom exemptions above have passed, a value filter in a LEFT
+        # JOIN ON with no NULL-test anywhere is deterministically dropped by
+        # the join semantics. There is no reading of the query in which it
+        # does what it appears to do. That is the project's own stated bar for
+        # hard_fail ("a check derived from the DDL or the AST may hard-fail"),
+        # so route it through the correction-or-block path in runner.py rather
+        # than absorbing it into a confidence penalty on a Success result.
+        result.hard_fail = True
         result.add_warning(
             "L8",
             f"LEFT JOIN {table} {alias!r} has filter predicate(s) "
@@ -1032,7 +1151,7 @@ def run_logical_audit(
     _check_group_by_alignment(nl_query, sql, intent, result)  # L2
     _check_aggregation_match(nl_query, sql, result)       # L3
     _check_anti_join_polarity(nl_query, sql, result)      # L4
-    _check_tautological_aggregation(sql, result)          # L5
+    check_tautological_aggregation_ast(sql, result)       # L5 (AST)
 
     # NEW: parse the NL once, then run requirement-driven checks ─────
     # Import is local to keep validation.nl_requirements optional —
@@ -1050,7 +1169,7 @@ def run_logical_audit(
     o_satisfied, o_total = _check_output_coverage(       # L7
         requirements, sql, result,
     )
-    _check_left_join_on_filter(sql, result)              # L8
+    check_left_join_on_filter_ast(sql, result)           # L8 (AST)
     _check_entity_type_hints(requirements, sql, result)  # L9
 
     # Compute non-LLM coverage score.  None when no requirements

@@ -1,7 +1,7 @@
 # Querent
 
 <p align="center">
-  <img src="querent-logo.jpg" alt="Querent Logo" width="180">
+  <img src="querent-logo.jpg" alt="Querent Logo" width="90%">
 </p>
 
 <p align="center">

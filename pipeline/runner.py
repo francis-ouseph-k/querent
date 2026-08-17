@@ -698,7 +698,39 @@ class PipelineRunner:
             nest_rule = calib_rules.get('excessive_nesting', {})
             if sql_lower.count("select") > nest_rule.get('max_select_count', 3):
                 calibrated_conf -= nest_rule.get('penalty', 0.10)
-                
+
+            # FIX-A6 (2026-08-14). Two deterministic, already-computed risk
+            # signals that previously never reached the confidence number at
+            # all: how many validator-driven retries this query needed, and
+            # whether an autofix had to REWRITE the SQL to reach a passing
+            # state. A query that failed once and needed a rewrite is
+            # measurably riskier than one that validated cleanly on the
+            # first attempt, but before this both displayed whatever
+            # confidence the model happened to self-report -- which a
+            # bimodal distribution (the overwhelming majority landing at
+            # 0.95/0.98 regardless of how much correction was needed)
+            # showed carries almost no separating signal on its own.
+            #
+            # Deliberately small, additive penalties, not a new scoring
+            # model: this nudges confidence toward reflecting effort spent
+            # correcting the query, it does not invent a judgement about
+            # correctness this system cannot actually measure without a
+            # gold set.
+            retry_rule = calib_rules.get('retries_needed', {})
+            if retries > 0:
+                calibrated_conf -= retry_rule.get('penalty_per_retry', 0.03) * retries
+
+            # FIX-A6b. Read the EXPLICIT flag, not a text diff against the
+            # model's raw SQL. `validated_sql != generated.sql` is also true
+            # whenever SecurityTransformer injects a tenant filter, which in a
+            # real multi-tenant deployment is nearly every query -- that
+            # comparison would have decayed into a constant -0.05 offset
+            # carrying no information, which is precisely the failure mode
+            # this calibration work exists to fix.
+            autofix_rule = calib_rules.get('autofix_applied', {})
+            if getattr(val_result, "autofix_applied", False):
+                calibrated_conf -= autofix_rule.get('penalty', 0.05)
+
             generated.confidence = max(0.0, round(calibrated_conf, 2))
             
             # H-2 fix: remaining_budget prevents total retries from exceeding max_retries.

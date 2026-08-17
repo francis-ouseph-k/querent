@@ -47,6 +47,7 @@ FIX-O2 — get_few_shot_examples() had no error handling. A transient Qdrant
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import networkx as nx
@@ -212,7 +213,21 @@ class RetrievalOrchestrator:
                 seen_ids.add(chunk_id)
 
         # ── Step 6: Ensure entity TABLE + FK_MAP chunks are always present ──
-        entity_mandatory = self._fetch_mandatory_chunks_for(entity_tables, chunk_lookup)
+        # FIX-R1 (2026-08-14). This step was untimed and, worse, issued its
+        # Qdrant lookups SEQUENTIALLY inside _fetch_mandatory_chunks_for — up to
+        # 2 network round trips per entity table (TABLE chunk, FK_MAP chunk),
+        # one after another. Each qdrant.search() call elsewhere in this same
+        # pipeline measured ~2.1s median; with the typical 4-5 entity tables
+        # per question, that is 8-10s of serial network waiting, entirely
+        # inside the "unattributed_ms" gap (median 8.3s across the benchmark —
+        # a near-exact match). Nothing here computes off a PRIOR result, so
+        # there is no reason for the calls to be sequential.
+        t0 = time.time()
+        entity_mandatory, mandatory_misses = self._fetch_mandatory_chunks_for(
+            entity_tables, chunk_lookup,
+        )
+        meta["mandatory_chunk_ms"]     = round((time.time() - t0) * 1000)
+        meta["mandatory_chunk_misses"] = mandatory_misses
         for chunk in entity_mandatory:
             if chunk.chunk_id not in seen_ids:
                 ordered_chunks.insert(0, chunk)
@@ -329,7 +344,7 @@ class RetrievalOrchestrator:
         self,
         tables:       list[str],
         chunk_lookup: dict[str, dict[str, Any]],
-    ) -> list[SemanticChunk]:
+    ) -> tuple[list[SemanticChunk], int]:
         """
         Fetch both TABLE and FK_MAP chunks for entity-extracted tables and
         return them as mandatory (inserted at the front of context regardless
@@ -337,7 +352,17 @@ class RetrievalOrchestrator:
 
         Fetch strategy:
           1. Check if already present in the RRF result set (chunk_lookup).
-          2. If missing, do a targeted Qdrant lookup for each missing type.
+          2. If missing, do a targeted Qdrant lookup for each missing type —
+             CONCURRENTLY (FIX-R1). Each miss is an independent point lookup
+             keyed by table name; none depends on another's result, so there
+             is no correctness reason to serialise them. QdrantClient's sync
+             transport is safe for concurrent reads from multiple threads (its
+             own connection pool handles that), so a bounded thread pool is
+             sufficient — no async rewrite of the surrounding pipeline needed.
+
+        Returns (chunks, miss_count) — miss_count is logged so a rising trend
+        (more entity chunks not covered by the main RRF search) is visible
+        instead of buried inside a timing number.
         """
         chunks: list[SemanticChunk]       = []
         found:  dict[str, set[ChunkType]] = {}
@@ -355,19 +380,50 @@ class RetrievalOrchestrator:
                 chunks.append(SemanticChunk.from_payload(payload))
                 found.setdefault(tname, set()).add(ctype)
 
-        for table in tables:
-            for needed_type in (ChunkType.TABLE, ChunkType.FK_MAP):
-                if needed_type not in found.get(table, set()):
-                    hits = self.qdrant.search(
-                        query_text     = table,
-                        top_k          = 1,
-                        chunk_types    = [needed_type],
-                        filter_payload = {"table_name": table},
-                    )
-                    if hits:
-                        chunks.append(SemanticChunk.from_payload(hits[0]))
+        missing: list[tuple[str, ChunkType]] = [
+            (table, needed_type)
+            for table in tables
+            for needed_type in (ChunkType.TABLE, ChunkType.FK_MAP)
+            if needed_type not in found.get(table, set())
+        ]
+        if not missing:
+            return chunks, 0
 
-        return chunks
+        def _one(table: str, needed_type: ChunkType) -> dict[str, Any] | None:
+            hits = self.qdrant.search(
+                query_text     = table,
+                top_k          = 1,
+                chunk_types    = [needed_type],
+                filter_payload = {"table_name": table},
+            )
+            return hits[0] if hits else None
+
+        # Bounded, not len(missing): a pathological question with many entity
+        # tables must not open dozens of simultaneous connections to Qdrant.
+        with ThreadPoolExecutor(max_workers=min(8, len(missing))) as pool:
+            futures = {
+                pool.submit(_one, table, needed_type): (table, needed_type)
+                for table, needed_type in missing
+            }
+            for future in as_completed(futures):
+                table, needed_type = futures[future]
+                try:
+                    hit = future.result()
+                except Exception as exc:
+                    logger.warning(
+                        component="retrieval_orchestrator",
+                        event="mandatory_chunk_fetch_failed",
+                        table=table,
+                        chunk_type=needed_type.value,
+                        error=str(exc),
+                        note="continuing without this chunk rather than "
+                             "failing the whole retrieval",
+                    )
+                    continue
+                if hit:
+                    chunks.append(SemanticChunk.from_payload(hit))
+
+        return chunks, len(missing)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

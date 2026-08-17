@@ -22,6 +22,7 @@ AST-level structural validators — the first three pipeline steps.
 """
 
 import re
+import sqlglot
 import sqlglot.expressions as exp
 from typing import Any
 
@@ -29,6 +30,10 @@ from ..core.context import ValidationContext
 from ..core.base import BaseValidationStep
 from models.schema import ValidationResult
 from utils.logging_config import get_logger
+from ..utils.autofix import (
+    attempt_reserved_alias_autofix,
+    attempt_duplicate_alias_autofix,
+)
 
 logger = get_logger(__name__)
 
@@ -81,7 +86,38 @@ class SyntaxValidator(BaseValidationStep):
                 error="Parse error",
                 sql_preview=sql[:80],
             )
-            
+
+            # FIX-A2 (2026-08-14). Deterministic repair before falling
+            # through to a full model regenerate. A reserved-word alias is
+            # the single most common cause landing here (confirmed across
+            # 5+ benchmark runs) and its fix needs no model call: rename the
+            # token, re-parse, and if it now parses, use it. Only if this
+            # does NOT resolve the parse failure does the function fall
+            # through to the reserved-alias error message below (which still
+            # routes to a full retry, same as before).
+            fixed_sql, fix_desc = attempt_reserved_alias_autofix(sql)
+            if fixed_sql is None:
+                fixed_sql, fix_desc = attempt_duplicate_alias_autofix(sql)
+            if fixed_sql is not None:
+                try:
+                    reparsed = sqlglot.parse(fixed_sql, dialect="postgres")
+                except Exception:
+                    reparsed = None
+                if reparsed and all(s is not None for s in reparsed):
+                    ctx.working_sql = fixed_sql
+                    ctx.ast = reparsed
+                    ctx.autofix_applied = True
+                    logger.info(
+                        component="sql_validator",
+                        event="syntax_autofix_accepted",
+                        fix=fix_desc,
+                    )
+                    return ValidationResult(
+                        passed=True, step="syntax",
+                        message=fix_desc, sql=fixed_sql,
+                        autofix_applied=True,
+                    )
+
             # Provide explicit feedback if the LLM used a reserved keyword as a table alias.
             # We first strip strings and comments to avoid false positives.
             sql_lower = sql.lower()

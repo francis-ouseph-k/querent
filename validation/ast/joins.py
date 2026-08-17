@@ -62,6 +62,45 @@ def _cte_projection_sources(stmt: exp.Expression) -> dict[str, dict[str, tuple[s
     return out
 
 
+def _derived_table_sources(
+    stmt: exp.Expression,
+) -> dict[str, dict[str, tuple[str, str]]]:
+    """
+    Same contract as _cte_projection_sources, for INLINE derived tables.
+
+    `JOIN (SELECT ea.assignment_id, ... FROM evaluation_attempt ea) AS ed
+        ON ed.assignment_id = ascr.id`
+
+    is the identical defect to the CTE form and was invisible to this check,
+    because a subquery alias is not an exp.CTE. Batch run 20260814_102207:
+    join_key_domain_mismatch fired only 4 times while hand review found the
+    same defect shape in queries the check never saw.
+    """
+    out: dict[str, dict[str, tuple[str, str]]] = {}
+    for sub in stmt.find_all(exp.Subquery):
+        alias = (sub.alias or "").lower()
+        if not alias:
+            continue
+        inner = sub.this
+        if not isinstance(inner, exp.Select):
+            continue
+        mapping: dict[str, tuple[str, str]] = {}
+        for projection in inner.expressions:
+            target = projection
+            output_name = projection.alias_or_name
+            if isinstance(projection, exp.Alias):
+                target = projection.this
+            if not isinstance(target, exp.Column) or not target.table:
+                continue
+            if not output_name:
+                continue
+            mapping[output_name.lower()] = (
+                target.table.lower(), (target.name or "").lower()
+            )
+        out[alias] = mapping
+    return out
+
+
 def _local_alias_map(stmt: exp.Expression) -> dict[str, str]:
     """alias -> base table name for every table source in the statement."""
     alias_map: dict[str, str] = {}
@@ -203,6 +242,12 @@ class JoinValidator(BaseValidationStep):
 
                 alias_map = _local_alias_map(stmt)
                 cte_sources = _cte_projection_sources(stmt)
+                # Derived tables resolve exactly like CTEs; merging them into
+                # one map means _referent_entity needs no change. CTE names win
+                # on collision — a CTE is declared once, a subquery alias is
+                # local, so the CTE is the more reliable binding.
+                merged_sources = {**_derived_table_sources(stmt), **cte_sources}
+                cte_sources = merged_sources
 
                 for join in stmt.find_all(exp.Join):
                     on_clause = join.args.get("on")

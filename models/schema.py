@@ -244,6 +244,14 @@ class ValidationResult:
     step:    str    = ""    # which step failed
     message: str    = ""
     sql:     str    = ""    # possibly modified SQL (e.g. tenant filter injected)
+    # FIX-A6b (2026-08-14). Set True when a DETERMINISTIC AUTOFIX rewrote the
+    # SQL. Confidence calibration needs to distinguish "a fixer had to repair
+    # this query" from "the SQL was rewritten at all" -- the latter is also
+    # true whenever SecurityTransformer injects a tenant filter, which in a
+    # real multi-tenant deployment is nearly every query. Inferring the former
+    # from a text diff against the model's raw output therefore degrades to a
+    # constant penalty in production; this flag carries the fact explicitly.
+    autofix_applied: bool = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────

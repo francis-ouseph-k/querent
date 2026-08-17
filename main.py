@@ -150,7 +150,11 @@ def main() -> None:
 
         result = runner.run(
             nl_query=args.query,
-            user_context={"role": "evaluator"},
+            # FIX-S1c: the CLI is an operator console with no signed-in
+            # tenant. Declare the cross-tenant scope explicitly so it keeps
+            # working under SECURITY_REQUIRE_TENANT_CONTEXT=true; the bypass
+            # is logged as tenant_filter_admin_bypass on every query.
+            user_context={"role": "evaluator", "tenant_scope": "all"},
         )
 
         print("-" * 60)
@@ -185,7 +189,9 @@ def main() -> None:
     print("Enter queries below. Type 'exit' or 'quit' to stop.")
     print("=" * 80 + "\n")
 
-    user_ctx = {"role": "evaluator"}
+    # FIX-S1c: see the single-query branch above. Replace "tenant_scope" with
+    # a real board_id / course_id / user_id once the CLI authenticates.
+    user_ctx = {"role": "evaluator", "tenant_scope": "all"}
 
     while True:
         try:

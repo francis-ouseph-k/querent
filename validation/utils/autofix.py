@@ -522,3 +522,493 @@ def attempt_near_miss_column_autofix(
         references=changed,
     )
     return fixed_sql, desc
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Reserved-word alias autofix (2026-08-14)
+# ─────────────────────────────────────────────────────────────────────────
+# SyntaxValidator (validation/ast/syntax.py) has detected `as` (or another
+# SQL reserved word) used as a table alias since before this hardening pass,
+# but only to PRODUCE an error message -- the retry loop then burns a full
+# model round-trip re-generating the entire query from scratch to fix one
+# token. That has cost 5+ occurrences across every benchmark run to date,
+# ~15-50s of wall time each, and occasionally does not even get fixed (the
+# model repeats the same mistake on retry).
+#
+# The bug is single-token and its shape is always the same: the reserved
+# word is unparseable as an alias BECAUSE it collides with the keyword's own
+# grammar, but the fix -- give it a different name -- is unambiguous once
+# the declaration site is located. No model call is needed to rename a
+# variable.
+
+_RESERVED_ALIAS_TARGET_RE = re.compile(
+    r'''(?ix)
+        \b(from|join)\s+
+        (?:(?P<schema>[a-z_][a-z0-9_]*)\.)?(?P<table>[a-z_][a-z0-9_]*)\s+
+        (?:as\s+)?(?P<alias>as|in|group|order|table|select|where|having|
+                            limit|offset|union|with|all|and|any|case|
+                            check|exists|using)\b
+    '''
+)
+
+
+def _mask_strings_and_comments(sql: str) -> str:
+    """
+    Blank out string/comment CONTENTS while preserving length, so a regex
+    match position found in the masked text maps 1:1 onto the original SQL.
+    (The existing detection regex in syntax.py replaces string literals with
+    a fixed `''`, which shifts every later offset -- fine for a yes/no
+    detection, not safe for a position-based rewrite.)
+    """
+    out = list(sql)
+
+    def _blank(m: "re.Match") -> str:
+        s, e = m.span()
+        for i in range(s, e):
+            if out[i] not in ("'", '"'):
+                out[i] = " "
+        return sql[s:e]
+
+    for pat in (r"--[^\n]*", r"/\*.*?\*/", r"'(?:[^']|'')*'"):
+        for m in re.finditer(pat, sql, flags=re.DOTALL):
+            _blank(m)
+    return "".join(out)
+
+
+def _sub_alias_refs_outside_literals(
+    sql: str, masked: str, bad_alias: str, candidate: str,
+    start: int = 0, end: int | None = None,
+) -> str:
+    """
+    Replace `<bad_alias>.` with `<candidate>.` ONLY where the match falls
+    outside a string literal or comment, within [start, end).
+
+    A plain `re.sub` on the raw SQL cannot tell a table qualifier from the
+    same characters inside a literal, and silently rewrites the DATA:
+
+        WHERE as.note = 'see as.txt for detail'
+          ->  WHERE ans_a.note = 'see ans_a.txt for detail'   <- corrupted
+
+    `masked` has literal/comment CONTENTS blanked but the SAME LENGTH as
+    `sql`, so a match found in `masked` maps 1:1 onto `sql` by offset.
+    Applying replacements right-to-left keeps earlier offsets valid.
+    """
+    if end is None:
+        end = len(sql)
+    pattern = re.compile(rf"\b{re.escape(bad_alias)}\.", re.IGNORECASE)
+    spans = [m.span() for m in pattern.finditer(masked, start, end)]
+    out = sql
+    for m_start, m_end in reversed(spans):
+        out = out[:m_start] + candidate + "." + out[m_end:]
+    return out
+
+
+def attempt_reserved_alias_autofix(sql: str) -> tuple[str | None, str | None]:
+    """
+    Rename a reserved-word table alias (`FROM answer_script AS as`, or the
+    implicit form `FROM answer_script as`) to a safe, unique identifier, and
+    fix up every `<alias>.<column>` reference to match.
+
+    Returns (fixed_sql, fix_description) on success, or (None, None) if no
+    reserved-word alias declaration was found, or if the rewrite still fails
+    to parse (never trust a text rewrite without re-verifying it).
+    """
+    masked = _mask_strings_and_comments(sql)
+    m = _RESERVED_ALIAS_TARGET_RE.search(masked)
+    if not m:
+        return None, None
+
+    bad_alias = m.group("alias").lower()
+    table     = m.group("table")
+
+    # A short, non-reserved, deterministic replacement: first 3 letters of
+    # the table name + "_a" reads naturally (answer_script -> ans_a) and is
+    # exceedingly unlikely to collide with an existing alias. If it does
+    # collide, append a counter until it doesn't.
+    base = re.sub(r"[^a-z0-9_]", "", table.lower())[:3] or "t"
+    candidate = f"{base}_a"
+    existing_aliases = {
+        a.lower() for a in re.findall(r"\b(?:as\s+)?([a-z_][a-z0-9_]*)\s*(?=[,\n)]|$)",
+                                       masked, flags=re.IGNORECASE)
+    }
+    n = 2
+    while candidate in existing_aliases:
+        candidate = f"{base}_a{n}"
+        n += 1
+
+    # 1) The declaration site: replace exactly the matched alias TOKEN (not
+    #    the table name, not the AS keyword before it) using the position
+    #    found in the masked text, which is 1:1 with the original.
+    decl_start, decl_end = m.span("alias")
+    rewritten = sql[:decl_start] + candidate + sql[decl_end:]
+
+    # 2) `<alias>.` used as a table qualifier. Substituted position-wise
+    #    against the MASKED text so a string literal that happens to contain
+    #    `as.` (e.g. `WHERE note = 'see as.txt'`) is not rewritten as if it
+    #    were SQL. The declaration rename above shifted offsets, so re-mask
+    #    the rewritten text rather than reusing the original mask.
+    rewritten = _sub_alias_refs_outside_literals(
+        rewritten, _mask_strings_and_comments(rewritten), bad_alias, candidate,
+    )
+
+    try:
+        reparsed = sqlglot.parse(rewritten, dialect="postgres")
+    except Exception as exc:
+        logger.info(
+            component="sql_validator",
+            event="autofix_reserved_alias_still_unparseable",
+            bad_alias=bad_alias, candidate=candidate,
+            error=str(exc)[:120],
+        )
+        return None, None
+    if not reparsed or any(stmt is None for stmt in reparsed):
+        logger.info(
+            component="sql_validator",
+            event="autofix_reserved_alias_still_unparseable",
+            bad_alias=bad_alias, candidate=candidate,
+        )
+        return None, None
+
+    desc = (
+        f"autofix: renamed reserved-word alias `{bad_alias}` (on table "
+        f"`{table}`) to `{candidate}`"
+    )
+    logger.info(
+        component="sql_validator",
+        event="autofix_reserved_alias_accepted",
+        bad_alias=bad_alias, table=table, candidate=candidate,
+    )
+    return rewritten, desc
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Duplicate table alias autofix (2026-08-14)
+# ─────────────────────────────────────────────────────────────────────────
+# `... JOIN app_user cb ON cb.id = x.dept_head ... JOIN department cb ON
+# cb.id = x.dept_id` -- the same alias bound to two different tables in one
+# scope. PostgreSQL rejects this outright ("table name specified more than
+# once"); the second declaration is what must be renamed, and every
+# reference to it that follows its own declaration (up to the next
+# redeclaration, if any) must move with it. Purely mechanical: which
+# occurrence of a column reference belongs to which declaration is fully
+# determined by clause order, never a guess about intent.
+
+def attempt_duplicate_alias_autofix(sql: str) -> tuple[str | None, str | None]:
+    """
+    Find an alias bound to more than one table within the same statement and
+    rename every occurrence AFTER the first declaration -- both the second
+    `FROM`/`JOIN ... <table> <alias>` clause and every `<alias>.<column>`
+    reference that follows it -- to a unique name.
+
+    IMPORTANT ambiguity note: PostgreSQL rejects the duplicate outright, so
+    (unlike the reserved-word case) there is no "correct" scope resolution
+    to defer to -- a reference to the shared alias is genuinely ambiguous in
+    the source SQL itself, not just to this tool. "Rename the second
+    declaration and every `<alias>.` reference AFTER it" is a deliberate,
+    disclosed convention (most-recently-declared-name wins going forward),
+    not a claim about the model's original intent, which is unrecoverable.
+    Any reference BEFORE the second declaration (most commonly the SELECT
+    list, which is textually first) is left untouched and will bind to the
+    FIRST (surviving, unrenamed) declaration once the rewrite makes the SQL
+    valid -- the only unambiguous outcome available.
+    """
+    masked = _mask_strings_and_comments(sql)
+
+    # table + explicit or implicit alias, in FROM/JOIN position.
+    decl_re = re.compile(
+        r'''(?ix)
+            \b(from|join)\s+
+            (?:[a-z_][a-z0-9_]*\.)?(?P<table>[a-z_][a-z0-9_]*)\s+
+            (?:as\s+)?(?P<alias>[a-z_][a-z0-9_]*)\b
+            (?!\s*\()
+        '''
+    )
+    decls = [m for m in decl_re.finditer(masked)
+             if m.group("alias").lower() not in
+             {"on", "where", "group", "order", "having", "limit", "join",
+              "left", "right", "inner", "outer", "cross", "full", "union"}]
+
+    seen: dict[str, list["re.Match"]] = {}
+    for m in decls:
+        seen.setdefault(m.group("alias").lower(), []).append(m)
+
+    dupes = {alias: ms for alias, ms in seen.items() if len(ms) > 1}
+    if not dupes:
+        return None, None
+
+    # Take the first duplicated alias with more than one distinct TABLE bound
+    # to it (re-declaring the same alias on the same table is a redundant but
+    # harmless no-op and must not be "fixed" into something else).
+    target_alias, matches = None, None
+    for alias, ms in dupes.items():
+        tables = {m.group("table").lower() for m in ms}
+        if len(tables) > 1:
+            target_alias, matches = alias, ms
+            break
+    if target_alias is None:
+        return None, None
+
+    second = matches[1]
+    table = second.group("table")
+    base = re.sub(r"[^a-z0-9_]", "", table.lower())[:3] or "t"
+    existing = {m.group("alias").lower() for m in decls}
+    candidate = f"{base}_2"
+    n = 3
+    while candidate in existing:
+        candidate = f"{base}_{n}"
+        n += 1
+
+    # Rename the SECOND declaration's alias token, then every bare
+    # `<alias>.` reference from that declaration's END to the end of the
+    # statement (or up to the NEXT re-declaration of the same alias, if any
+    # -- rare, but a query could redeclare it a third time).
+    #
+    # CRITICAL: the substitution below must run ONLY on the slice from the
+    # second declaration onward. An earlier revision ran it on the full
+    # rewritten string, which also renamed `cb.` inside the FIRST
+    # declaration's own ON clause (textually before the second declaration,
+    # but still matched by a global regex) -- corrupting a reference that
+    # was correct and had nothing to do with the duplicate. Splitting into
+    # an untouched `prefix` and a substituted `middle` is what keeps the fix
+    # scoped to only what actually needs to change.
+    cut_end = len(sql)
+    if len(matches) > 2:
+        cut_end = matches[2].start("alias")
+
+    alias_start, alias_end = second.span("alias")
+    # Rename the declaration token first, then re-mask so offsets line up,
+    # then substitute references only in [after-the-rename, cut_end) -- outside
+    # string literals, and never touching the prefix, which belongs to the
+    # FIRST (surviving) declaration.
+    renamed = sql[:alias_start] + candidate + sql[alias_end:]
+    shift = len(candidate) - (alias_end - alias_start)
+    sub_end = (cut_end + shift) if cut_end < len(sql) else len(renamed)
+    rewritten = _sub_alias_refs_outside_literals(
+        renamed, _mask_strings_and_comments(renamed), target_alias, candidate,
+        start=alias_start + len(candidate),
+        end=sub_end,
+    )
+
+    try:
+        reparsed = sqlglot.parse(rewritten, dialect="postgres")
+    except Exception as exc:
+        logger.info(
+            component="sql_validator",
+            event="autofix_duplicate_alias_still_unparseable",
+            alias=target_alias, error=str(exc)[:120],
+        )
+        return None, None
+    if not reparsed or any(stmt is None for stmt in reparsed):
+        return None, None
+
+    desc = (
+        f"autofix: alias `{target_alias}` was bound to two different tables; "
+        f"renamed the second occurrence (`{table}`) to `{candidate}`"
+    )
+    logger.info(
+        component="sql_validator",
+        event="autofix_duplicate_alias_accepted",
+        alias=target_alias, table=table, candidate=candidate,
+    )
+    return rewritten, desc
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# string_agg / array_agg DISTINCT + ORDER BY autofix (2026-08-14)
+# ─────────────────────────────────────────────────────────────────────────
+# PostgreSQL rule: `agg(DISTINCT expr [, ...] ORDER BY sort_expr)` requires
+# every ORDER BY expression to be one of the DISTINCT'd arguments. Sorting a
+# de-duplicated list by a column that was never part of what got de-
+# duplicated is genuinely ambiguous to Postgres (which of the collapsed
+# duplicate rows' sort_expr would even apply?), so it refuses outright:
+# "in an aggregate with DISTINCT, ORDER BY expressions must appear in
+# argument list". Confirmed across FOUR separate benchmark runs on
+# string_agg(DISTINCT ...) calls.
+#
+# The mechanical fix is to point ORDER BY at the DISTINCT'd expression
+# itself. This is not a guess about intent -- it is the only sort key
+# PostgreSQL considers well-defined for a DISTINCT aggregate. It does
+# change the sort order actually produced (alphabetical-by-content, rather
+# than by whatever the model wanted to sort on), which is a real semantic
+# change; that is the trade-off between a query that runs and one that
+# doesn't, and it is disclosed in the returned description so it shows up
+# in the audit trail and confidence adjustment.
+
+_STRING_AGG_DISTINCT_ORDER_ERR_RE = re.compile(
+    r"in an aggregate with distinct.*?order by expressions must appear",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def attempt_distinct_order_by_autofix(
+    sql: str, error_msg: str,
+) -> tuple[str | None, str | None]:
+    """
+    Realign `agg(DISTINCT expr ORDER BY other_expr)` to
+    `agg(DISTINCT expr ORDER BY expr)` for every DISTINCT aggregate call in
+    the statement whose ORDER BY does not already match its argument.
+
+    sqlglot models `agg(DISTINCT x ORDER BY y)` as
+    `Func(this=Order(this=Distinct(expressions=[x]), expressions=[Ordered(this=y)]))`
+    -- DISTINCT and ORDER BY are nested INSIDE the function's single `this`
+    argument, not as separate top-level args on the function node. Both must
+    be found by walking `this`, not by reading `agg.args["distinct"]` /
+    `agg.args["order"]`, which do not exist at that level.
+    """
+    if not _STRING_AGG_DISTINCT_ORDER_ERR_RE.search(error_msg or ""):
+        return None, None
+
+    try:
+        statements = sqlglot.parse(sql, dialect="postgres")
+    except Exception:
+        return None, None
+    if not statements or any(s is None for s in statements):
+        return None, None
+
+    changed = []
+    for stmt in statements:
+        if stmt is None:
+            continue
+        for order_node in stmt.find_all(exp.Order):
+            distinct_node = order_node.args.get("this")
+            if not isinstance(distinct_node, exp.Distinct):
+                continue
+            distinct_exprs = distinct_node.expressions
+            if len(distinct_exprs) != 1:
+                continue   # multi-arg DISTINCT is a different, ambiguous case
+            distinct_expr = distinct_exprs[0]
+
+            for ordered in order_node.expressions:
+                if not isinstance(ordered, exp.Ordered):
+                    continue
+                sort_expr = ordered.this
+                if sort_expr is None:
+                    continue
+                if sort_expr.sql(dialect="postgres") == distinct_expr.sql(dialect="postgres"):
+                    continue
+                old_expr = sort_expr.sql(dialect="postgres")
+                ordered.set("this", distinct_expr.copy())
+                changed.append((old_expr, distinct_expr.sql(dialect="postgres")))
+
+    if not changed:
+        return None, None
+
+    new_sql = statements[0].sql(dialect="postgres") if len(statements) == 1 else \
+        ";\n".join(s.sql(dialect="postgres") for s in statements if s is not None)
+
+    try:
+        reparsed = sqlglot.parse(new_sql, dialect="postgres")
+    except Exception:
+        return None, None
+    if not reparsed or any(s is None for s in reparsed):
+        return None, None
+
+    old, new = changed[0]
+    desc = (
+        f"autofix: an aggregate's DISTINCT ORDER BY referenced `{old}`, which is "
+        f"not part of the DISTINCT'd expression -- PostgreSQL requires the "
+        f"ORDER BY key to be one of the DISTINCT arguments. Changed ORDER BY "
+        f"to `{new}` (the aggregated expression itself); this sorts the "
+        f"de-duplicated values by their own content rather than by "
+        f"`{old}`, which is the only ordering PostgreSQL considers "
+        f"well-defined here."
+    )
+    logger.info(
+        component="sql_validator",
+        event="autofix_distinct_order_by_accepted",
+        changes=len(changed), first_change=f"{old} -> {new}",
+    )
+    return new_sql, desc
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Missing GROUP BY column autofix (2026-08-14)
+# ─────────────────────────────────────────────────────────────────────────
+# Mirrors attempt_pg_autofix()'s pattern exactly: PostgreSQL names the exact
+# column in its own error text ("column \"x.y\" must appear in the GROUP BY
+# clause or be used in an aggregate function"), so the fix is to add that
+# literal column to the GROUP BY of the scope where it is missing. No
+# inference is needed about which column PostgreSQL means -- it says so.
+
+_MISSING_GROUP_BY_RE = re.compile(
+    r'column\s+"([\w.]+)"\s+must appear in the group by clause',
+    re.IGNORECASE,
+)
+
+
+def attempt_missing_group_by_autofix(
+    sql: str, error_msg: str,
+) -> tuple[str | None, str | None]:
+    """Add PostgreSQL's own named column to the nearest enclosing GROUP BY."""
+    m = _MISSING_GROUP_BY_RE.search(error_msg or "")
+    if not m:
+        return None, None
+    missing_col = m.group(1)
+
+    try:
+        statements = sqlglot.parse(sql, dialect="postgres")
+    except Exception:
+        return None, None
+    if not statements or any(s is None for s in statements):
+        return None, None
+
+    target_col = None
+    if "." in missing_col:
+        tbl, col = missing_col.split(".", 1)
+        target_col = exp.column(col, table=tbl)
+    else:
+        target_col = exp.column(missing_col)
+
+    applied = False
+    for stmt in statements:
+        if stmt is None:
+            continue
+        for select_node in stmt.find_all(exp.Select):
+            group = select_node.args.get("group")
+            if group is None:
+                continue
+            # Only touch a scope that actually projects the named column and
+            # already has a GROUP BY (i.e. is doing grouped aggregation) --
+            # never invent a GROUP BY where none existed, and never guess
+            # which of several scopes PostgreSQL meant beyond "the one that
+            # references this column."
+            refs_column = any(
+                (c.table or "").lower() == (target_col.table or "").lower()
+                and (c.name or "").lower() == (target_col.name or "").lower()
+                for c in select_node.find_all(exp.Column)
+            )
+            if not refs_column:
+                continue
+            already_grouped = any(
+                (g.table or "").lower() == (target_col.table or "").lower()
+                and (g.name or "").lower() == (target_col.name or "").lower()
+                for g in group.expressions if isinstance(g, exp.Column)
+            )
+            if already_grouped:
+                continue
+            group.append("expressions", target_col.copy())
+            applied = True
+
+    if not applied:
+        return None, None
+
+    new_sql = statements[0].sql(dialect="postgres") if len(statements) == 1 else \
+        ";\n".join(s.sql(dialect="postgres") for s in statements if s is not None)
+
+    try:
+        reparsed = sqlglot.parse(new_sql, dialect="postgres")
+    except Exception:
+        return None, None
+    if not reparsed or any(s is None for s in reparsed):
+        return None, None
+
+    desc = (
+        f"autofix: added `{missing_col}` to GROUP BY (PostgreSQL's own error "
+        f"named this exact column as missing)"
+    )
+    logger.info(
+        component="sql_validator",
+        event="autofix_missing_group_by_accepted",
+        column=missing_col,
+    )
+    return new_sql, desc

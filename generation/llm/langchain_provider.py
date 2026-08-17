@@ -41,6 +41,7 @@ from generation.llm.base import (
     ProviderInfo,
 )
 from utils.logging_config import get_logger
+from .rate_limiter import get_shared_rate_limiter
 
 logger = get_logger(__name__)
 
@@ -144,8 +145,24 @@ class LangChainChatProvider(LLMProvider):
 
         ai = None
         last_exc: Exception | None = None
+        limiter = get_shared_rate_limiter()
         for attempt in range(_MAX_TRANSIENT_ATTEMPTS):
             try:
+                if limiter is not None:
+                    # FIX-A3. Proactive throttle: block here, before the
+                    # request is sent, rather than only reacting after a 429.
+                    # A generous timeout (2x the backoff cap) means a badly
+                    # mistuned rate degrades to the OLD reactive-only
+                    # behaviour rather than hanging the pipeline.
+                    try:
+                        limiter.acquire(timeout=_BACKOFF_CAP_SECONDS * 2)
+                    except TimeoutError:
+                        logger.warning(
+                            component="sql_generator",
+                            event="rate_limiter_wait_exceeded",
+                            note="proceeding without waiting further; "
+                                 "reactive backoff will handle a 429",
+                        )
                 ai = self._model.invoke(lc_messages)
                 break
             except Exception as exc:

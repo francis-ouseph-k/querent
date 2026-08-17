@@ -147,6 +147,19 @@ class LLMSettings(BaseSettings):
     base_url:     str   = ""
     frequency_penalty: float = 0.0
     presence_penalty:  float = 0.0
+    # FIX-A3 (2026-08-14) — proactive client-side throttle. Complements the
+    # reactive 429 backoff in generation/llm/langchain_provider.py, which
+    # only engages AFTER a request is already rejected. This paces requests
+    # BEFORE they are sent, covering every call site that goes through
+    # LangChainChatProvider.complete() (top-level generation and any
+    # validator-driven retry). 0 disables the limiter entirely (no lock, no
+    # per-request overhead) for local/offline providers where it does not
+    # apply. MUST be tuned to the actual provider tier in use — this default
+    # is deliberately conservative, not a measured value for any specific
+    # account.
+    requests_per_minute: int = Field(
+        default=50, ge=0, validation_alias="LLM_REQUESTS_PER_MINUTE",
+    )
     # FIX-F1 — prompt profile. Which prompt distribution the pipeline serves:
     #   "full" (default) — the rich 10–14k-token serve prompt (base model).
     #   "ft"             — the training-parity prompt: _TRAIN_SYSTEM_PROMPT in a
@@ -499,6 +512,23 @@ class Settings(BaseSettings):
     # When true, SecurityTransformer REJECTS such a query instead of logging it;
     # a caller that legitimately spans tenants opts out per request by setting
     # user_context["tenant_scope"] = "all".
+    # 2026-08-14 (FIX-S1c): the CODE default stays False; the hardening is a
+    # DEPLOYMENT opt-in expressed in .env, not a library default.
+    #
+    # FIX-S1b flipped this to True and broke batch run 20260814_132132: 2 of
+    # every 3 questions failed with tenant_filter_rejected, because
+    # SQLValidator derives tenant_scoped_tables as "any table carrying board_id
+    # OR course_id" — 15 of 61 tables, including question_paper,
+    # exam_schedule_cache and revaluation_request — while batch_run.py supplied
+    # no user_context at all. Every query reaching one of those 15 tables was
+    # rejected before it could be judged for correctness.
+    #
+    # The lesson: a security posture belongs to a deployment, not to a default
+    # that every embedder and test harness silently inherits. Set
+    # SECURITY_REQUIRE_TENANT_CONTEXT=true in .env for the served application
+    # (it is set there); leave the code default permissive so a caller that has
+    # not yet been taught to pass a tenant context fails loudly at its own
+    # config boundary rather than mysteriously mid-run.
     require_tenant_context: bool = Field(
         default=False, validation_alias="SECURITY_REQUIRE_TENANT_CONTEXT"
     )
