@@ -1,7 +1,7 @@
 """
 validation/core/sql_validator.py
 ────────────────────────────
-14-step SQL validation pipeline orchestrator.
+15-step SQL validation pipeline orchestrator.
 """
 
 from __future__ import annotations
@@ -21,10 +21,13 @@ from ..schema.schema_validator import SchemaValidator
 from ..ast.joins import JoinValidator
 from ..ast.safety import SafetyValidator
 from ..ast.cardinality import CardinalityValidator
+from ..ast.satisfiability import SatisfiabilityValidator
+from ..ast.nondeterminism import NondeterministicSelectionValidator
 from ..security.validation import SecurityTransformer
 from ..security.exposure import ExposureValidator
 from ..execution.cost import CostValidator
 from ..semantic.semantic_checks import SemanticValidator, HardcodedLiteralValidator
+from ..semantic.zero_suppression import ZeroSuppressionValidator
 from ..utils.autofix import attempt_near_miss_column_autofix
 
 logger = get_logger(__name__)
@@ -56,6 +59,18 @@ def build_default_pipeline(
         # Item #6: aggregate-over-join-fan-out. Placed before CostValidator so
         # a query that is arithmetically wrong never reaches EXPLAIN.
         CardinalityValidator(),
+        # Rejects predicates no row can satisfy (unique GROUP BY + COUNT(*)>1)
+        # and predicates every row satisfies (always-true OR ranges). Both are
+        # invisible in the output -- they return an empty or unfiltered set
+        # that reads like a real answer -- so they are caught before EXPLAIN.
+        SatisfiabilityValidator(),
+        # An arbitrary row pick that feeds a predicate, a join, or a CTE.
+        # Same invisibility argument as the two above: the query returns
+        # rows, and returns DIFFERENT rows after a plan change.
+        NondeterministicSelectionValidator(),
+        # AVG/MIN over a count an INNER join guarantees is non-zero. Also
+        # ahead of EXPLAIN -- the arithmetic is wrong regardless of cost.
+        ZeroSuppressionValidator(),
         CostValidator(get_conn=get_conn, release_conn=release_conn, db_dsn=db_dsn),
         SemanticValidator(),
         HardcodedLiteralValidator(),

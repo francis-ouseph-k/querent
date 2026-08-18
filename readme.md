@@ -140,7 +140,7 @@ and execution layers.
 Current focus: improving semantic accuracy for complex multi-join queries and 
 expanding the failure-driven training dataset.
 
-Developed over 30+ commits across schema ingestion, retrieval pipelines, 
+Developed over 40+ commits across schema ingestion, retrieval pipelines, 
 reasoning engines, and validation layers. Architecture iterated through 
 multiple RAG and fine-tuning experiments before converging on the current 
 hybrid approach.

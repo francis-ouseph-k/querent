@@ -149,13 +149,57 @@ class _SensitiveFinding:
 # conservative: short/ambiguous names (e.g. "iv", "id") almost never appear
 # this way by coincidence in a natural-language question, so the false-permit
 # rate stays low without an explicit stoplist.
+def _inflect(term: str) -> set[str]:
+    """
+    Surface forms of a term that a natural-language question might use.
+
+    English pluralises the HEAD of a noun phrase, so "s3_version_id" is asked
+    for as "S3 version IDs". Matching only the singular made the check miss it
+    -- and a MISS here is the dangerous direction: it downgrades a hard block
+    into a silent redaction, returning a thinner answer to someone who
+    explicitly asked for the column. Q165 of batch run 20260817_133854
+    ("Show the S3 version IDs...") came back with the requested column quietly
+    dropped for exactly this reason.
+
+    Regular plurals only. Irregulars ("indices", "matrices") are not generated:
+    an over-broad rule here would start blocking queries that merely mention a
+    similar word, and the cost of that is worse than the cost of a rare miss.
+    """
+    forms = {term}
+    if term.endswith("s"):
+        forms.add(term[:-1])
+        if term.endswith("es"):
+            forms.add(term[:-2])
+        if term.endswith("ies"):
+            forms.add(term[:-3] + "y")
+    else:
+        forms.add(term + "s")
+        if term.endswith(("s", "x", "z", "ch", "sh")):
+            forms.add(term + "es")
+        if term.endswith("y") and len(term) > 1 and term[-2] not in "aeiou":
+            forms.add(term[:-1] + "ies")
+    return {f for f in forms if f}
+
+
 def _explicitly_requested(nl_question: str, column: str) -> bool:
     nl = (nl_question or "").lower()
     if not nl:
         return False
     parts = [p for p in column.lower().split("_") if p]
-    phrase = " ".join(parts)
-    candidates = {column.lower(), phrase} if phrase != column.lower() else {column.lower()}
+    candidates: set[str] = set()
+
+    # The bare column name, and its underscore-to-space phrase form. Only the
+    # LAST token is inflected -- that is the head of the noun phrase, and it is
+    # the only part English pluralises ("s3 version ids", never "s3s version id").
+    for base in ({column.lower(), " ".join(parts)} if parts else {column.lower()}):
+        base_parts = base.rsplit(" ", 1) if " " in base else base.rsplit("_", 1)
+        if len(base_parts) == 2:
+            head, tail = base_parts
+            sep = " " if " " in base else "_"
+            candidates.update(f"{head}{sep}{form}" for form in _inflect(tail))
+        else:
+            candidates.update(_inflect(base))
+
     return any(re.search(rf"\b{re.escape(c)}\b", nl) for c in candidates if c)
 
 

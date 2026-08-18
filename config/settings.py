@@ -160,6 +160,25 @@ class LLMSettings(BaseSettings):
     requests_per_minute: int = Field(
         default=50, ge=0, validation_alias="LLM_REQUESTS_PER_MINUTE",
     )
+    # Burst capacity for the token bucket, in requests. The bucket
+    # previously defaulted its capacity to the FULL per-minute rate, which
+    # means a cold start could fire `requests_per_minute` calls
+    # back-to-back before the limiter engaged at all -- so the very first
+    # thing a run does is the thing most likely to trip a 429. A burst of
+    # 1 makes the limiter a genuine pacer from the first request. Raise it
+    # only for a provider tier that is documented to tolerate bursts.
+    rate_limit_burst: int = Field(
+        default=1, ge=1, validation_alias="LLM_RATE_LIMIT_BURST",
+    )
+    # Transport-level attempts for a TRANSIENT provider error (429/5xx).
+    # This is NOT validation.max_retries: that budget buys SQL-correction
+    # round trips, this one buys re-sends of an identical request that the
+    # provider shed. Conflating them means a rate-limit storm silently eats
+    # the correction budget, or vice versa. Previously a module-level
+    # constant in langchain_provider.py with no env knob at all.
+    transient_max_attempts: int = Field(
+        default=4, ge=1, validation_alias="LLM_TRANSIENT_MAX_ATTEMPTS",
+    )
     # FIX-F1 — prompt profile. Which prompt distribution the pipeline serves:
     #   "full" (default) — the rich 10–14k-token serve prompt (base model).
     #   "ft"             — the training-parity prompt: _TRAIN_SYSTEM_PROMPT in a

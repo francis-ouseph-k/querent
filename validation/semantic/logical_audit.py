@@ -80,6 +80,9 @@ class AuditResult:
     confidence_penalty: float = 0.0
     requirement_coverage: float | None = None
     coverage_misses: list[str] = field(default_factory=list)
+    # Misses from advisory checks (currently L7 output-column coverage).
+    # Surfaced for logging and confidence, never used to gate a retry.
+    advisory_misses: list[str] = field(default_factory=list)
     hard_fail: bool = False
     """
     NEW (2026-07-01). True when a check fired that is deterministically
@@ -813,7 +816,9 @@ def _check_output_coverage(
                 f"SELECT list doesn't appear to project it.",
                 penalty=0.08,
             )
-            result.coverage_misses.append(f"output:{col}")
+            # Advisory only (FIX-L7a): recorded as a warning above, but kept
+            # OUT of coverage_misses, which is a retry-gate input.
+            result.advisory_misses.append(f"output:{col}")
 
     return (satisfied, len(filtered))
 
@@ -1175,10 +1180,28 @@ def run_logical_audit(
     # Compute non-LLM coverage score.  None when no requirements
     # were extracted — avoids dragging confidence down on queries
     # the parser has nothing to say about.
-    total_reqs = c_total + o_total
+    #
+    # FIX-L7a (batch run 20260817_133854). L7 (output-column coverage) is
+    # DEMOTED from gating to advisory: its misses still surface as warnings and
+    # still cost confidence, but they no longer drive `requirement_coverage`,
+    # which is what triggers audit_driven_retry in pipeline/runner.py.
+    #
+    # Rationale, and why this is a demotion rather than a deletion: L7 is the
+    # last keyword-derived check holding retry authority. It compares NOUN
+    # PHRASES lifted from the question against SQL output aliases, so it fires
+    # whenever the model names a column something reasonable but different
+    # ("num_sections" for "the number of sections"). It fired 62 times in this
+    # run — by far the loudest signal — while `audit_driven_retry` converted
+    # only 2 of 20 attempts into an accepted improvement. That is the same
+    # profile L5 and L8 had immediately before their false positives forced an
+    # AST rewrite, and the project's own standing rule is that a check
+    # comparing question words to SQL words is advisory, not fatal.
+    #
+    # Condition coverage (c_*) is retained as the gate: those requirements are
+    # grounded in entities and filters resolved against the DDL, not in
+    # free-text column naming.
+    total_reqs = c_total
     if total_reqs > 0:
-        result.requirement_coverage = round(
-            (c_satisfied + o_satisfied) / total_reqs, 3,
-        )
+        result.requirement_coverage = round(c_satisfied / total_reqs, 3)
 
     return result

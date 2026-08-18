@@ -132,6 +132,24 @@ def _build_langchain(provider: str) -> LLMProvider:
         temperature = settings.llm.temperature,
         max_tokens  = settings.llm.max_tokens,
         timeout     = settings.llm.active_timeout,
+        # FIX-R2 (batch run 20260817_133854). Disable the SDK's OWN retry loop.
+        #
+        # The openai client retries internally, inside a single invoke() call,
+        # at ~0.4-0.8s intervals. That loop sits BENEATH every control this
+        # codebase has: the token-bucket limiter in rate_limiter.py and the
+        # full-jitter backoff in langchain_provider.py both wrap invoke(), so
+        # neither can see or pace it. The 20260817 run logged 594
+        # `Retrying request to /chat/completions` lines from
+        # openai._base_client -- roughly 2.5 hidden sub-second requests per
+        # visible call -- against an endpoint that answers 429. That is what
+        # drove 212 transient retries and 10 hard failures while the limiter
+        # sat idle at ~8.7 req/min against a 50/min budget.
+        #
+        # Two independent retry layers with different backoff policies do not
+        # compose; the tighter, faster, uninstrumented one wins and hides the
+        # other. Retry belongs at exactly one layer, and it belongs at the one
+        # that can see the rate limiter -- which is ours.
+        max_retries = 0,
     )
     # Repetition penalties are a llama.cpp tuning knob (see LLM_FREQUENCY_PENALTY
     # in .env). llama-server honours them; the hosted OpenAI-compatible surfaces

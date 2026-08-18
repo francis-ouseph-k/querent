@@ -65,6 +65,13 @@ class ColumnInfo:
     # distinction so the validator can tell "no constraint to check"
     # apart from "constrained to nothing".
     allowed_values: set[str] | None = None
+    # Values OBSERVED in the DDL's own seed INSERTs, for columns that carry no
+    # CHECK constraint (notably array columns such as VARCHAR[] role lists).
+    # Kept separate from allowed_values because the guarantee is weaker: a
+    # CHECK is exhaustive by definition, whereas seed data is only evidence of
+    # what the vocabulary looks like. A validator may WARN on a value absent
+    # here, but must not treat absence as proof of invalidity.
+    observed_values: set[str] | None = None
 
 
 @dataclass

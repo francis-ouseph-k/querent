@@ -766,10 +766,98 @@ class DDLParser:
             component="ddl_parser", event="comments_parsed", count=comment_count
         )
 
+        # ── Pass 6: seed vocabulary for unconstrained columns ─────────────
+        vocab_cols = self._extract_seed_vocabulary(dml_chunks, tables)
+        if vocab_cols:
+            logger.info(
+                component="ddl_parser",
+                event="seed_vocabulary_extracted",
+                columns=vocab_cols,
+            )
+
         logger.info(
             component="ddl_parser", event="parse_complete", total_objects=len(tables)
         )
         return tables
+
+    def _extract_seed_vocabulary(
+        self,
+        dml_chunks: list[str],
+        tables: dict[str, TableInventory],
+    ) -> int:
+        """
+        Populate ColumnInfo.observed_values from the DDL's own seed INSERTs.
+
+        WHY: a CHECK constraint is the authoritative vocabulary for a scalar
+        enum column, and validation/schema/types.py already enforces it. But
+        Postgres cannot express "every element of this array is one of N
+        values" as a simple CHECK..IN, so array columns that hold controlled
+        vocabularies (role lists, tag sets) carry no constraint at all — and
+        their real vocabulary exists ONLY in the seed rows, which this parser
+        already captured into seed_statements and then never used.
+
+        The consequence, observed across five consecutive benchmark runs: a
+        model asked about "evaluators" wrote
+        `allowed_roles @> ARRAY['PRIMARY','REVIEW','REVAL','THIRD']` — values
+        drawn from a DIFFERENT column's vocabulary (attempt_type). Nothing in
+        the pipeline could contradict it, because nothing knew what values
+        allowed_roles actually takes. The query validated, executed, and
+        returned a confident wrong number.
+
+        Deliberately evidence-only: seed data is a sample, not a constraint,
+        so this populates `observed_values` (advisory) and never
+        `allowed_values` (authoritative). Consumers must warn, not reject.
+        """
+        if not dml_chunks:
+            return 0
+
+        populated = 0
+        # INSERT INTO <table> (<cols>) VALUES ... — column list required, since
+        # positional INSERTs would need full column-order resolution to map
+        # values to columns, and a wrong mapping is worse than no vocabulary.
+        insert_re = re.compile(
+            r"INSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES(.+?)(?=;\s*$|;\s*\n)",
+            re.IGNORECASE | re.DOTALL,
+        )
+        # ARRAY['A','B'] or '{A,B}' literals appearing in the VALUES payload.
+        array_re = re.compile(r"ARRAY\s*\[([^\]]*)\]", re.IGNORECASE)
+        quoted_re = re.compile(r"'([^']*)'")
+
+        for chunk in dml_chunks:
+            for match in insert_re.finditer(chunk):
+                table_name = match.group(1).lower()
+                inv = tables.get(table_name)
+                if inv is None:
+                    continue
+                col_names = [
+                    c.strip().strip('"').lower() for c in match.group(2).split(",")
+                ]
+                payload = match.group(3)
+
+                # Only ARRAY[...] literals are harvested. Scalar columns are
+                # left alone: their vocabulary either has a CHECK (already
+                # authoritative) or is genuinely open-ended (names, ids), and
+                # guessing a closed vocabulary from sample rows would produce
+                # false warnings on the first unseen-but-valid value.
+                for arr in array_re.finditer(payload):
+                    values = {v for v in quoted_re.findall(arr.group(1)) if v}
+                    if not values:
+                        continue
+                    for col_name in col_names:
+                        col = inv.columns.get(col_name)
+                        if col is None:
+                            continue
+                        if "[]" not in (col.data_type or "") and "ARRAY" not in (
+                            col.data_type or ""
+                        ).upper():
+                            continue
+                        if col.allowed_values is not None:
+                            continue   # CHECK wins; never weaken it
+                        if col.observed_values is None:
+                            col.observed_values = set()
+                            populated += 1
+                        col.observed_values.update(values)
+        return populated
 
     # ─────────────────────────────────────────────────────────────────
     # Pass handlers

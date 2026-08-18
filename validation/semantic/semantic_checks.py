@@ -141,6 +141,10 @@ _ADVISORY_SEMANTIC_EVENTS: set[str] = {
     # the substring "join" in the SQL and rejected a correct query. Same
     # question-words-vs-SQL-words shape as the eight above.
     "semantic_antijoin_mismatch",
+    # Run-7: see HardcodedLiteralValidator. Moving a literal out of a LEFT
+    # JOIN's ON clause changes the result set by design, so this can never
+    # be asserted from the question wording alone.
+    "semantic_left_join_on_literal",
 }
 
 
@@ -237,6 +241,150 @@ def _enum_value_justified(value: str, nl_lower: str, nl_under_to_space: str) -> 
             if any(stem in hay for hay in haystacks):
                 return True
     return False
+
+
+# ── Free-text literal grounding (Run-7) ─────────────────────────────────────
+# Distinct from _enum_value_justified above, which governs CHECK-constrained
+# columns. This one governs the opposite case: a literal compared to a column
+# with NO enum constraint -- a name, a code, a free-form action string. There
+# is no schema list to validate such a value against, so the only available
+# evidence that the model did not invent it is the question itself.
+#
+# Batch run 20260818_085111, Q175: "Which users have auxiliary roles granted
+# by the Custodian Admin?" produced
+#     WHERE au_granted.display_name = 'COE Office'
+# and shipped as Success. 'COE Office' appears nowhere in the question; the
+# model substituted a different, plausible-looking principal. The query
+# returns rows -- the WRONG person's grants -- with full confidence.
+#
+# The bar is deliberately the lowest one that catches fabrication: ZERO
+# lexical support. A single shared word of four or more characters, in any
+# separator or case form, is enough to pass. That keeps every legitimate
+# encoding in the corpus silent -- 'BOARD_CLOSURE' for "board closure
+# actions", 'DEK_REWRAP' for "the DEK was re-wrapped", 'CROSS_LISTING' for
+# "cross-listing relationships" -- while a value with no anchor at all in
+# the question cannot be justified by any reading of it.
+#
+# Scope limits that keep the false-positive rate at zero on the current
+# corpus, and that are the reason this may block rather than advise:
+#   * Equality only. An IN list enumerates a domain rather than naming one
+#     value, and its members are routinely absent from the question.
+#   * Columns with allowed_values are skipped entirely -- the enum check
+#     owns those, with its own morphological tolerance.
+#   * Numeric literals are skipped -- HardcodedLiteralValidator owns those.
+#   * Pattern operands (LIKE/ILIKE) are skipped: a wildcard fragment is a
+#     search term, and the model is explicitly instructed to build them.
+#   * Any literal shorter than four characters is skipped, because a short
+#     token carries too little signal to call fabricated.
+_GROUNDING_MIN_TOKEN = 4
+
+
+def _normalise_for_grounding(text: str) -> str:
+    """Lowercase, strip separators. 're-wrapped' and 'REWRAP' converge."""
+    return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
+
+
+def _literal_is_grounded(value: str, nl_question: str) -> bool:
+    """
+    Does any word-sized piece of this literal appear in the question?
+
+    Compared on the separator-stripped forms of both sides, so 'DEK_REWRAP'
+    matches "re-wrapped" and 'CROSS_LISTING' matches "cross-listing". A
+    single hit anywhere is sufficient -- this is a fabrication test, not a
+    paraphrase test.
+    """
+    haystack = _normalise_for_grounding(nl_question)
+    if not haystack:
+        # No question to check against: cannot call anything fabricated.
+        return True
+    whole = _normalise_for_grounding(value)
+    if whole and whole in haystack:
+        return True
+    for token in re.split(r"[^A-Za-z0-9]+", str(value)):
+        piece = _normalise_for_grounding(token)
+        if len(piece) < _GROUNDING_MIN_TOKEN:
+            continue
+        if piece in haystack:
+            return True
+        # Tolerate regular English inflection in either direction, the same
+        # way _enum_value_justified does for CHECK-constrained values.
+        for suffix in ("ed", "s", "ing", "e"):
+            if piece.endswith(suffix) and len(piece) - len(suffix) >= 3:
+                if piece[: -len(suffix)] in haystack:
+                    return True
+        for suffix in ("ed", "s", "ing"):
+            if piece + suffix in haystack:
+                return True
+    return False
+
+
+def _resolve_unqualified(name: str, alias_map: dict, schema_map: dict) -> str | None:
+    """
+    Base table owning an UNQUALIFIED column, when exactly one table in
+    scope has it. Ambiguity returns None -- guessing which table a bare
+    column belongs to is how a validator starts reading the wrong
+    constraint and rejecting correct SQL.
+    """
+    target = (name or "").lower()
+    if not target:
+        return None
+    owners = {
+        table for table in set(alias_map.values())
+        if any(
+            col.lower() == target
+            for col in (getattr((schema_map or {}).get(table), "columns", {}) or {})
+        )
+    }
+    return owners.pop() if len(owners) == 1 else None
+
+
+def _column_is_controlled_vocabulary(
+    column: "exp.Column", table: str, schema_map: dict,
+) -> bool:
+    """
+    True when the column's values come from a vocabulary the schema
+    defines, rather than being free text.
+
+    Three sources, all equally disqualifying for a fabrication test:
+      * a CHECK (... IN (...)) list       -- allowed_values
+      * values seen in the DDL's own seed -- observed_values
+      * a foreign key into a catalog table
+
+    The FK case is the one that is easy to miss. `academic_unit.unit_type`
+    carries no CHECK -- it is an FK to unit_type_config -- but 'COURSE' is
+    still a schema-supplied value the model can legitimately reach from a
+    retrieved chunk without the question naming it. Q177 of run
+    20260818_085111 is exactly that shape, and treating it as invented
+    would reject correct SQL.
+    """
+    inv = (schema_map or {}).get(table)
+    if inv is None:
+        return False
+    name = (column.name or "").lower()
+    for col_name, col in (getattr(inv, "columns", {}) or {}).items():
+        if col_name.lower() != name:
+            continue
+        if getattr(col, "allowed_values", None) or getattr(col, "observed_values", None):
+            return True
+    for fk in getattr(inv, "foreign_keys", []) or []:
+        if (getattr(fk, "from_col", "") or "").lower() == name:
+            return True
+    return False
+
+
+def _column_has_enum(column: "exp.Column", alias_map: dict, schema_map: dict) -> bool:
+    """True when the resolved column carries a CHECK(... IN ...) value list."""
+    table = alias_map.get((column.table or "").lower()) or (column.table or "").lower()
+    inv = (schema_map or {}).get(table)
+    if inv is None:
+        return False
+    col = (getattr(inv, "columns", {}) or {}).get(column.name)
+    if col is None:
+        for name, candidate in (getattr(inv, "columns", {}) or {}).items():
+            if name.lower() == (column.name or "").lower():
+                col = candidate
+                break
+    return bool(col is not None and getattr(col, "allowed_values", None))
 
 
 def _advisory_or_fail(event: str, message: str, sql: str) -> ValidationResult | None:
@@ -1502,6 +1650,24 @@ class HardcodedLiteralValidator(BaseValidationStep):
         sql = ctx.working_sql or ctx.sql
         original_query = ctx.original_query
         safe_literals = SAFE_LITERALS
+        # FIX-R7a. This method used to carry a second, function-local
+        # `import re` inside the integer-literal loop below. A name bound
+        # ANYWHERE in a function body is local for the WHOLE body, so the
+        # module-level `re` became invisible here and the very first use
+        # of it -- the has_aggregate probe a few lines down -- raised
+        # UnboundLocalError. The blanket `except Exception: pass` at the
+        # bottom swallowed it and returned passed=True.
+        #
+        # Effect: this validator was a silent no-op for every query with
+        # NO aggregate function. Aggregate queries survived only by
+        # accident -- `bool(ast.find(exp.AggFunc))` short-circuits the
+        # `or` before re.search is ever evaluated. Neither the LEFT-JOIN
+        # ON-literal check nor the invented-integer-ID check has run on a
+        # non-aggregate query since the inner import was introduced.
+        # Nothing logged, because the failure path logs nothing.
+        #
+        # The inner import is deleted; `re` is imported at module scope
+        # (line 16) and always was.
         try:
             ast = sqlglot.parse_one(sql, dialect="postgres")
             if not ast:
@@ -1558,17 +1724,109 @@ class HardcodedLiteralValidator(BaseValidationStep):
                                 literal=literal.this,
                                 query_preview=nl_lower[:60],
                             )
-                            return ValidationResult(
-                                passed=False, step="hardcoded_literals",
-                                message=(
-                                    f"SQL contains a hardcoded filter literal '{literal.this}' inside a "
-                                    f"LEFT JOIN's ON clause. Because the question asks to filter on this "
-                                    f"value, it acts like an INNER JOIN here and drops unmatched rows. "
-                                    f"Move it to the WHERE clause."
-                                ),
-                                sql=sql,
+                            # FIX-R7a (continued). Un-shadowing `re` above
+                            # woke this rule from a silent no-op, and on
+                            # its first real exposure -- the 187 passing
+                            # queries of run 20260818_085111 -- it was
+                            # wrong every single time it fired: Q33, Q48
+                            # and Q99 are textbook anti-joins (LEFT JOIN
+                            # ... ON <literal> ... WHERE x.id IS NULL) and
+                            # Q56 is a conditional outer join. In all four
+                            # the literal MUST stay in the ON clause;
+                            # moving it to WHERE is precisely the bug the
+                            # message tells the model to introduce.
+                            #
+                            # The premise is unsound, not merely
+                            # mis-tuned. "The value appears in the
+                            # question, therefore it belongs in WHERE" is
+                            # a question-words-vs-SQL-words inference --
+                            # the family Runs 3-5 demoted -- and a literal
+                            # in a LEFT JOIN's ON clause is never
+                            # equivalent to the same literal in WHERE.
+                            # Advisory, via the existing mechanism.
+                            _adv = _advisory_or_fail(
+                                "semantic_left_join_on_literal",
+                                (f"Literal '{literal.this}' sits in a LEFT "
+                                 f"JOIN ON clause and also appears in the "
+                                 f"question. If it is meant to restrict the "
+                                 f"result rather than scope the join, it "
+                                 f"belongs in WHERE."),
+                                sql,
                             )
+                            if _adv is not None:
+                                return _adv
         
+            # ── Free-text literal grounding (Run-7) ──────────────────────
+            # See _literal_is_grounded above. A string literal compared to a
+            # column with no CHECK value list has nothing in the schema to
+            # validate it against; the question is the only evidence that it
+            # was not invented.
+            alias_map = {}
+            cte_names = {(c.alias or '').lower() for c in ast.find_all(exp.CTE)}
+            for tbl in ast.find_all(exp.Table):
+                tname = (tbl.name or '').lower()
+                if tname and tname not in cte_names:
+                    alias_map[(tbl.alias or tname).lower()] = tname
+
+            for eq in ast.find_all(exp.EQ):
+                # A literal inside FILTER (...) or CASE WHEN ... is a
+                # BRANCH of a conditional aggregate, not a restriction on
+                # the population. Q117 of run 20260818_085111 counts
+                # requested-vs-approved with one FILTER per approval_status
+                # value; enumerating a domain that way is correct even
+                # though the question names only two of the branches.
+                if (eq.find_ancestor(exp.Filter) is not None
+                        or eq.find_ancestor(exp.Case) is not None):
+                    continue
+                col_node = val_node = None
+                if isinstance(eq.left, exp.Column) and isinstance(eq.right, exp.Literal):
+                    col_node, val_node = eq.left, eq.right
+                elif isinstance(eq.right, exp.Column) and isinstance(eq.left, exp.Literal):
+                    col_node, val_node = eq.right, eq.left
+                if col_node is None or not val_node.is_string:
+                    continue
+                value = str(val_node.this)
+                if len(_normalise_for_grounding(value)) < _GROUNDING_MIN_TOKEN:
+                    continue
+                resolved = alias_map.get((col_node.table or '').lower())
+                if resolved is None:
+                    resolved = _resolve_unqualified(col_node.name, alias_map, ctx.schema_map)
+                if resolved is None:
+                    # Cannot tie the column to a base table, so cannot tell
+                    # a CHECK-constrained column from a free-text one. Fail
+                    # open: this check may only speak when it is certain.
+                    continue
+                if _column_is_controlled_vocabulary(col_node, resolved, ctx.schema_map):
+                    # A schema-supplied value. If it is the WRONG one,
+                    # semantic_unprompted_enum_filter owns that call --
+                    # this check only speaks to values with no schema
+                    # provenance at all.
+                    continue
+                if _literal_is_grounded(value, original_query):
+                    continue
+                target = f"{resolved}.{col_node.name}"
+                logger.warning(
+                    component="sql_validator",
+                    event="ungrounded_literal_filter",
+                    column=target,
+                    literal=value,
+                    query_preview=(original_query or "")[:80],
+                )
+                return ValidationResult(
+                    passed=False, step="hardcoded_literals",
+                    message=(
+                        f"The SQL filters `{target} = '{value}'`, but "
+                        f"'{value}' does not appear anywhere in the question "
+                        f"and `{target}` has no CHECK constraint that could "
+                        f"supply it. This is an invented value: the query will "
+                        f"return rows, but they will be the wrong rows. Filter "
+                        f"on the value the question actually names, or -- if "
+                        f"the question names no value for this column -- drop "
+                        f"the predicate entirely."
+                    ),
+                    sql=sql,
+                )
+
             suspicious = []
             for eq in ast.find_all(exp.EQ):
                 col_node = None
@@ -1593,8 +1851,18 @@ class HardcodedLiteralValidator(BaseValidationStep):
                             # they likely meant a business code (e.g., "question 2" -> code = '2', not id = 2).
                             query_lower = original_query.lower()
                             if "id" not in query_lower and "identifier" not in query_lower:
-                                import re
-                                if not re.search(r'(number|id|paper|script|attempt|question)\s+0*' + re.escape(lit), query_lower):
+                                # FIX-R7a (continued). Also revived by the
+                                # `re` un-shadowing above. The entity noun
+                                # and its number are routinely separated
+                                # by a qualifier -- "attempt rule 1",
+                                # "question paper 3" -- and the adjacent-
+                                # only pattern read those as invented IDs.
+                                # Allow up to two intervening words.
+                                _named = r'(number|id|paper|script|attempt|question|rule|group|board)'
+                                if not re.search(
+                                    _named + r'(?:\s+\w+){0,2}\s+0*' + re.escape(lit),
+                                    query_lower,
+                                ):
                                     pass # still treat as suspicious
                                 else:
                                     continue

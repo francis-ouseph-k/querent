@@ -836,6 +836,7 @@ class PipelineRunner:
                 confidence_penalty=audit.confidence_penalty,
                 requirement_coverage=audit.requirement_coverage,
                 coverage_misses=audit.coverage_misses,
+                advisory_misses=getattr(audit, "advisory_misses", []),
                 sql_preview=validated_sql[:80],
             )
             generated.confidence = max(0.0, round(

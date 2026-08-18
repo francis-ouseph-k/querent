@@ -631,11 +631,21 @@ class QueryUnderstanding:
         """
         p = Path(path)
         if not p.exists():
-            logger.info(
+            # WARNING, not INFO. This artefact missing is not a benign
+            # optional-feature notice: without it, entity resolution has
+            # no code/name vocabulary to match against, and the model
+            # falls back to ILIKE on whatever free-text column looks
+            # plausible -- question_paper.title, exam_cache.display_name.
+            # Six queries in batch run 20260818_085111 resolved a course
+            # that way. At INFO the line scrolled past unread for the
+            # whole run; the condition needs to be loud.
+            logger.warning(
                 component="query_understanding",
                 event="course_codes_not_found",
                 path=path,
-                note="Course-code fuzzy matching disabled. Run ingest.py.",
+                note="Course-code fuzzy matching DISABLED -- entity "
+                     "resolution will fall back to ILIKE on free-text "
+                     "columns. Run ingest.py to generate this artefact.",
             )
             return []
         try:

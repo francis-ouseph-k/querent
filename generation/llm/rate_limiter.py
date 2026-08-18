@@ -124,12 +124,14 @@ def get_shared_rate_limiter() -> TokenBucketRateLimiter | None:
             return _shared_limiter
         from config.settings import settings
         rate = getattr(settings.llm, "requests_per_minute", 0)
+        burst = getattr(settings.llm, "rate_limit_burst", None)
         if not rate or rate <= 0:
             return None
-        _shared_limiter = TokenBucketRateLimiter(rate_per_minute=rate)
+        _shared_limiter = TokenBucketRateLimiter(rate_per_minute=rate, burst=burst)
         logger.info(
             component="sql_generator",
             event="rate_limiter_initialized",
             requests_per_minute=rate,
+            burst=burst,
         )
         return _shared_limiter

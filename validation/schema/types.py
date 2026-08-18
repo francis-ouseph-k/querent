@@ -29,6 +29,10 @@ def validate_types(ctx: ValidationContext) -> ValidationResult | None:
     """
     type_errors: list[str] = []
     enum_errors: list[str] = []
+    # Advisory: array-column values absent from the vocabulary OBSERVED in the
+    # DDL's seed rows. Seed data is evidence, not a constraint, so these never
+    # hard-fail — they are surfaced as a correction hint.
+    vocab_warnings: list[str] = []
     sql = ctx.working_sql or ctx.sql
     if ctx.ast is None:
         return None
@@ -198,7 +202,93 @@ def validate_types(ctx: ValidationContext) -> ValidationResult | None:
             note="Type-compatibility check skipped due to AST error",
         )
 
-    if enum_errors:
+    # ── Array-containment vocabulary (advisory) ───────────────────────────
+    # Postgres cannot express "every element of this array is one of N values"
+    # as a CHECK..IN, so array columns holding controlled vocabularies carry no
+    # constraint. ddl_parser harvests their real vocabulary from the schema's
+    # own seed INSERTs into ColumnInfo.observed_values; this is the consumer.
+    #
+    # Fires on `col @> ARRAY[...]`, `col && ARRAY[...]`, and `x = ANY(col)`.
+    # WARNS rather than rejects: seed rows are a sample, so an unseen value may
+    # be legitimately new. But when a query asks for roles and supplies values
+    # that appear nowhere in the role vocabulary, that is worth saying — it is
+    # the difference between an empty result that means "none" and one that
+    # means "you asked the wrong question".
+    try:
+        for _stmt in (ctx.ast or []):
+          if _stmt is None:
+            continue
+          for arr_node in _stmt.find_all(exp.Array):
+              literals = [
+                  e.this for e in arr_node.expressions
+                  if isinstance(e, exp.Literal) and e.is_string
+              ]
+              if not literals:
+                  continue
+              # Climb to the enclosing predicate. The array is frequently
+              # wrapped in a cast (`ARRAY[...]::VARCHAR[]`), so arr_node.parent
+              # is a Cast rather than the comparison; looking only one level up
+              # finds no column at all. Walk up until a node referencing a
+              # column OUTSIDE the array itself appears.
+              cols = []
+              _node = arr_node.parent
+              _inside = set(id(c) for c in arr_node.find_all(exp.Column))
+              for _ in range(5):
+                  if _node is None:
+                      break
+                  _cands = [c for c in _node.find_all(exp.Column)
+                            if id(c) not in _inside]
+                  if _cands:
+                      cols = _cands
+                      break
+                  _node = _node.parent
+              for col_node in cols:
+                  tbl_part = (col_node.table or "").lower()
+                  col_name = (col_node.name or "").lower()
+                  resolved = ctx.alias_map.get(tbl_part) if tbl_part else None
+                  if not resolved or resolved not in ctx.schema_map:
+                      continue
+                  col_info = ctx.schema_map[resolved].columns.get(col_name)
+                  observed = getattr(col_info, "observed_values", None) if col_info else None
+                  if not observed:
+                      continue
+                  unknown = [v for v in literals if v not in observed]
+                  if unknown and len(unknown) == len(literals):
+                      # EVERY supplied value is outside the vocabulary — that is a
+                      # vocabulary mix-up, not a new value. A partial mismatch is
+                      # left alone; adding one new role to an existing set is
+                      # exactly the legitimate case seed data cannot rule out.
+                      vocab_warnings.append(
+                          f"{resolved}.{col_name} is matched against "
+                          f"{', '.join(repr(v) for v in unknown)}, but none of "
+                          f"those appear in this column's vocabulary. Values seen "
+                          f"in the schema's seed data: "
+                          f"{', '.join(sorted(observed))}"
+                      )
+    except Exception:
+        pass
+
+    if vocab_warnings and not enum_errors:
+        first = vocab_warnings[0]
+        logger.warning(
+            component="sql_validator",
+            event="array_vocabulary_mismatch",
+            detail=first[:200],
+        )
+        return ValidationResult(
+            passed=False,
+            step="schema",
+            message=(
+                f"Vocabulary mismatch: {first}. "
+                f"Tip — check whether the values belong to a different column "
+                f"(a status or type column often shares similar-looking names). "
+                f"If they are genuinely new values not yet present in any row, "
+                f"the query may still be correct."
+            ),
+            sql=sql,
+        )
+
+    if enum_errors:
         first = enum_errors[0]
         return ValidationResult(
             passed=False,
