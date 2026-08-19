@@ -431,10 +431,35 @@ def _extract_columns(
     # ── Primary key columns ───────────────────────────────────────────
     pk_cols: set[str] = set()
 
-    # Table-level PRIMARY KEY (id, name) — exp.PrimaryKey with Column children
+    # Table-level PRIMARY KEY (id, name) — exp.PrimaryKey.
+    #
+    # FIX-K1. sqlglot models the children of a table-level PRIMARY KEY as
+    # Identifier, NOT Column (verified on 30.x; older releases produced
+    # Column, which is why the original find_all(exp.Column) was written).
+    # The consequence was silent and wide: EVERY composite primary key in this
+    # schema parsed as "no primary key at all" —
+    # academic_unit_closure(ancestor_id, descendant_id),
+    # attempt_rule_group_question(group_id, question_id),
+    # answer_key_preparer(answer_key_id, faculty_cache_id), audit_log — so
+    # ColumnInfo.is_pk was False on all of them.
+    #
+    # Four validators read is_pk and were therefore reasoning about those
+    # tables with a hole in the schema: SatisfiabilityValidator's unique-key
+    # sets, ZeroSuppressionValidator's row-uniqueness, CardinalityValidator's
+    # fan-out test, and JoinValidator's key-reference resolution. None of them
+    # could fail loudly, because an absent key reads as "cannot decide" and
+    # every one of them stays silent when it cannot decide.
+    #
+    # Both node types are accepted rather than switching, so the parser keeps
+    # working across sqlglot versions.
     for pk in create_node.find_all(exp.PrimaryKey):
         for col in pk.find_all(exp.Column):
             pk_cols.add(_node_name(col))
+        for ident in pk.expressions:
+            if isinstance(ident, exp.Identifier):
+                name = (ident.name or "").lower()
+                if name:
+                    pk_cols.add(name)
 
     # Column-level: id BIGSERIAL PRIMARY KEY — modeled as
     # PrimaryKeyColumnConstraint nested inside a ColumnConstraint on the

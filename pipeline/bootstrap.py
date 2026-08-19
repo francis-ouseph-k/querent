@@ -8,6 +8,7 @@ Pipeline assembly and the schema-version gate.
                                   drift it warns, or aborts when strict — a
                                   benchmark run on a stale index is invalid.
     load_tables()                 parse the DDL into the {table: TableInventory} map
+    load_tables_with_seeds()      the same, plus the DDL's seed DML statements
     load_graph()                  load the persisted FK graph (networkx)
     create_runner(strict)         wire tables + graph + the 12-step validation
                                   pipeline into a ready PipelineRunner
@@ -109,15 +110,29 @@ def load_graph():
     sys.exit(1)
 
 
-def load_tables():
-    """Parse the DDL to get TableInventory objects for the validator."""
+def load_tables_with_seeds():
+    """
+    Parse the DDL and return (tables, seed_statements).
+
+    The parser has always captured the DDL's INSERT statements; nothing
+    downstream ever asked for them. ReferenceDataValidator needs whole seed
+    ROWS — which values co-occur — and that is information no per-column
+    structure can carry, so the raw statements have to reach the validator.
+    """
     from ingestion.ddl_parser import DDLParser
     ddl_path = Path(settings.ddl_path)
     if not ddl_path.exists():
         print(f"ERROR: DDL file not found: {ddl_path}")
         sys.exit(1)
     parser = DDLParser()
-    return parser.parse_file(ddl_path)
+    tables = parser.parse_file(ddl_path)
+    return tables, list(parser.seed_statements)
+
+
+def load_tables():
+    """Parse the DDL to get TableInventory objects for the validator."""
+    tables, _ = load_tables_with_seeds()
+    return tables
 
 
 def create_runner(strict_version_check: bool = False):
@@ -128,9 +143,11 @@ def create_runner(strict_version_check: bool = False):
     check_schema_version(strict_version_check)
     
     print("Loading schema…")
-    tables = load_tables()
+    tables, seed_statements = load_tables_with_seeds()
     graph = load_graph()
     print(f"  {len(tables)} tables, {graph.number_of_nodes()} graph nodes ready.")
 
     from pipeline.runner import PipelineRunner
-    return PipelineRunner(tables=tables, fk_graph=graph)
+    return PipelineRunner(
+        tables=tables, fk_graph=graph, seed_statements=seed_statements,
+    )

@@ -334,9 +334,13 @@ class ExposureValidator(BaseValidationStep):
 
                 if blocking:
                     table, column = blocking[0].table, blocking[0].column
+                    asked_for = (
+                        _explicitly_requested(nl, column)
+                        and not blocking[0].unsafe_to_edit
+                    )
                     reason = (
                         "the question explicitly asks for it"
-                        if _explicitly_requested(nl, column) and not blocking[0].unsafe_to_edit
+                        if asked_for
                         else "it is used inside an expression or a SELECT *, "
                              "so it cannot be safely dropped"
                     )
@@ -360,6 +364,12 @@ class ExposureValidator(BaseValidationStep):
                             f"{table}.id instead."
                         ),
                         sql=sql,
+                        # When the QUESTION is what conflicts with the policy,
+                        # no rewrite resolves it -- the only queries that pass
+                        # are ones that stop answering the question. Refusing
+                        # is the correct outcome; quietly answering something
+                        # narrower is not.
+                        retryable=not asked_for,
                     )
 
                 if redactable:

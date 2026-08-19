@@ -288,6 +288,179 @@ def _find_equality_contradiction(
     return None
 
 
+def _is_constant_true(node: exp.Expression | None) -> bool:
+    """TRUE, or a literal equality that is trivially true (`1 = 1`)."""
+    if node is None:
+        return False
+    while isinstance(node, exp.Paren):
+        node = node.this
+    if isinstance(node, exp.Boolean):
+        return bool(node.this)
+    if isinstance(node, exp.EQ):
+        left, right = node.left, node.right
+        if isinstance(left, exp.Literal) and isinstance(right, exp.Literal):
+            return str(left.this) == str(right.this)
+    return False
+
+
+def _is_provably_single_row(node: exp.Expression | None) -> bool:
+    """
+    True when a relation can hold at most one row: an ungrouped aggregate, or
+    an explicit LIMIT 1.
+
+    `JOIN one_row_cte ON TRUE` is a legitimate way to broadcast a scalar, and
+    is exactly how a "current academic year" CTE is normally attached. Rule 4
+    must not touch it.
+    """
+    if node is None:
+        return False
+    if isinstance(node, exp.Subquery):
+        node = node.this
+    if not isinstance(node, exp.Select):
+        return False
+    limit = node.args.get("limit")
+    if limit is not None:
+        value = limit.expression if hasattr(limit, "expression") else None
+        if isinstance(value, exp.Literal) and str(value.this) == "1":
+            return True
+    if node.args.get("group"):
+        return False
+    return any(
+        isinstance(projection, exp.AggFunc)
+        or any(isinstance(sub, exp.AggFunc) for sub in projection.find_all(exp.AggFunc))
+        for projection in node.expressions
+    )
+
+
+def _resolve_relation(
+    node: exp.Expression | None, cte_bodies: dict[str, exp.Expression],
+) -> exp.Expression | None:
+    """The Select behind a join target, following a CTE reference by name."""
+    if node is None:
+        return None
+    if isinstance(node, exp.Table) and node.name:
+        return cte_bodies.get(node.name.lower())
+    if isinstance(node, exp.Subquery):
+        return node.this
+    return node
+
+
+def _null_rejecting_aliases(clause: exp.Expression | None) -> set[str]:
+    """
+    Aliases that a WHERE clause proves NON-NULL, by referencing one of their
+    columns in a predicate that a NULL row cannot satisfy.
+
+    Only top-level conjuncts are considered — a predicate under an OR proves
+    nothing — and `IS NULL` / `IS NOT NULL` are excluded, since those are
+    precisely the predicates that tolerate a null-extended row.
+    """
+    if clause is None:
+        return set()
+    out: set[str] = set()
+    for conjunct in _conjuncts(clause):
+        if isinstance(conjunct, exp.Is):
+            continue
+        if any(isinstance(sub, exp.Is) for sub in conjunct.find_all(exp.Is)):
+            continue
+        if isinstance(conjunct, (exp.Or, exp.Not)):
+            continue
+        for column in conjunct.find_all(exp.Column):
+            if column.table:
+                out.add(column.table.lower())
+    return out
+
+
+def _null_asserted_columns(clause: exp.Expression | None) -> list[tuple[str, str]]:
+    """(alias, column) for every top-level `alias.column IS NULL` conjunct."""
+    if clause is None:
+        return []
+    out: list[tuple[str, str]] = []
+    for conjunct in _conjuncts(clause):
+        if not isinstance(conjunct, exp.Is):
+            continue
+        if not isinstance(conjunct.expression, exp.Null):
+            continue
+        target = conjunct.this
+        if isinstance(target, exp.Column) and target.table:
+            out.append((target.table.lower(), (target.name or "").lower()))
+    return out
+
+
+def _inner_join_groups(select_node: exp.Select) -> list[set[str]]:
+    """
+    Aliases grouped by "cannot be null-extended relative to one another".
+
+    The FROM root plus every INNER-joined relation form one group: if any of
+    them is present in an output row, all of them are. Each OUTER-joined
+    relation starts its own group, because it is exactly the thing that CAN be
+    null-extended. A RIGHT JOIN inverts the roles, so everything accumulated so
+    far becomes null-supplied and the right side becomes the surviving root.
+    """
+    from_node = select_node.args.get("from") or select_node.args.get("from_")
+    if from_node is None:
+        return []
+
+    def alias_of(node: exp.Expression) -> str | None:
+        if isinstance(node, (exp.Table, exp.Subquery)):
+            return (node.alias or getattr(node, "name", "") or "").lower() or None
+        return None
+
+    root: set[str] = set()
+    groups: list[set[str]] = []
+    for table in from_node.find_all(exp.Table):
+        name = alias_of(table)
+        if name:
+            root.add(name)
+
+    current = root
+    for join in select_node.args.get("joins") or []:
+        side = (join.args.get("side") or "").upper()
+        kind = (join.args.get("kind") or "").upper()
+        name = alias_of(join.this)
+        if name is None:
+            continue
+        if side == "LEFT":
+            groups.append({name})
+        elif side == "RIGHT":
+            # Everything to the left becomes null-supplied; the right side is
+            # the new non-null root.
+            groups.append(current)
+            current = {name}
+        elif side == "FULL":
+            groups.append(current)
+            groups.append({name})
+            current = set()
+        elif kind == "CROSS":
+            current = current | {name}
+        else:
+            current = current | {name}
+    groups.append(current)
+    return [group for group in groups if group]
+
+
+def _strip_scalar_factors(node: exp.Expression) -> exp.Expression:
+    """`COUNT(*) * 100.0` -> `COUNT(*)`; `NULLIF(x, 0)` -> `x`."""
+    while True:
+        if isinstance(node, exp.Paren):
+            node = node.this
+            continue
+        if isinstance(node, exp.Nullif):
+            node = node.this
+            continue
+        if isinstance(node, exp.Cast):
+            node = node.this
+            continue
+        if isinstance(node, exp.Mul):
+            left, right = node.this, node.expression
+            if isinstance(right, exp.Literal) and not right.is_string:
+                node = left
+                continue
+            if isinstance(left, exp.Literal) and not left.is_string:
+                node = right
+                continue
+        return node
+
+
 class SatisfiabilityValidator(BaseValidationStep):
     """Rejects always-empty and always-true predicates."""
 
@@ -303,9 +476,126 @@ class SatisfiabilityValidator(BaseValidationStep):
                 if stmt is None:
                     continue
                 aliases = _alias_map(stmt)
+                cte_bodies = {
+                    (cte.alias or "").lower(): cte.this
+                    for cte in stmt.find_all(exp.CTE)
+                    if cte.alias
+                }
 
                 for select_node in stmt.find_all(exp.Select):
                     having = select_node.args.get("having")
+
+                    # ── Rule 4: JOIN ... ON TRUE against a multi-row relation ─
+                    # Writing ON at all declares an intent to relate the two
+                    # sides; asserting nothing produces a cross product whose
+                    # every downstream aggregate is multiplied. A LATERAL is
+                    # correlated through its body rather than its ON clause, and
+                    # a provably single-row relation is a scalar broadcast — both
+                    # are legitimate and excluded.
+                    for join in select_node.args.get("joins") or []:
+                        if not _is_constant_true(join.args.get("on")):
+                            continue
+                        if isinstance(join.this, exp.Lateral) or join.args.get("lateral"):
+                            continue
+                        relation = _resolve_relation(join.this, cte_bodies)
+                        if _is_provably_single_row(relation):
+                            continue
+                        target = (
+                            join.this.alias_or_name
+                            if hasattr(join.this, "alias_or_name") else "the joined relation"
+                        )
+                        logger.warning(
+                            component="sql_validator",
+                            event="constant_true_join_predicate",
+                            target=target,
+                            sql_preview=sql[:120],
+                        )
+                        return ValidationResult(
+                            passed=False, step="safety",
+                            message=(
+                                f"`JOIN {target} ON TRUE` asserts no "
+                                f"relationship, so every row of {target} is "
+                                f"paired with every row on the other side. The "
+                                f"result is a cross product: counts and averages "
+                                f"downstream are multiplied by the size of "
+                                f"{target}, and any column projected from the "
+                                f"other side is unrelated to the row it appears "
+                                f"beside. State the key that connects the two "
+                                f"sides in the ON clause, or — if they are "
+                                f"genuinely independent facts about the same "
+                                f"entity — aggregate each one separately and "
+                                f"join the aggregates on that entity's key."
+                            ),
+                            sql=sql,
+                        )
+
+                    # ── Rule 5: outer-join nullability contradiction ─────────
+                    # Within one inner-join group either every member is present
+                    # or none is. A predicate that rejects NULL on one member
+                    # therefore proves the whole group present, which
+                    # contradicts an IS NULL test on a NOT NULL column of any
+                    # other member of that same group. The classic anti-join
+                    # (LEFT JOIN + IS NULL) is unaffected: the outer side is its
+                    # own group.
+                    where = select_node.args.get("where")
+                    contradiction = self._null_contradiction(
+                        select_node, where, aliases, ctx.schema_map,
+                    )
+                    if contradiction is not None:
+                        proof_alias, null_alias, null_column = contradiction
+                        logger.warning(
+                            component="sql_validator",
+                            event="outer_join_nullability_contradiction",
+                            proof_alias=proof_alias,
+                            null_alias=null_alias,
+                            null_column=null_column,
+                            sql_preview=sql[:120],
+                        )
+                        return ValidationResult(
+                            passed=False, step="semantic",
+                            message=(
+                                f"`{null_alias}.{null_column} IS NULL` can never "
+                                f"be true here. `{null_column}` is NOT NULL, so "
+                                f"the only way it reads as NULL is a "
+                                f"null-extended outer join — but "
+                                f"`{null_alias}` is INNER-joined to "
+                                f"`{proof_alias}`, and the WHERE clause has a "
+                                f"predicate on `{proof_alias}` that no "
+                                f"null-extended row can satisfy. The two "
+                                f"together force the row to be both present and "
+                                f"absent, and the query returns nothing on any "
+                                f"data. If an anti-join was intended, LEFT JOIN "
+                                f"the table being tested for absence and put no "
+                                f"other WHERE predicate on its group."
+                            ),
+                            sql=sql,
+                        )
+
+                    # ── Rule 6: ratio of an expression to itself ─────────────
+                    tautological = self._self_ratio(select_node)
+                    if tautological is not None:
+                        pred = tautological.sql(dialect="postgres")
+                        logger.warning(
+                            component="sql_validator",
+                            event="self_identical_ratio",
+                            expression=pred[:160],
+                            sql_preview=sql[:120],
+                        )
+                        return ValidationResult(
+                            passed=False, step="semantic",
+                            message=(
+                                f"`{pred}` divides an expression by itself, so "
+                                f"it evaluates to the same constant on every "
+                                f"dataset regardless of the data. A percentage "
+                                f"needs a numerator that counts the SUBSET being "
+                                f"measured and a denominator that counts the "
+                                f"whole population — for example "
+                                f"`COUNT(*) FILTER (WHERE <condition>) * 100.0 / "
+                                f"NULLIF(COUNT(*), 0)`. State the condition that "
+                                f"distinguishes the subset."
+                            ),
+                            sql=sql,
+                        )
 
                     # ── Rule 1: unique GROUP BY + COUNT(*) > 1 ──────────────
                     if having is not None:
@@ -410,3 +700,57 @@ class SatisfiabilityValidator(BaseValidationStep):
             )
 
         return ValidationResult(passed=True, step="semantic", sql=sql)
+
+    @staticmethod
+    def _null_contradiction(
+        select_node: exp.Select,
+        where: exp.Expression | None,
+        aliases: dict[str, str],
+        schema_map: dict,
+    ) -> tuple[str, str, str] | None:
+        """(alias_proving_presence, alias_asserted_null, column) or None."""
+        null_assertions = _null_asserted_columns(where)
+        if not null_assertions:
+            return None
+        proofs = _null_rejecting_aliases(where)
+        if not proofs:
+            return None
+
+        groups = _inner_join_groups(select_node)
+        for null_alias, null_column in null_assertions:
+            table = aliases.get(null_alias)
+            inventory = (schema_map or {}).get(table) if table else None
+            if inventory is None:
+                continue
+            column = (getattr(inventory, "columns", {}) or {}).get(null_column)
+            if column is None:
+                continue
+            # Only a NOT NULL column makes the contradiction decidable: a
+            # nullable column can read NULL for reasons unrelated to joining.
+            if getattr(column, "nullable", True) and not getattr(column, "is_pk", False):
+                continue
+            for group in groups:
+                if null_alias not in group:
+                    continue
+                for proof_alias in sorted(proofs & group):
+                    if proof_alias != null_alias:
+                        return proof_alias, null_alias, null_column
+        return None
+
+    @staticmethod
+    def _self_ratio(select_node: exp.Select) -> exp.Expression | None:
+        """A division whose numerator and denominator are the same expression."""
+        for projection in select_node.expressions:
+            for div in projection.find_all(exp.Div):
+                numerator = _strip_scalar_factors(div.this)
+                denominator = _strip_scalar_factors(div.expression)
+                if numerator is None or denominator is None:
+                    continue
+                left = numerator.sql(dialect="postgres").lower()
+                right = denominator.sql(dialect="postgres").lower()
+                # A bare literal ratio is arithmetic, not a defect.
+                if isinstance(numerator, exp.Literal):
+                    continue
+                if left and left == right:
+                    return div
+        return None

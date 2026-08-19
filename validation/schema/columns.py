@@ -24,6 +24,97 @@ logger = get_logger(__name__)
 # SELECT scope (inner shadows outer, correlated refs fall back to outer scopes),
 # which matches SQL name-resolution semantics.
 
+def _cte_output_columns(stmt) -> dict[str, set[str] | None]:
+    """
+    {cte_name: set_of_output_columns} for every CTE in the statement, or None
+    for a CTE whose output cannot be enumerated with certainty.
+
+    WHY THIS EXISTS
+
+    The qualified-reference branch below used to `continue` on any alias that
+    named a CTE, so a column reference into a CTE was never checked at all.
+    A CTE's output is not opaque: it is exactly its SELECT list, which is
+    right there in the AST. Two production failures came straight through the
+    hole -- Q54 referenced `b.course_id` and `b.exam_id` on a CTE projecting
+    only `id, created_at`, and Q177 referenced `aur.from_unit_id` on a CTE
+    that had renamed that column to `prerequisite_course_id`. Both reached
+    EXPLAIN, where PostgreSQL reports the failure without naming the CTE or
+    listing what it does project, so the correction loop had nothing concrete
+    to act on and burned its whole retry budget. Schema-step recovery in the
+    last full run was 40%, against 86% for semantic rejections.
+
+    None means "cannot enumerate", and every caller must treat that as
+    "cannot decide" and stay silent. The cases that force it:
+
+      * `SELECT *` or `SELECT t.*` -- resolving a star needs the full column
+        set of everything in that CTE's FROM, including other CTEs, and a
+        wrong expansion here would reject correct SQL.
+      * An explicit column list on the CTE itself (`WITH c(a, b) AS ...`) is
+        honoured directly, since it names the output exactly.
+      * A projection that is neither aliased nor a plain column reference
+        (a bare function call, say) has a PostgreSQL-assigned name this code
+        should not try to predict.
+    """
+    out: dict[str, set[str] | None] = {}
+
+    for cte in stmt.find_all(exp.CTE):
+        name = (cte.alias or "").lower()
+        if not name:
+            continue
+
+        # `WITH c(a, b) AS (...)` states the output columns outright. sqlglot
+        # hangs that list off the TableAlias node, not off the CTE itself.
+        table_alias = cte.args.get("alias")
+        declared = list(getattr(table_alias, "columns", None) or [])
+        if declared:
+            out[name] = {(c.name or "").lower() for c in declared if c.name}
+            continue
+
+        inner = cte.this
+        # For a set operation the branches must agree on arity and names, so
+        # the leftmost branch defines the output.
+        while isinstance(inner, (exp.Union, exp.Except, exp.Intersect)):
+            inner = inner.this
+        if isinstance(inner, exp.Subquery):
+            inner = inner.this
+        if not isinstance(inner, exp.Select):
+            out[name] = None
+            continue
+
+        columns: set[str] = set()
+        opaque = False
+        for projection in inner.expressions:
+            if isinstance(projection, exp.Star):
+                opaque = True
+                break
+            if isinstance(projection, exp.Column) and isinstance(
+                projection.this, exp.Star
+            ):
+                opaque = True
+                break
+            if isinstance(projection, exp.Alias):
+                if projection.alias:
+                    columns.add(projection.alias.lower())
+                    continue
+                opaque = True
+                break
+            if isinstance(projection, exp.Column):
+                col = (projection.name or "").lower()
+                if col and col != "*":
+                    columns.add(col)
+                    continue
+                opaque = True
+                break
+            # Unaliased expression: PostgreSQL derives a name we should not
+            # guess at.
+            opaque = True
+            break
+
+        out[name] = None if opaque or not columns else columns
+
+    return out
+
+
 def _local_scope(select_node):
     """
     (alias_map, tables) for the tables declared directly in this SELECT's
@@ -120,6 +211,7 @@ def validate_columns(ctx: ValidationContext) -> ValidationResult | None:
                 continue
 
             cte_names = {c.alias.lower() for c in stmt.find_all(exp.CTE) if c.alias}
+            cte_columns = _cte_output_columns(stmt)
             projection_aliases = {a.alias.lower() for a in stmt.find_all(exp.Alias) if a.alias}
 
             # Precompute local scope per SELECT once.
@@ -142,7 +234,53 @@ def validate_columns(ctx: ValidationContext) -> ValidationResult | None:
 
                 # ── Qualified reference: resolve alias inner→outer ──────────
                 if tbl_part:
-                    if tbl_part in cte_names:
+                    # Resolve the reference to a CTE, whether it is named
+                    # directly (`FROM lmb`) or aliased (`FROM lmb b`). The
+                    # alias map points alias -> relation name, so an aliased
+                    # CTE arrives here as the alias and must be translated
+                    # back before its output columns can be looked up.
+                    cte_target = tbl_part if tbl_part in cte_names else None
+                    shadowed = False
+                    for sel in chain:
+                        amap, _t, derived = scope_for(sel)
+                        if tbl_part in derived:
+                            # A derived table (subquery in FROM) validates its
+                            # own columns in its own scope.
+                            shadowed = True
+                            break
+                        if tbl_part in amap:
+                            resolved = amap[tbl_part]
+                            if resolved in cte_names:
+                                cte_target = resolved
+                            elif resolved != tbl_part:
+                                # Alias points at a real table, which shadows
+                                # any same-named CTE.
+                                shadowed = True
+                            break
+
+                    if cte_target is not None and not shadowed:
+                        # A CTE reference used to be skipped outright. Check it
+                        # when the CTE's output is knowable; stay silent when
+                        # it is not (see _cte_output_columns).
+                        known = cte_columns.get(cte_target)
+                        tbl_part = cte_target
+                        if known and col_name not in known:
+                            return ValidationResult(
+                                passed=False, step="schema",
+                                message=(
+                                    f"'{tbl_part}' is a CTE and does not "
+                                    f"project a column named '{col_name}'. "
+                                    f"The columns it does project are: "
+                                    f"{', '.join(sorted(known))}. Either "
+                                    f"select '{col_name}' inside the "
+                                    f"'{tbl_part}' CTE so it becomes part of "
+                                    f"that CTE's output, reference it under "
+                                    f"the name the CTE actually gives it, or "
+                                    f"read it from a base table joined in the "
+                                    f"outer query."
+                                ),
+                                sql=sql,
+                            )
                         continue
                     resolved_table = None
                     for sel in chain:

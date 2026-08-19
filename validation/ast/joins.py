@@ -16,6 +16,7 @@ import sqlglot.errors
 import sqlglot.expressions as exp
 from ..core.context import ValidationContext
 from ..core.base import BaseValidationStep
+from ..utils.roles import declared_role, pinned_roles
 from models.schema import ValidationResult
 from utils.logging_config import get_logger
 
@@ -108,6 +109,81 @@ def _local_alias_map(stmt: exp.Expression) -> dict[str, str]:
         if table.name:
             alias_map[(table.alias or table.name).lower()] = table.name.lower()
     return alias_map
+
+
+def _statement_pinned_roles(
+    stmt: exp.Expression, alias_map: dict[str, str], schema_map: dict,
+) -> dict[str, str]:
+    """
+    alias -> discriminator role, merged across every scope in the statement.
+
+    Merged rather than per-scope because _local_alias_map is already
+    statement-wide: an alias declared inside a CTE body is visible here, which
+    is what lets a join written against the CTE be judged on the role its
+    source alias was pinned to. An alias pinned to DIFFERENT values in two
+    scopes is dropped — an ambiguous role must never drive a rejection.
+    """
+    merged: dict[str, str] = {}
+    conflicting: set[str] = set()
+    for select_node in stmt.find_all(exp.Select):
+        for alias, role in pinned_roles(select_node, alias_map, schema_map).items():
+            if alias in merged and merged[alias] != role:
+                conflicting.add(alias)
+            merged[alias] = role
+    for alias in conflicting:
+        merged.pop(alias, None)
+    return merged
+
+
+def _referent_domain(
+    alias: str,
+    column: str,
+    alias_map: dict[str, str],
+    cte_sources: dict[str, dict[str, tuple[str, str]]],
+    schema_map: dict,
+    roles: dict[str, str] | None = None,
+    _depth: int = 0,
+) -> tuple[str | None, str | None]:
+    """
+    (entity_table, role) for a column, either element possibly None.
+
+    `entity_table` is what _referent_entity has always returned. `role` narrows
+    it when the entity table is polymorphic — see validation/utils/roles.py for
+    why the two sources of a role are kept strictly apart.
+    """
+    if _depth > 4:
+        return None, None
+
+    roles = roles or {}
+    cte_key = alias if alias in cte_sources else alias_map.get(alias, alias)
+
+    if cte_key in cte_sources:
+        source = cte_sources[cte_key].get(column)
+        if source is None:
+            return None, None
+        return _referent_domain(
+            source[0], source[1], alias_map, cte_sources, schema_map, roles, _depth + 1,
+        )
+
+    table = alias_map.get(alias)
+    if not table or table not in schema_map:
+        return None, None
+    inventory = schema_map[table]
+
+    for fk in getattr(inventory, "foreign_keys", []) or []:
+        if (fk.from_col or "").lower() == column:
+            target = (fk.to_table or "").lower()
+            # An FK column's role is declared by the column, never inherited
+            # from whatever the alias happens to be filtered to.
+            return target, declared_role(inventory, column, target, schema_map)
+
+    col_info = getattr(inventory, "columns", {}).get(column)
+    if col_info is not None and getattr(col_info, "is_pk", False):
+        # A key reference means "a row of this table", so an in-scope pin on
+        # the discriminator does narrow which kind of row.
+        return table, roles.get(alias)
+
+    return None, None
 
 
 def _referent_entity(
@@ -248,6 +324,7 @@ class JoinValidator(BaseValidationStep):
                 # local, so the CTE is the more reliable binding.
                 merged_sources = {**_derived_table_sources(stmt), **cte_sources}
                 cte_sources = merged_sources
+                roles = _statement_pinned_roles(stmt, alias_map, ctx.schema_map)
 
                 for join in stmt.find_all(exp.Join):
                     on_clause = join.args.get("on")
@@ -268,17 +345,58 @@ class JoinValidator(BaseValidationStep):
                         left_col = (left.name or "").lower()
                         right_col = (right.name or "").lower()
 
-                        left_entity = _referent_entity(
-                            left_alias, left_col, alias_map, cte_sources, ctx.schema_map
+                        left_entity, left_role = _referent_domain(
+                            left_alias, left_col, alias_map, cte_sources,
+                            ctx.schema_map, roles,
                         )
                         if left_entity is None:
                             continue
-                        right_entity = _referent_entity(
-                            right_alias, right_col, alias_map, cte_sources, ctx.schema_map
+                        right_entity, right_role = _referent_domain(
+                            right_alias, right_col, alias_map, cte_sources,
+                            ctx.schema_map, roles,
                         )
                         if right_entity is None:
                             continue
                         if left_entity == right_entity:
+                            # Same table, different KIND of row. Only decided
+                            # when BOTH roles are declared; one unknown side
+                            # means the check has nothing to compare and stays
+                            # silent rather than guessing.
+                            if (
+                                left_role is not None
+                                and right_role is not None
+                                and left_role != right_role
+                            ):
+                                logger.warning(
+                                    component="sql_validator",
+                                    event="join_key_role_mismatch",
+                                    entity=left_entity,
+                                    left=f"{left_alias}.{left_col}",
+                                    left_role=left_role,
+                                    right=f"{right_alias}.{right_col}",
+                                    right_role=right_role,
+                                )
+                                return ValidationResult(
+                                    passed=False, step="safety",
+                                    message=(
+                                        f"Join key role mismatch: both "
+                                        f"'{left_alias}.{left_col}' and "
+                                        f"'{right_alias}.{right_col}' are "
+                                        f"{left_entity} keys, but the first "
+                                        f"identifies a {left_role} row and the "
+                                        f"second a {right_role} row. "
+                                        f"{left_entity} is a polymorphic table: "
+                                        f"equating keys of different kinds "
+                                        f"matches nothing, or matches unrelated "
+                                        f"rows that happen to share an id. Join "
+                                        f"through the relationship that actually "
+                                        f"connects a {left_role} to a "
+                                        f"{right_role} — a hierarchy/closure "
+                                        f"table, or an FK on an intermediate "
+                                        f"table that carries both."
+                                    ),
+                                    sql=ctx.working_sql or ctx.sql,
+                                )
                             continue
 
                         logger.warning(

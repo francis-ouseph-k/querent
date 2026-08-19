@@ -135,6 +135,21 @@ class LLMSettings(BaseSettings):
         env_file=ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
+        # FIX (2026-08-19). Every aliased field below (mistral_api_key,
+        # gemini_api_key, ...) has a validation_alias, so it can be set from
+        # an env var under that alias name. Without populate_by_name=True,
+        # whether __init__(field_name=...) ALSO works is undocumented and
+        # changed between pydantic-settings 2.14.0 and 2.15.0: on 2.14.0,
+        # InitSettingsSource requires the alias and silently drops a kwarg
+        # given by field name (falls through to the field default, no error,
+        # extra="ignore" swallows it); on 2.15.0 it accepts either. Any code
+        # path that constructs LLMSettings(mistral_api_key=...) -- tests,
+        # scripts, a future caller -- gets a silently empty key on 2.14.0 and
+        # correct behaviour on 2.15.0, with no exception either way to reveal
+        # the difference. populate_by_name=True makes field-name construction
+        # a guaranteed part of the contract on every version, which is what
+        # every caller of this class already assumes.
+        populate_by_name=True,
     )
 
     model_path:   str   = "./models/qwen/qwen2.5-coder-3b-instruct-q4_k_m.gguf"
@@ -169,6 +184,20 @@ class LLMSettings(BaseSettings):
     # only for a provider tier that is documented to tolerate bursts.
     rate_limit_burst: int = Field(
         default=1, ge=1, validation_alias="LLM_RATE_LIMIT_BURST",
+    )
+    # Proactive pacing on TOKENS, independent of requests_per_minute above.
+    # 0 (default) disables it, so an existing deployment is unchanged until
+    # this is set deliberately.
+    #
+    # Run 20260818_133351 is the evidence that the two limits are separate
+    # constraints and that requests was the wrong one: at 20 req/min the
+    # request bucket never engaged (236 inferences / 55 min = 4.3 req/min),
+    # yet the run still took 183 rate-limit rejections. Median prompt was
+    # 11,665 tokens and the run pushed ~40,000 prompt tokens/min. Set this
+    # against the measured tier; 30000 is a reasonable starting point for the
+    # Mistral tier in use and can be raised against observed headroom.
+    tokens_per_minute: int = Field(
+        default=0, ge=0, validation_alias="LLM_TOKENS_PER_MINUTE",
     )
     # Transport-level attempts for a TRANSIENT provider error (429/5xx).
     # This is NOT validation.max_retries: that budget buys SQL-correction
@@ -441,6 +470,10 @@ class FineTuningSettings(BaseSettings):
         env_file=ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
+        # See LLMSettings above for why this is needed: an aliased field's
+        # __init__(field_name=...) construction is version-dependent behaviour
+        # in pydantic-settings without it.
+        populate_by_name=True,
     )
     adapter_dir:  str = "models/adapters"                     # LoRA adapter output root
     hf_model_dir: str = "models/hf/Qwen2.5-Coder-3B-Instruct" # HF base model (training)
@@ -493,6 +526,13 @@ class Settings(BaseSettings):
         env_file=ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
+        # See LLMSettings above for why this is needed. batch_query_delay_ms
+        # below carries validation_alias="BATCH_QUERY_DELAY_MS"; on
+        # pydantic-settings 2.14.0, Settings(batch_query_delay_ms=-1)
+        # silently drops the kwarg (falls to the default, extra="ignore"
+        # swallows the mismatch) instead of validating it against ge=0 --
+        # the negative value never reaches the validator at all.
+        populate_by_name=True,
     )
 
     # ── Sub-configs ────────────────────────────────────────────────────────

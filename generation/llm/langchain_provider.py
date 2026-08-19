@@ -41,7 +41,11 @@ from generation.llm.base import (
     ProviderInfo,
 )
 from utils.logging_config import get_logger
-from .rate_limiter import get_shared_rate_limiter
+from .rate_limiter import (
+    estimate_prompt_tokens,
+    get_shared_rate_limiter,
+    get_shared_token_rate_limiter,
+)
 
 logger = get_logger(__name__)
 
@@ -246,6 +250,11 @@ class LangChainChatProvider(LLMProvider):
         ai = None
         last_exc: Exception | None = None
         limiter = get_shared_rate_limiter()
+        token_limiter = get_shared_token_rate_limiter()
+        # Charged against the token bucket. Computed once, outside the retry
+        # loop: a re-send of the identical request costs the provider the same
+        # tokens, so it is charged again per attempt but never recomputed.
+        prompt_cost = estimate_prompt_tokens(messages) if token_limiter else 0
         max_attempts = _max_transient_attempts()
         for attempt in range(max_attempts):
             try:
@@ -261,6 +270,22 @@ class LangChainChatProvider(LLMProvider):
                         logger.warning(
                             component="sql_generator",
                             event="rate_limiter_wait_exceeded",
+                            note="proceeding without waiting further; "
+                                 "reactive backoff will handle a 429",
+                        )
+                if token_limiter is not None:
+                    # Second, independent bucket. Whichever of the two is
+                    # tighter at this moment does the pacing -- which is how
+                    # the provider enforces its own limits.
+                    try:
+                        token_limiter.acquire(
+                            timeout=_BACKOFF_CAP_SECONDS * 2, cost=prompt_cost,
+                        )
+                    except TimeoutError:
+                        logger.warning(
+                            component="sql_generator",
+                            event="token_rate_limiter_wait_exceeded",
+                            estimated_prompt_tokens=prompt_cost,
                             note="proceeding without waiting further; "
                                  "reactive backoff will handle a 429",
                         )

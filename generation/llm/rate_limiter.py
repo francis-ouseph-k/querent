@@ -60,6 +60,9 @@ class TokenBucketRateLimiter:
     call in the process (batch_run.py's questions, and any validator-driven
     retry within pipeline/runner.py), which is why refill and consumption
     are guarded by one lock rather than given a bucket per caller.
+
+    `acquire(cost=N)` charges N tokens instead of 1, which is what lets the
+    same class serve as both the request pacer and the token pacer below.
     """
 
     def __init__(self, rate_per_minute: float, burst: float | None = None) -> None:
@@ -82,21 +85,30 @@ class TokenBucketRateLimiter:
         self._tokens = min(self._capacity, self._tokens + elapsed * self._rate_per_sec)
         self._last_refill = now
 
-    def acquire(self, *, timeout: float | None = None) -> None:
+    def acquire(self, *, timeout: float | None = None, cost: float = 1.0) -> None:
         """
-        Block until a token is available, then consume it. `timeout`, if
-        given, is a ceiling on total wait; exceeding it raises TimeoutError
+        Block until `cost` tokens are available, then consume them. `timeout`,
+        if given, is a ceiling on total wait; exceeding it raises TimeoutError
         rather than blocking forever, so a badly-mistuned rate cannot hang
         the whole pipeline silently.
+
+        A cost larger than the bucket's whole capacity is clamped to the
+        capacity. Without the clamp such a request could never be satisfied
+        and the caller would deadlock until the timeout on every single
+        attempt — the failure mode is worse than briefly overshooting the
+        configured rate.
         """
+        cost = max(0.0, min(float(cost), self._capacity))
+        if cost == 0.0:
+            return
         deadline = None if timeout is None else time.monotonic() + timeout
         while True:
             with self._lock:
                 self._refill()
-                if self._tokens >= 1.0:
-                    self._tokens -= 1.0
+                if self._tokens >= cost:
+                    self._tokens -= cost
                     return
-                wait = (1.0 - self._tokens) / self._rate_per_sec
+                wait = (cost - self._tokens) / self._rate_per_sec
             if deadline is not None and time.monotonic() + wait > deadline:
                 raise TimeoutError(
                     f"rate limiter wait ({wait:.1f}s) would exceed timeout"
@@ -104,7 +116,26 @@ class TokenBucketRateLimiter:
             time.sleep(min(wait, 0.25))   # re-check periodically, not one long sleep
 
 
+def estimate_prompt_tokens(messages) -> int:
+    """
+    Rough token count for a message list, by characters / 4.
+
+    Deliberately an estimate. The provider's real count arrives in the
+    RESPONSE, which is far too late to pace the request that produced it, so
+    an exact number is not available at the moment the decision has to be
+    made. A uniform proportional error is absorbed by tuning the configured
+    rate; what matters is that a 17k-token prompt is charged roughly ten
+    times what a 1.7k one is.
+    """
+    total = 0
+    for message in messages or []:
+        content = message.get("content", "") if isinstance(message, dict) else ""
+        total += len(content or "")
+    return max(1, total // 4)
+
+
 _shared_limiter: TokenBucketRateLimiter | None = None
+_shared_token_limiter: TokenBucketRateLimiter | None = None
 _shared_lock = threading.Lock()
 
 
@@ -135,3 +166,56 @@ def get_shared_rate_limiter() -> TokenBucketRateLimiter | None:
             burst=burst,
         )
         return _shared_limiter
+
+
+def get_shared_token_rate_limiter() -> TokenBucketRateLimiter | None:
+    """
+    The SECOND bucket, charging estimated prompt size rather than one unit
+    per call. Returns None when LLM_TOKENS_PER_MINUTE is unset or 0.
+
+    WHY A SECOND BUCKET RATHER THAN A BIGGER FIRST ONE
+
+    Run 20260818_133351 settles the question with data. The request bucket
+    was configured at 20/min and NEVER ENGAGED ONCE: 236 inferences over 55
+    wall-clock minutes averages 4.3 requests/min, comfortably under the
+    limit. The run still took 183 rate-limit rejections and 162 backoff
+    retries, because the binding constraint was never requests — it was
+    tokens. Median prompt was 11,665 tokens, mean 11,558, peak 16,882, and
+    the run pushed roughly 40,000 prompt tokens per minute.
+
+    The two provider limits are independent, so one bucket cannot express
+    both: charging tokens through the request bucket makes the requests/min
+    figure meaningless, and charging requests through a token bucket lets a
+    burst of small prompts sail past a per-request cap. Whichever bucket is
+    tighter at any given moment does the pacing, which is exactly the
+    behaviour the provider itself implements.
+
+    Left at 0 this changes nothing, so an existing deployment is unaffected
+    until the value is set deliberately against a measured tier.
+    """
+    global _shared_token_limiter
+    if _shared_token_limiter is not None:
+        return _shared_token_limiter
+    with _shared_lock:
+        if _shared_token_limiter is not None:
+            return _shared_token_limiter
+        from config.settings import settings
+        rate = getattr(settings.llm, "tokens_per_minute", 0)
+        if not rate or rate <= 0:
+            return None
+        # Burst capacity is one peak prompt, not one minute's worth: the
+        # bucket must be able to admit the largest single prompt the pipeline
+        # builds, or acquire() would clamp every large request and the pacing
+        # would silently stop being proportional.
+        burst = max(rate, getattr(settings.retrieval, "max_context_budget_tokens", 0) or 0)
+        _shared_token_limiter = TokenBucketRateLimiter(
+            rate_per_minute=rate, burst=burst,
+        )
+        logger.info(
+            component="sql_generator",
+            event="token_rate_limiter_initialized",
+            tokens_per_minute=rate,
+            burst=burst,
+            note="charges estimated prompt size; independent of the request bucket",
+        )
+        return _shared_token_limiter

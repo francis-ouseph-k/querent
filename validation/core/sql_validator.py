@@ -17,6 +17,7 @@ from .context import ValidationContext
 
 from ..ast.syntax import SyntaxValidator, PlaceholderValidator, AliasValidator
 from ..ast.aggregation import AggregationValidator, GroupByAlignmentValidator
+from ..ast.date_arithmetic import DateArithmeticValidator
 from ..schema.schema_validator import SchemaValidator
 from ..ast.joins import JoinValidator
 from ..ast.safety import SafetyValidator
@@ -28,7 +29,10 @@ from ..security.exposure import ExposureValidator
 from ..execution.cost import CostValidator
 from ..semantic.semantic_checks import SemanticValidator, HardcodedLiteralValidator
 from ..semantic.zero_suppression import ZeroSuppressionValidator
+from ..semantic.closure_semantics import ClosureSemanticsValidator
+from ..semantic.reference_data import ReferenceDataValidator
 from ..utils.autofix import attempt_near_miss_column_autofix
+from ..utils.seed_index import build_seed_index
 
 logger = get_logger(__name__)
 
@@ -38,6 +42,7 @@ def build_default_pipeline(
     release_conn: Callable[[Any], None] | None = None,
     db_dsn: str | None = None,
     tenant_scoped_tables: set[str] | None = None,
+    seed_index: dict | None = None,
 ):
     """
     Build the default sequence of validation steps.
@@ -48,6 +53,11 @@ def build_default_pipeline(
         PlaceholderValidator(),
         AliasValidator(),
         SchemaValidator(),
+        # Types before joins: EXTRACT(EPOCH FROM date - date) is a plan-time
+        # failure that EXPLAIN reports without naming a column or a fix, so
+        # the correction loop cannot act on it. Catching it here means the
+        # retry sees the rewrite instead of "add explicit type casts".
+        DateArithmeticValidator(),
         JoinValidator(fk_graph=fk_graph),
         SafetyValidator(),
         # 6b: function allowlist + sensitive-column projection (G4, G5).
@@ -71,6 +81,12 @@ def build_default_pipeline(
         # AVG/MIN over a count an INNER join guarantees is non-zero. Also
         # ahead of EXPLAIN -- the arithmetic is wrong regardless of cost.
         ZeroSuppressionValidator(),
+        # A closure table's self-rows make membership tests tautological, and
+        # a seeded catalog row can contradict the direction a query asserts.
+        # Both return a plausible result set rather than an error, so they
+        # belong ahead of EXPLAIN alongside the other invisible-defect checks.
+        ClosureSemanticsValidator(),
+        ReferenceDataValidator(seed_index=seed_index),
         CostValidator(get_conn=get_conn, release_conn=release_conn, db_dsn=db_dsn),
         SemanticValidator(),
         HardcodedLiteralValidator(),
@@ -94,8 +110,13 @@ class SQLValidator:
         db_dsn:         str | None = None,
         fk_graph:       Any = None,
         pipeline: list | None = None,
+        seed_statements: list[str] | None = None,
     ) -> None:
         self.schema_map = schema_map
+        # Optional on purpose: a caller that builds a validator without the
+        # DDL's seed DML keeps working, and the reference-data check simply
+        # stays quiet rather than failing to construct.
+        self.seed_index = build_seed_index(seed_statements)
 
         self._tenant_scoped_tables: set[str] = {
             name for name, inv in schema_map.items()
@@ -114,6 +135,7 @@ class SQLValidator:
             release_conn=release_conn,
             db_dsn=db_dsn,
             tenant_scoped_tables=self._tenant_scoped_tables,
+            seed_index=self.seed_index,
         )
 
     def validate(
@@ -378,6 +400,18 @@ class RetryValidator:
                         new_error=candidate.message[:120],
                     )
 
+        if not result.passed and not getattr(result, "retryable", True):
+            logger.info(
+                component="retry_validator",
+                event="non_retryable_result",
+                step=result.step,
+                error=(result.message or "")[:120],
+                note="the step marked this rejection unsatisfiable by any "
+                     "rewrite; retrying would only produce a query that stops "
+                     "answering the question",
+            )
+            return result, retries
+
         if not result.passed and result.step in NON_RETRYABLE_STEPS:
             logger.info(
                 component="retry_validator",
@@ -388,6 +422,16 @@ class RetryValidator:
                      "so the correction loop is skipped",
             )
             return result, retries
+
+        # Recovery instrumentation. Rejection rate is now well ahead of
+        # recovery rate — 5 retry_stalled and 2 no-gain audit retries in the
+        # last full run — and every validator added makes that gap wider by
+        # converting silent-wrong into hard-Error. Before the loop itself is
+        # changed, the data has to say WHICH rejection reasons the model can
+        # actually act on. This records the entry reason and the outcome; it
+        # changes no behaviour.
+        entry_step = result.step if not result.passed else None
+        entry_signature = last_error_sig[1][:80] if last_error_sig else ""
 
         while not result.passed and retries < max_retries:
             retries += 1
@@ -500,5 +544,18 @@ class RetryValidator:
             if new_sig is not None:
                 seen_error_sigs.add(new_sig)
             last_error_sig = new_sig
+
+        if entry_step is not None:
+            logger.info(
+                component="retry_validator",
+                event="recovery_outcome",
+                entry_step=entry_step,
+                entry_error=entry_signature,
+                recovered=result.passed,
+                attempts_used=retries,
+                exit_step=None if result.passed else result.step,
+                note="per-rejection-reason recovery rate; drives where the "
+                     "correction loop is worth changing",
+            )
 
         return result, retries

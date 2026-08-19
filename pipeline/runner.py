@@ -305,9 +305,13 @@ class PipelineRunner:
         self,
         tables:   dict[str, TableInventory],
         fk_graph: nx.DiGraph,
+        seed_statements: list[str] | None = None,
     ) -> None:
         self.tables   = tables
         self.fk_graph = fk_graph
+        # Optional: a runner built without seed DML keeps working and the
+        # reference-data check stays quiet.
+        self.seed_statements = seed_statements or []
 
         # Components initialised lazily
         self._qdrant:     QdrantIndexer     | None = None
@@ -387,6 +391,7 @@ class PipelineRunner:
                 get_connection = _get_connection,
                 release_conn   = _release_connection,
                 fk_graph       = self.fk_graph,
+                seed_statements = self.seed_statements,
             )
         return self._validator
 

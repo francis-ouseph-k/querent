@@ -259,6 +259,23 @@ class ValidationResult:
     # from a text diff against the model's raw output therefore degrades to a
     # constant penalty in production; this flag carries the fact explicitly.
     autofix_applied: bool = False
+    # Set False by a step whose rejection NO SQL REWRITE can satisfy, so the
+    # correction loop skips it rather than spending inferences producing
+    # variants that must all fail.
+    #
+    # NON_RETRYABLE_STEPS in sql_validator.py already does this at STEP
+    # granularity, which is too coarse: `safety` covers both "you joined these
+    # wrongly" (retryable, and the loop fixes it routinely) and "the question
+    # asks for a column policy forbids returning" (not retryable at all). A
+    # per-result flag lets one step make that distinction per rejection.
+    #
+    # The danger of getting this wrong is not wasted inferences. It is that a
+    # model told "do not select this column" complies by DROPPING it, the
+    # rewritten query validates, and the pipeline returns a confident answer
+    # to a different question than the one asked. Q165 of run
+    # 20260818_133351 did exactly that: "Show the S3 version IDs..." was
+    # correctly blocked, then silently answered without them.
+    retryable: bool = True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
