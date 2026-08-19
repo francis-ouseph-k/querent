@@ -1,0 +1,252 @@
+"""
+tests/test_semantic_checks.py
+─────────────────────────────────
+validation/semantic/semantic_checks.py — Step 7 (`SemanticValidator`, twelve
+schema-driven checks including 18b: unprompted enum filter) and Step 8
+(`HardcodedLiteralValidator`: a hardcoded literal ID/name not grounded in the
+question). Both classes live in the same source file and are merged here for
+the same reason.
+
+CONSOLIDATED FROM: test_phase1_changes.py (SemanticValidator / 18b, "Change
+4") and test_run7_hardening.py (HardcodedLiteralValidator, including the
+`import re` shadow regression and its `_literal_is_grounded` helper).
+"""
+
+from __future__ import annotations
+
+from models.schema import ColumnInfo, TableInventory
+from validation.semantic.semantic_checks import (
+    HardcodedLiteralValidator,
+    SemanticValidator,
+    _literal_is_grounded,
+)
+
+from conftest import make_ctx
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SemanticValidator — Check 18b: schema-driven defensive-filter detection
+#
+# Runs inside Step 7. Its event, semantic_unprompted_enum_filter, is
+# deliberately absent from _ADVISORY_SEMANTIC_EVENTS, so it still hard-fails
+# rather than warning.
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _mk_tbl(name: str, cols_with_allowed) -> TableInventory:
+    inv = TableInventory(table_name=name)
+    for col_name, allowed in cols_with_allowed:
+        info = ColumnInfo(name=col_name, data_type="varchar")
+        if allowed is not None:
+            info.allowed_values = set(allowed)
+        inv.columns[col_name] = info
+    return inv
+
+
+SAMPLE_SCHEMA = {
+    "board": _mk_tbl("board", [
+        ("id", None), ("course_id", None), ("exam_id", None), ("qp_id", None),
+        ("status", ["OPEN", "CLOSED"]), ("deadline", None),
+    ]),
+    "board_coordinator": _mk_tbl("board_coordinator", [
+        ("id", None), ("board_id", None), ("faculty_cache_id", None),
+    ]),
+    "faculty_cache": _mk_tbl("faculty_cache", [
+        ("id", None), ("employee_erp_id", None), ("name", None), ("email", None),
+    ]),
+    "answer_key": _mk_tbl("answer_key", [
+        ("id", None), ("qp_id", None),
+        ("status", ["DRAFT", "APPROVED", "LOCKED"]),
+    ]),
+    "attempt_rule": _mk_tbl("attempt_rule", [
+        ("id", None), ("question_id", None),
+        ("rule_type", ["GROUP", "PICK_N", "FIRST_N", "BEST_N"]),
+    ]),
+    "question_paper": _mk_tbl("question_paper", [("id", None), ("title", None)]),
+    "question": _mk_tbl("question", [("id", None), ("qp_id", None)]),
+    "answer_script": _mk_tbl("answer_script", [
+        ("id", None), ("urn", None),
+        ("lifecycle_status", ["ADMITTED", "ELIGIBLE", "ATTEMPTED", "ABSENT"]),
+    ]),
+}
+
+
+class TestSchemaDrivenDefensiveFilter:
+
+    validator = SemanticValidator()
+
+    def _ctx(self, sql, nl, schema_map=None):
+        return make_ctx(sql, schema_map if schema_map is not None else SAMPLE_SCHEMA,
+                         original_query=nl)
+
+    @staticmethod
+    def _is_18b(message: str | None) -> bool:
+        return "defensive filter not supported" in (message or "")
+
+    def test_q67_pattern_status_in_join_on(self):
+        """
+        Q67: ak.status='APPROVED' in a JOIN ON, though the NL never says
+        'approved'.
+
+        `status` is one of the four columns the older keyword-driven Check 18
+        owns, and Check 18 was demoted to advisory (semantic_unprompted_filter
+        is in _ADVISORY_SEMANTIC_EVENTS) because it fired on correct queries.
+        18b defers to Check 18 in the WHERE clause precisely so the demotion
+        is not quietly undone -- a JOIN ON predicate is the case 18b genuinely
+        owns, since Check 18 only walks WHERE.
+        """
+        sql = (
+            "SELECT fc.name FROM question_paper qp "
+            "JOIN answer_key ak ON ak.qp_id = qp.id AND ak.status = 'APPROVED' "
+            "JOIN board b ON b.qp_id = qp.id "
+            "JOIN board_coordinator bc ON bc.board_id = b.id "
+            "JOIN faculty_cache fc ON fc.id = bc.faculty_cache_id "
+            "WHERE qp.title ILIKE '%Algorithms%'"
+        )
+        nl = "List all faculty members who prepared the answer key for the Algorithms exam"
+        result = self.validator.run(self._ctx(sql, nl))
+        assert not result.passed
+        assert self._is_18b(result.message)
+
+    def test_q162_pattern_rule_type_unjustified(self):
+        """Q162: ar.rule_type='PICK_N' with no mention of PICK_N in the NL."""
+        sql = (
+            "SELECT ar.id, ar.rule_type "
+            "FROM attempt_rule ar "
+            "JOIN question q ON q.id = ar.question_id "
+            "JOIN question_paper qp ON qp.id = q.qp_id "
+            "WHERE qp.title ILIKE '%Data Structures%' AND ar.rule_type = 'PICK_N'"
+        )
+        nl = "Show the attempt rule configuration for question 2 in the Data Structures paper."
+        result = self.validator.run(self._ctx(sql, nl))
+        assert not result.passed
+        assert self._is_18b(result.message)
+
+    def test_active_marking_filter_is_exempt(self):
+        """
+        answer_script.lifecycle_status='ATTEMPTED' is the documented
+        active-marking pattern, not a defensive filter. Negative property: 18b
+        specifically must not claim it.
+        """
+        sql = "SELECT a.urn FROM answer_script a WHERE a.lifecycle_status = 'ATTEMPTED'"
+        nl = "Show all scripts where the primary evaluator has frozen the attempt"
+        result = self.validator.run(self._ctx(sql, nl))
+        assert not self._is_18b(result.message)
+
+    def test_value_paraphrased_in_nl_is_justified(self):
+        """'END_SEM' is justified by 'end-semester' via '_'→'-' normalisation."""
+        schema = dict(SAMPLE_SCHEMA)
+        schema["exam_schedule_cache"] = _mk_tbl("exam_schedule_cache", [
+            ("id", None), ("exam_type", ["END_SEM", "MID_SEM"]),
+        ])
+        sql = (
+            "SELECT esc.id FROM exam_schedule_cache esc "
+            "WHERE esc.exam_type = 'END_SEM'"
+        )
+        nl = "List all end-semester exam schedules"
+        result = self.validator.run(self._ctx(sql, nl, schema))
+        assert not self._is_18b(result.message)
+
+    def test_value_named_verbatim_in_nl_is_justified(self):
+        """The plainest justification: the question names the value outright."""
+        sql = "SELECT ar.id FROM attempt_rule ar WHERE ar.rule_type = 'PICK_N'"
+        nl = "Show all attempt rules of type PICK_N"
+        result = self.validator.run(self._ctx(sql, nl))
+        assert not self._is_18b(result.message)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# HardcodedLiteralValidator — Step 8
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _literal_table(name: str, columns: dict[str, bool]) -> TableInventory:
+    inv = TableInventory(table_name=name)
+    for col in columns:
+        inv.columns[col] = ColumnInfo(name=col, data_type="varchar")
+    return inv
+
+
+def _literal_ctx(sql: str, question: str):
+    """A context whose schema_map carries a free-text and a vocabulary column."""
+    app_user = _literal_table("app_user", {"id": True, "display_name": False})
+    wst = _literal_table("workflow_state_transition", {"id": True, "entity_type": False})
+    return make_ctx(
+        sql, {"app_user": app_user, "workflow_state_transition": wst},
+        original_query=question, working_sql=sql,
+    )
+
+
+def test_validator_runs_on_a_query_with_no_aggregate():
+    """
+    Regression guard for FIX-R7a.
+
+    A function-local `import re` made the module-level `re` invisible for the
+    whole method, so the first use of it raised UnboundLocalError and the
+    blanket except returned passed=True. Aggregate queries were spared only
+    because bool(ast.find(exp.AggFunc)) short-circuits the `or` before
+    re.search is evaluated -- so this test deliberately uses NO aggregate.
+    """
+    sql = "SELECT au.id FROM app_user au WHERE au.display_name = 'COE Office'"
+    result = HardcodedLiteralValidator().run(
+        _literal_ctx(sql, "Which users have roles granted by the Custodian Admin?")
+    )
+    assert not result.passed, "validator silently no-oped on a non-aggregate query"
+    assert "COE Office" in result.message
+
+
+def test_grounded_literal_is_accepted():
+    sql = "SELECT au.id FROM app_user au WHERE au.display_name = 'COE Office'"
+    assert HardcodedLiteralValidator().run(
+        _literal_ctx(sql, "Show all bulk operations initiated by the COE Office.")
+    ).passed
+
+
+def test_inflected_literal_is_accepted():
+    """'DEK_REWRAP' is grounded by \"the DEK was re-wrapped\"."""
+    assert _literal_is_grounded(
+        "DEK_REWRAP", "whether the DEK was re-wrapped after an outage"
+    )
+    assert _literal_is_grounded(
+        "CROSS_LISTING", "List all active cross-listing relationships."
+    )
+
+
+def test_conditional_aggregation_branch_is_not_a_filter():
+    """
+    Q117 shape: one FILTER per approval_status value enumerates a domain. The
+    question naming only two of the branches does not make the third invented.
+    """
+    sql = """
+        SELECT COUNT(*) FILTER (WHERE wst.entity_type = 'board') AS a,
+               COUNT(*) FILTER (WHERE wst.entity_type = 'answer_script') AS b
+        FROM workflow_state_transition wst
+    """
+    assert HardcodedLiteralValidator().run(
+        _literal_ctx(sql, "How many transitions per entity type?")
+    ).passed
+
+
+def test_left_join_on_literal_is_advisory_not_fatal():
+    """
+    The anti-join idiom -- LEFT JOIN ... ON <literal> ... WHERE x.id IS NULL --
+    requires the literal in the ON clause. Moving it to WHERE is the bug, not
+    the fix, so this rule must never block.
+    """
+    sql = """
+        SELECT au.id
+        FROM   app_user au
+        LEFT   JOIN workflow_state_transition wst
+               ON wst.id = au.id AND wst.entity_type = 'board'
+        WHERE  wst.id IS NULL
+    """
+    assert HardcodedLiteralValidator().run(
+        _literal_ctx(sql, "Which users have no board transitions?")
+    ).passed
+
+
+def test_entity_number_with_qualifier_is_accepted():
+    """'attempt rule 1' names the number; the ID is not invented."""
+    sql = "SELECT wst.id FROM workflow_state_transition wst WHERE wst.id = 1"
+    assert HardcodedLiteralValidator().run(
+        _literal_ctx(sql, "Which questions are grouped under the Choice group "
+                          "for attempt rule 1?")
+    ).passed

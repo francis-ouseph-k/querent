@@ -1,9 +1,13 @@
 """
-tests/test_batch_query_delay.py
-─────────────────────────────────
+tests/test_batch_run.py
+─────────────────────────
 Unit tests for the configurable inter-query pause in batch_run.py
 (BATCH_QUERY_DELAY_MS), added to reduce the risk of hitting a hosted
 LLM_PROVIDER's rate limit on a long benchmark run.
+
+RENAMED from test_batch_query_delay.py to match the source module
+(batch_run.py) it tests, following the convention used across this refactor.
+Content otherwise unmodified.
 
 Deliberately dependency-free: no pipeline, no schema load, no LLM calls.
 Two things are tested in isolation:
@@ -13,9 +17,6 @@ Two things are tested in isolation:
   2. The pacing function itself — batch_run._maybe_inter_query_delay(idx, delay_ms),
      the actual function the batch loop calls, not a re-implemented mirror of it.
      time.sleep is mocked throughout; these tests never really sleep.
-
-Run with:    pytest tests/test_batch_query_delay.py -v
-Or stand-alone:  python tests/test_batch_query_delay.py
 """
 
 import sys

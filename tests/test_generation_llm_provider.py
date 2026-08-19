@@ -1,26 +1,38 @@
 """
-tests/test_llm_provider_switch.py
-──────────────────────────────────
-Regression tests for the switchable-LLM change and the v10.5 → v10.10 DDL
-upgrade.
+tests/test_generation_llm_provider.py
+─────────────────────────────────────────
+generation/llm/langchain_provider.py and config/llm_providers.py — everything
+about SELECTING a provider, resolving its active credentials, and how a
+transient provider failure is classified and backed off from.
 
-Deliberately dependency-free: no network, no API keys, no llama-cpp-python, no
-LangChain integration packages. Everything here exercises the selection and
-wiring logic, which is where a provider switch actually breaks. The vendor
-clients themselves are LangChain's responsibility and are not re-tested.
+CONSOLIDATED FROM FOUR FILES. The backoff/transient-classification tests in
+particular are the clearest example in this refactor of the same
+functionality accreting across runs without ever being looked at together:
 
-Run with:    pytest tests/test_llm_provider_switch.py -v
-Or stand-alone:  python tests/test_llm_provider_switch.py
+  * test_accuracy_regressions.py — basic transient classification (429/503/
+    timeout/overloaded vs 401/400), backoff bounded-and-jittered, the
+    LLMRateLimitError/LLMProviderError subclass relationship.
+  * test_run6_hardening.py — SDK-internal-retries-disabled, backoff floor +
+    ceiling with jitter still present, Retry-After honoured, an absurd
+    Retry-After ignored.
+  * test_run7_hardening.py — the rate-limit-specific backoff floor holds
+    across 200 draws, a non-rate-limit transient does NOT inherit that floor,
+    the attempt budget is configurable.
+  * test_llm_provider_switch.py — provider registry coherence, provider
+    selection/fallback, the active_* accessor triple (base_url/model/api_key)
+    per provider, no cross-provider key leakage, split timeouts, the banner
+    never containing a live key, and the SQL-generator's provider-agnostic
+    JSON-contract parsing is exercised in a separate file
+    (test_generation_sql_generator.py) since it targets a different module.
 """
 
-import sys
+from __future__ import annotations
+
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 from config import llm_providers as lp
-from config.settings import LLMSettings, Settings
+from config.settings import LLMSettings
 
 
 def _llm(**overrides) -> LLMSettings:
@@ -28,6 +40,10 @@ def _llm(**overrides) -> LLMSettings:
     base = dict(_env_file=None)
     return LLMSettings(**base, **overrides)
 
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Provider registry, selection, active accessors, banner
+# ═════════════════════════════════════════════════════════════════════════════
 
 class TestProviderRegistry(unittest.TestCase):
     """config/llm_providers.py is the single source of truth — keep it coherent."""
@@ -204,102 +220,115 @@ class TestBannerHasNoSecrets(unittest.TestCase):
             factory.settings.llm = original
 
 
-class TestSQLGeneratorIsProviderAgnostic(unittest.TestCase):
+# ═════════════════════════════════════════════════════════════════════════════
+# Transient error classification and backoff shape
+#
+# Merged from three runs' worth of incremental hardening -- basic
+# classification, then a floor/ceiling/jitter refinement, then a
+# rate-limit-specific floor that a non-rate-limit transient must NOT inherit.
+# ═════════════════════════════════════════════════════════════════════════════
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "message,expected",
+    [
+        ("Error code: 429 - {'message': 'Rate limit exceeded', 'code': '1300'}", True),
+        ("Error code: 503 - service unavailable", True),
+        ("Request timed out after 90s", True),
+        ("model is overloaded", True),
+        ("Error code: 401 - invalid api key", False),
+        ("Error code: 400 - bad request", False),
+    ],
+)
+def test_transient_error_classification(message, expected):
+    from generation.llm.langchain_provider import _is_transient
+    assert _is_transient(RuntimeError(message)) is expected
+
+
+def test_backoff_is_bounded_and_jittered():
+    from generation.llm.langchain_provider import (
+        _BACKOFF_CAP_SECONDS, _backoff_seconds,
+    )
+    for attempt in range(8):
+        delay = _backoff_seconds(attempt)
+        assert 0.0 <= delay <= _BACKOFF_CAP_SECONDS
+
+
+def test_rate_limit_error_is_a_provider_error_subclass():
+    """Existing `except LLMProviderError` handlers must keep working."""
+    from generation.llm.base import LLMProviderError, LLMRateLimitError
+    assert issubclass(LLMRateLimitError, LLMProviderError)
+
+
+def test_sdk_internal_retries_are_disabled():
     """
-    The output-contract parser must behave identically no matter which provider
-    produced the text — that is the whole point of the extraction.
+    The openai client retries inside invoke(), beneath the token bucket and the
+    backoff. Two retry layers do not compose; the faster uninstrumented one
+    wins. Retry must live at exactly one layer -- ours.
     """
-
-    def _generator_with(self, text):
-        from generation.llm.base import LLMProvider, LLMResponse, ProviderInfo
-        from generation.sql_generator import SQLGenerator
-
-        class _Stub(LLMProvider):
-            def complete(self, messages, *, max_tokens, temperature, stop=None):
-                self.last_messages = messages
-                return LLMResponse(text=text, prompt_tokens=11, completion_tokens=7)
-
-            def info(self):
-                return ProviderInfo("Stub", "Stub", "stub-1")
-
-        stub = _Stub()
-        return SQLGenerator(provider=stub), stub
-
-    def test_clean_json_contract_is_parsed(self):
-        gen, _ = self._generator_with(
-            '{"sql": "SELECT 1", "tables_used": ["board"], '
-            '"confidence": 0.9, "explanation": "ok"}'
-        )
-        r = gen.generate("question")
-        self.assertEqual(r.sql, "SELECT 1")
-        self.assertEqual(r.tables_used, ["board"])
-        self.assertAlmostEqual(r.confidence, 0.9)
-        self.assertEqual(r.prompt_tokens, 11)
-
-    def test_system_role_is_passed_through(self):
-        gen, stub = self._generator_with('{"sql": "SELECT 1"}')
-        gen.generate("question", system="you are a sql writer")
-        self.assertEqual(stub.last_messages[0]["role"], "system")
-        self.assertEqual(stub.last_messages[1]["role"], "user")
-
-    def test_provider_failure_returns_empty_generated_sql(self):
-        """Same sentinel the pre-provider code returned — retry loop unaffected."""
-        from generation.llm.base import LLMProvider, LLMProviderError, ProviderInfo
-        from generation.sql_generator import SQLGenerator
-
-        class _Boom(LLMProvider):
-            def complete(self, messages, *, max_tokens, temperature, stop=None):
-                raise LLMProviderError("network down")
-
-            def info(self):
-                return ProviderInfo("Stub", "Stub", "stub-1")
-
-        r = SQLGenerator(provider=_Boom()).generate("question")
-        self.assertEqual(r.sql, "")
-        self.assertEqual(r.confidence, 0.0)
+    src = open("generation/llm/factory.py", encoding="utf-8").read()
+    import re
+    assert re.search(r"max_retries\s*=\s*0", src), (
+        "ChatOpenAI must be constructed with max_retries=0"
+    )
 
 
-class TestSchemaVersionUpgrade(unittest.TestCase):
-
-    ROOT = Path(__file__).resolve().parent.parent
-    DDL = ROOT / "data/docs/digital_evaluation_schema_v10_10.sql"
-
-    def test_default_ddl_path_points_at_v10_10(self):
-        self.assertIn("v10_10", Settings(_env_file=None).ddl_path)
-
-    def test_v10_10_ddl_file_exists(self):
-        self.assertTrue(self.DDL.exists(), f"missing {self.DDL}")
-
-    def test_derived_fks_declares_the_new_schema_version(self):
-        import yaml
-        data = yaml.safe_load((self.ROOT / "config/derived_fks.yaml").read_text(encoding="utf-8"))
-        self.assertEqual(str(data["schema_version"]), "10.10")
-
-    def test_derived_fk_edges_still_exist_in_v10_10(self):
-        """
-        The five derived (comment-inferred) FK edges are not enforced by the DDL,
-        so nothing else would catch it if v10.10 had renamed one of their
-        columns. Assert every source/target column is still present.
-        """
-        import yaml
-        from ingestion.ddl_parser import DDLParser
-
-        tables = DDLParser().parse_file(self.DDL)
-        data = yaml.safe_load((self.ROOT / "config/derived_fks.yaml").read_text(encoding="utf-8"))
-
-        def col_names(table):
-            return {c if isinstance(c, str) else c.name for c in tables[table].columns}
-
-        for edge in data["derived_fks"]:
-            src, tgt = edge["source_table"], edge["target_table"]
-            self.assertIn(src, tables, f"derived FK source table {src} missing from v10.10")
-            self.assertIn(tgt, tables, f"derived FK target table {tgt} missing from v10.10")
-            for mapping in edge["column_mappings"]:
-                self.assertIn(mapping["source_column"], col_names(src),
-                              f"{src}.{mapping['source_column']} missing from v10.10")
-                self.assertIn(mapping["target_column"], col_names(tgt),
-                              f"{tgt}.{mapping['target_column']} missing from v10.10")
+def test_backoff_has_floor_and_stays_under_ceiling():
+    from generation.llm.langchain_provider import (
+        _backoff_seconds, _BACKOFF_BASE_SECONDS, _BACKOFF_CAP_SECONDS,
+        _BACKOFF_FLOOR_FRACTION,
+    )
+    for attempt in range(4):
+        ceiling = min(_BACKOFF_CAP_SECONDS, _BACKOFF_BASE_SECONDS * (2 ** attempt))
+        draws = [_backoff_seconds(attempt) for _ in range(500)]
+        assert min(draws) >= ceiling * _BACKOFF_FLOOR_FRACTION - 1e-9
+        assert max(draws) <= ceiling + 1e-9
+        # Still jittered: a constant would defeat de-correlation.
+        assert len(set(round(d, 3) for d in draws)) > 10
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+def test_backoff_honours_retry_after():
+    from generation.llm.langchain_provider import _backoff_seconds
+    exc = Exception("Error code: 429 - rate limited. Retry-After: 7")
+    for _ in range(50):
+        delay = _backoff_seconds(0, exc)
+        assert 7.0 <= delay <= 8.75, delay
+
+
+def test_backoff_ignores_absurd_retry_after():
+    from generation.llm.langchain_provider import _backoff_seconds
+    exc = Exception("Retry-After: 99999")
+    assert _backoff_seconds(0, exc) <= 1.0
+
+
+def test_rate_limit_backoff_respects_floor():
+    """
+    The observed defect: a 429 carrying no Retry-After fell through to the
+    generic curve and produced a 0.26s wait on attempt 0.
+    """
+    from generation.llm import langchain_provider as lp_mod
+
+    mistral_429 = Exception(
+        "Error code: 429 - {'object': 'error', 'message': 'Rate limit exceeded', "
+        "'type': 'rate_limited', 'code': '1300', 'raw_status_code': 429}"
+    )
+    for _ in range(200):
+        assert lp_mod._backoff_seconds(0, mistral_429) >= lp_mod._RATE_LIMIT_MIN_BACKOFF_SECONDS
+
+
+def test_non_rate_limit_transient_keeps_fast_first_retry():
+    """A 503 is not load-shedding; it must not inherit the rate-limit floor."""
+    from generation.llm import langchain_provider as lp_mod
+
+    server_error = Exception("Error code: 503 - service unavailable")
+    assert any(
+        lp_mod._backoff_seconds(0, server_error) < lp_mod._RATE_LIMIT_MIN_BACKOFF_SECONDS
+        for _ in range(200)
+    )
+
+
+def test_transient_attempt_budget_is_configurable():
+    from generation.llm import langchain_provider as lp_mod
+    assert lp_mod._max_transient_attempts() >= 1

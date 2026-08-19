@@ -1,6 +1,9 @@
 """
-tests/test_schema_artefact_consistency.py
-─────────────────────────────────────────
+tests/test_prompt_artefact_consistency.py
+───────────────────────────────────────────────
+RENAMED from test_schema_artefact_consistency.py. Content and
+coverage otherwise unmodified.
+
 Guards every hand-maintained artefact that tells the LLM what the schema looks
 like against the schema itself.
 
