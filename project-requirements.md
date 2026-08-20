@@ -43,6 +43,7 @@ Fully local inference and retrieval. No external LLM APIs.
 | RRF fusion and context budget management | 1 |
 | 7-section prompt assembly | 1 |
 | JSON-constrained SQL generation | 1 |
+| Provider-agnostic LLM port (local GGUF + external public providers) | 1 |
 | 12-step SQL validation pipeline | 1 |
 | Retry and repair loop | 1 |
 | CLI interface with dry-run default | 1 |
@@ -100,6 +101,8 @@ deliverables:
 | Language | Python | 3.11+ | Core implementation |
 | LLM inference | Qwen2.5-Coder 3B Instruct Q4_K_M GGUF | — | SQL generation |
 | LLM runtime | llama-server (llama.cpp) | pre-compiled | Local inference, JSON output contract |
+| External LLM providers | Mistral, Google Gemini, DeepSeek | OpenAI-compatible `/v1` | Optional hosted inference via `LLM_PROVIDER`; one `ChatOpenAI` client type for all |
+| Provider transport | langchain-openai | — | Single client for every OpenAI-compatible endpoint |
 | Embedding model | BAAI/bge-small-en-v1.5 | 384-dim | Dense embeddings for Qdrant |
 | Vector store | Qdrant | 1.7+ | Dense semantic retrieval |
 | Keyword store | OpenSearch | 2.11+ | BM25 sparse retrieval |
@@ -625,11 +628,41 @@ Minimum 30 GB free disk space before starting export.
 ### 6.4 Configuration
 
 - All settings read from `.env` via Pydantic-settings.
+- Hosted-provider pacing is configuration, not code: `LLM_REQUESTS_PER_MINUTE`
+  and `LLM_TOKENS_PER_MINUTE` are two INDEPENDENT token buckets, because a
+  provider enforces two independent limits and one bucket cannot express both.
+  `LLM_TRANSIENT_MAX_ATTEMPTS` (transport re-sends of an identical shed request)
+  is a separate budget from `VALIDATION_MAX_RETRIES` (fresh SQL-correction
+  prompts); the two must never be conflated.
+- Every configurable key must appear in `.env.example` with its rationale. A key
+  that exists in code but not the template is undiscoverable to a new deployment.
 - No hardcoded values except established defaults with a documented override mechanism.
 - Separate `requirements.txt` (Phase 1) and `requirements_phase2.txt` (Phase 2).
 - Phase 2 dependency versions must be pinned with upper bounds — the transformers/peft/trl
   stack has unstable APIs across minor versions. PyTorch must be a cu128 build (≥ 2.7) on
   Blackwell.
+
+### 6.5 Verification Standard
+
+- **Execution success is not evidence of correctness.** A query that runs and
+  returns rows may still answer a different question than the one asked. Any
+  accuracy claim must be backed by a per-query audit against NL intent and the
+  DDL, reported separately from the execution-success rate.
+- **A zero-row result proves nothing** while the database holds no representative
+  data: "no matching data" and "silently broken join" are indistinguishable.
+  Benchmark figures gathered against seed-only data must be labelled as such.
+- **Validators may only hard-fail on defects the schema can decide.** A hard-fail
+  check has authority to destroy a correct answer, so its false-positive rate
+  must be measured before it ships. NL-alignment concerns belong in the advisory
+  logical audit, not the blocking pipeline.
+- **No two validators may assert incompatible requirements** about the same
+  expression. A validator that prescribes a construction must derive it from the
+  schema, and shared type resolution lives in one module rather than being
+  duplicated and left to drift.
+- **`EXPLAIN` cost thresholds calibrated against empty tables are unvalidated.**
+  `VALIDATION_EXPLAIN_COST_THRESHOLD` must be re-derived once representative data
+  is loaded; plans over empty tables are uniformly cheap and the gate is
+  effectively inert until then.
 
 ---
 
@@ -651,7 +684,7 @@ candidates for a future Phase 3:
 
 ---
 
-## 8. Schema Scale Reference (v10.5)
+## 8. Schema Scale Reference (v10.10)
 
 | Data Domain | Value |
 |---|---|
@@ -660,12 +693,20 @@ candidates for a future Phase 3:
 | Foreign Key constraints | ~149 |
 | Indexes | 96 |
 | Triggers | 22 |
-| Design decisions (DDL-documented, D-1…D-24) | 24 |
+| Design decisions (DDL-documented, D-1…D-27) | 27 |
 | Retrieval context budget | 9,000 tokens |
 | LLM context window | 32,768 tokens |
 | Semantic chunks (post-ingestion) | re-verify via `python ingest.py --dry-run` |
 | Peak concurrent evaluators | 5,000 |
 | High-volume core tables (5-year steady state) | ~20 million rows |
 | Supporting transactional tables (5-year steady state) | ~5 million rows |
+
+> **Figure provenance.** Re-verified against `digital_evaluation_schema_v10_10.sql`
+> by parsing the DDL: 63 total objects (61 table definitions + 2 views) and design
+> decisions through D-27. The FK, index, and trigger counts above carry over from
+> the v10.5 reference and are *not* re-verified here — the DDL parser and a
+> `pg_indexes` query count these differently (partial indexes, and constraints that
+> create an implicit index, are attributed differently by each). Re-derive them from
+> the live catalogue before quoting them as exact.
 
 ---
