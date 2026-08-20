@@ -7,13 +7,14 @@ LLM_PROVIDER becomes a client object.
 
 TRANSPORT DECISION
 ──────────────────
-All three LangChain-served providers go through ONE client type — LangChain's
+All four LangChain-served providers go through ONE client type — LangChain's
 ChatOpenAI — pointed at a different base_url:
 
     local_langchain  →  llama-server's own /v1        (LLM_BASE_URL)
     mistral          →  https://api.mistral.ai/v1     (LLM_MISTRAL_BASE_URL)
     gemini           →  Google's OpenAI-compatibility endpoint
                                                       (LLM_GEMINI_BASE_URL)
+    deepseek         →  https://api.deepseek.com/v1   (LLM_DEEPSEEK_BASE_URL)
 
 Every one of those endpoints is an OpenAI-compatible /v1 surface published by
 the vendor, which is what makes the uniform treatment correct rather than a
@@ -170,6 +171,7 @@ _BUILDERS = {
     lp.LOCAL_LC: lambda: _build_langchain(lp.LOCAL_LC),
     lp.MISTRAL:  lambda: _build_langchain(lp.MISTRAL),
     lp.GEMINI:   lambda: _build_langchain(lp.GEMINI),
+    lp.DEEPSEEK: lambda: _build_langchain(lp.DEEPSEEK),
 }
 
 

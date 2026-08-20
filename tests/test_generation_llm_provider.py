@@ -137,14 +137,23 @@ class TestActiveProviderAccessors(unittest.TestCase):
         self.assertEqual(s.active_model, "qwen2.5-coder-3b-instruct")
         self.assertEqual(s.active_api_key, "")
 
+    def test_deepseek_triple(self):
+        s = _llm(provider=lp.DEEPSEEK, deepseek_api_key="k-deepseek")
+        self.assertEqual(s.active_base_url, "https://api.deepseek.com/v1")
+        self.assertEqual(s.active_model, "deepseek-chat")
+        self.assertEqual(s.active_api_key, "k-deepseek")
+
     def test_accessors_do_not_leak_across_providers(self):
-        """Selecting Mistral must never hand out the Gemini key, and vice versa."""
+        """Selecting one vendor must never hand out another vendor's key."""
         s = _llm(provider=lp.MISTRAL, mistral_api_key="k-mistral",
-                 gemini_api_key="k-gemini")
+                 gemini_api_key="k-gemini", deepseek_api_key="k-deepseek")
         self.assertEqual(s.active_api_key, "k-mistral")
         s = _llm(provider=lp.GEMINI, mistral_api_key="k-mistral",
-                 gemini_api_key="k-gemini")
+                 gemini_api_key="k-gemini", deepseek_api_key="k-deepseek")
         self.assertEqual(s.active_api_key, "k-gemini")
+        s = _llm(provider=lp.DEEPSEEK, mistral_api_key="k-mistral",
+                 gemini_api_key="k-gemini", deepseek_api_key="k-deepseek")
+        self.assertEqual(s.active_api_key, "k-deepseek")
 
     def test_split_timeouts(self):
         s = _llm(provider=lp.LOCAL, primary_timeout_seconds=120, timeout_seconds=90)

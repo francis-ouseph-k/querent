@@ -29,6 +29,7 @@ wrapped in a COALESCE.
 
 from __future__ import annotations
 
+import sqlglot
 import sqlglot.expressions as exp
 
 from ..core.base import BaseValidationStep
@@ -109,6 +110,60 @@ def _operand_is_date(
         return _is_date_type(getattr(column, "data_type", ""))
 
     return None
+
+
+def subtraction_operand_kind(sql: str, schema_map: dict) -> str:
+    """
+    Classify the date/time subtractions in `sql` by the type of their operands.
+
+    Returns:
+      "date"      every subtraction this module can type has DATE on both
+                  sides, so `a - b` already yields an INTEGER number of days
+      "timestamp" at least one subtraction has a TIMESTAMP/TIMESTAMPTZ operand,
+                  so it yields an INTERVAL and EXTRACT(EPOCH ...) is correct
+      "unknown"   nothing could be typed with certainty
+
+    WHY THIS IS PUBLIC
+
+    Check 8 in validation/semantic/semantic_checks.py demands
+    `EXTRACT(EPOCH FROM (end - start)) / 86400` whenever a question asks for an
+    "average duration". That instruction is right for TIMESTAMP columns and a
+    type error for DATE columns -- and this module rejects exactly that error.
+    Q17 of run 20260819 sat in the resulting deadlock: the semantic rule
+    demanded EXTRACT(EPOCH ...) over `script_hold.hold_start_date` /
+    `hold_end_date`, both DATE, while DateArithmeticValidator correctly
+    refused it. No SQL could satisfy both, so the question was unanswerable by
+    construction and burned its whole retry budget.
+
+    Rather than duplicate the type resolution (and let the two copies drift),
+    the semantic rule asks this module the same question this module already
+    answers for itself.
+    """
+    if not sql or not schema_map:
+        return "unknown"
+    try:
+        statements = sqlglot.parse(sql, dialect="postgres")
+    except Exception:
+        return "unknown"
+
+    saw_date = False
+    for stmt in statements:
+        if stmt is None:
+            continue
+        alias_map = _alias_map(stmt)
+        for sub in stmt.find_all(exp.Sub):
+            left = _operand_is_date(sub.this, alias_map, schema_map)
+            right = _operand_is_date(sub.expression, alias_map, schema_map)
+            if left is None or right is None:
+                continue
+            if left and right:
+                saw_date = True
+            else:
+                # A typed operand that is not DATE is a timestamp-like value;
+                # one such subtraction is enough to make EXTRACT(EPOCH ...)
+                # the correct instruction for this statement.
+                return "timestamp"
+    return "date" if saw_date else "unknown"
 
 
 class DateArithmeticValidator(BaseValidationStep):

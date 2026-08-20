@@ -36,8 +36,9 @@ LOCAL       = "local"              # llama.cpp direct (HTTP server or in-process
 LOCAL_LC    = "local_langchain"    # the same llama-server, reached through LangChain
 MISTRAL     = "mistral"            # Mistral La Plateforme (OpenAI-compatible /v1)
 GEMINI      = "gemini"             # Google Gemini (OpenAI-compatibility endpoint)
+DEEPSEEK    = "deepseek"           # DeepSeek Platform (OpenAI-compatible /v1)
 
-SUPPORTED_PROVIDERS: tuple[str, ...] = (LOCAL, LOCAL_LC, MISTRAL, GEMINI)
+SUPPORTED_PROVIDERS: tuple[str, ...] = (LOCAL, LOCAL_LC, MISTRAL, GEMINI, DEEPSEEK)
 
 # Providers that serve the locally hosted GGUF. These are the only ones the
 # fine-tuned-model ↔ prompt-profile contract (config/model_profile.py) applies
@@ -46,7 +47,7 @@ SUPPORTED_PROVIDERS: tuple[str, ...] = (LOCAL, LOCAL_LC, MISTRAL, GEMINI)
 LOCAL_PROVIDERS: tuple[str, ...] = (LOCAL, LOCAL_LC)
 
 # Providers reached over LangChain rather than the native llama.cpp path.
-LANGCHAIN_PROVIDERS: tuple[str, ...] = (LOCAL_LC, MISTRAL, GEMINI)
+LANGCHAIN_PROVIDERS: tuple[str, ...] = (LOCAL_LC, MISTRAL, GEMINI, DEEPSEEK)
 
 # Tolerated spellings → canonical name. Keeps a typo from silently selecting a
 # different model than intended (the settings validator raises on anything
@@ -64,6 +65,10 @@ ALIASES: dict[str, str] = {
     "google":          GEMINI,
     "gemini-flash":    GEMINI,
     "google_genai":    GEMINI,
+    "deepseek-chat":   DEEPSEEK,
+    "deepseek_chat":   DEEPSEEK,
+    "deepseekai":      DEEPSEEK,
+    "deep-seek":       DEEPSEEK,
 }
 
 
@@ -106,6 +111,18 @@ SPEC: dict[str, ProviderSpec] = {
         label            = "Google Gemini (LangChain)",
         default_model    = "gemini-2.0-flash",
         default_base_url = "https://generativelanguage.googleapis.com/v1beta/openai",
+    ),
+    DEEPSEEK: ProviderSpec(
+        display_name     = "DeepSeek Chat",
+        label            = "DeepSeek (LangChain)",
+        # `deepseek-chat` is the non-reasoning model and the right default
+        # here. The SQL generator enforces a strict JSON output contract, and
+        # `deepseek-reasoner` prepends a chain-of-thought block that the
+        # contract parser would have to strip -- a different output shape, not
+        # just a slower one. Set LLM_DEEPSEEK_MODEL=deepseek-reasoner
+        # deliberately if that trade is wanted.
+        default_model    = "deepseek-chat",
+        default_base_url = "https://api.deepseek.com/v1",
     ),
 }
 

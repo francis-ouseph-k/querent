@@ -243,7 +243,7 @@ class LLMSettings(BaseSettings):
     timeout_seconds:         float = 90.0    # env: LLM_TIMEOUT_SECONDS
 
     # ── HOSTED PROVIDERS ──────────────────────────────────────────────────
-    # Both vendors expose an OpenAI-compatible /v1 surface, so all three
+    # Every vendor here exposes an OpenAI-compatible /v1 surface, so all four
     # LangChain providers share one client type and differ only by these
     # three values. Endpoints are overridable for proxies / regional hosts.
     #
@@ -267,6 +267,13 @@ class LLMSettings(BaseSettings):
         validation_alias=AliasChoices(
             "LLM_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"
         ),
+    )
+
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    deepseek_model:    str = "deepseek-chat"
+    deepseek_api_key:  str = Field(
+        default="", exclude=True,
+        validation_alias=AliasChoices("LLM_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"),
     )
 
     @model_validator(mode="after")
@@ -315,6 +322,8 @@ class LLMSettings(BaseSettings):
             return self.mistral_base_url
         if self.provider == _lp.GEMINI:
             return self.gemini_base_url
+        if self.provider == _lp.DEEPSEEK:
+            return self.deepseek_base_url
         return ""
 
     @property
@@ -325,6 +334,8 @@ class LLMSettings(BaseSettings):
             return self.mistral_model
         if self.provider == _lp.GEMINI:
             return self.gemini_model
+        if self.provider == _lp.DEEPSEEK:
+            return self.deepseek_model
         return ""
 
     @property
@@ -334,6 +345,8 @@ class LLMSettings(BaseSettings):
             return self.mistral_api_key
         if self.provider == _lp.GEMINI:
             return self.gemini_api_key
+        if self.provider == _lp.DEEPSEEK:
+            return self.deepseek_api_key
         # llama-server accepts any bearer token; a placeholder keeps the
         # OpenAI client happy without implying a credential exists.
         return ""

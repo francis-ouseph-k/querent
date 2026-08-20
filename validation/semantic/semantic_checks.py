@@ -453,22 +453,57 @@ def per_entity_left_join_error(question: str, sql: str) -> str | None:
     return None
 
 
-def avg_duration_epoch_error(question: str, sql: str) -> str | None:
+def avg_duration_epoch_error(
+    question: str, sql: str, schema_map: dict | None = None,
+) -> str | None:
     """Check 8 core: 'average duration/time' must use EXTRACT(EPOCH ...).
-    Returns the failure message or None."""
+    Returns the failure message or None.
+
+    TYPE-AWARE since 2026-08-19 (Q17 of run 20260819).
+
+    `EXTRACT(EPOCH FROM (end - start))` is correct for TIMESTAMP/TIMESTAMPTZ
+    operands, where the subtraction yields an INTERVAL. It is a PLAN-TIME TYPE
+    ERROR for DATE operands, where the subtraction already yields an INTEGER
+    number of days and EXTRACT has no integer signature.
+
+    Demanding it unconditionally put this rule in direct contradiction with
+    validation/ast/date_arithmetic.py::DateArithmeticValidator, which rejects
+    exactly that construction. Q17 -- "average duration of a legal hold in
+    days", over script_hold.hold_start_date / hold_end_date, both DATE -- was
+    therefore unanswerable by construction: every candidate SQL failed one
+    check or the other, and the question burned its full retry budget on a
+    contradiction rather than a defect.
+
+    `schema_map` is optional so the fine-tuning corpus gate
+    (fine_tuning/preprocess/quality.py) keeps its existing two-argument call.
+    Without it the rule behaves exactly as before -- the conservative reading,
+    since a corpus entry carries no schema to type against.
+    """
     query_lower = question.lower()
     sql_lower   = sql.lower()
     avg_time_patterns = ['average duration', 'average time', 'avg duration', 'avg time']
     asks_avg_time = any(p in query_lower for p in avg_time_patterns)
     uses_epoch = 'extract(epoch' in sql_lower or 'extract (epoch' in sql_lower
-    if asks_avg_time and not uses_epoch:
-        return (
-            "The question asks for 'average duration' or 'average time'. "
-            "You MUST use EXTRACT(EPOCH FROM (end_ts - start_ts)) / 86400 to "
-            "compute durations before averaging. Do NOT use "
-            "AVG(timestamp - timestamp)."
-        )
-    return None
+    if not (asks_avg_time and not uses_epoch):
+        return None
+
+    if schema_map:
+        from validation.ast.date_arithmetic import subtraction_operand_kind
+        if subtraction_operand_kind(sql, schema_map) == "date":
+            # Plain `end_date - start_date` is already a day count. Asking for
+            # EXTRACT(EPOCH ...) here would be asking for a type error.
+            return None
+
+    return (
+        "The question asks for 'average duration' or 'average time'. "
+        "When the two columns are TIMESTAMP or TIMESTAMPTZ you MUST use "
+        "EXTRACT(EPOCH FROM (end_ts - start_ts)) / 86400 to compute durations "
+        "before averaging; do NOT use AVG(timestamp - timestamp). When both "
+        "columns are DATE, subtract them directly -- AVG(end_date - "
+        "start_date) is already a number of days, and EXTRACT(EPOCH ...) over "
+        "a DATE difference is a type error. Check the column types in the "
+        "schema before choosing."
+    )
 
 
 class SemanticValidator(BaseValidationStep):
@@ -752,7 +787,7 @@ class SemanticValidator(BaseValidationStep):
         # ── Check 8: "average duration/time" uses EXTRACT(EPOCH) ─────────────
         # FIX-R4: logic lives in avg_duration_epoch_error() at module top so
         # the fine-tuning corpus gate enforces the identical contract.
-        _avg_err = avg_duration_epoch_error(original_query, sql)
+        _avg_err = avg_duration_epoch_error(original_query, sql, ctx.schema_map)
         if _avg_err:
             logger.warning(
                 component="sql_validator",

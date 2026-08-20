@@ -250,3 +250,101 @@ def test_entity_number_with_qualifier_is_accepted():
         _literal_ctx(sql, "Which questions are grouped under the Choice group "
                           "for attempt rule 1?")
     ).passed
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Check 8: "average duration" is TYPE-AWARE
+#
+# Q17 of run 20260819: "What is the average duration of a legal hold in days?"
+# over script_hold.hold_start_date / hold_end_date, both DATE.
+#
+# Check 8 demanded EXTRACT(EPOCH FROM (end - start)) / 86400 unconditionally.
+# DateArithmeticValidator rejects exactly that over DATE operands, because
+# DATE - DATE yields an INTEGER and EXTRACT has no integer signature. No SQL
+# could satisfy both checks, so the question was unanswerable by construction
+# and burned its full retry budget on a contradiction rather than a defect.
+#
+# These tests pin BOTH directions: the DATE form must now be accepted, and the
+# TIMESTAMP form must still be required. A fix that simply deleted Check 8
+# would pass the first of these and fail the second.
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _duration_schema():
+    from models.schema import ColumnInfo, TableInventory
+
+    def col(name, data_type, *, pk=False):
+        return ColumnInfo(name=name, data_type=data_type, nullable=True, is_pk=pk)
+
+    def table(name, cols):
+        return TableInventory(table_name=name, columns={c.name: c for c in cols})
+
+    return {
+        "script_hold": table("script_hold", [
+            col("id", "bigint", pk=True),
+            col("hold_start_date", "date"),
+            col("hold_end_date", "date"),
+        ]),
+        "evaluation_attempt": table("evaluation_attempt", [
+            col("id", "bigint", pk=True),
+            col("started_at", "timestamptz"),
+            col("frozen_at", "timestamptz"),
+        ]),
+    }
+
+
+_DATE_NL = "What is the average duration of a legal hold in days?"
+_TS_NL = "What is the average time between attempt assignment and freeze?"
+
+
+def test_date_subtraction_is_accepted_for_average_duration():
+    """The Q17 answer. Plain DATE subtraction is already a day count."""
+    from validation.semantic.semantic_checks import avg_duration_epoch_error
+    sql = ("SELECT AVG(COALESCE(sh.hold_end_date, CURRENT_DATE) - sh.hold_start_date) "
+           "AS avg_days FROM script_hold sh")
+    assert avg_duration_epoch_error(_DATE_NL, sql, _duration_schema()) is None
+
+
+def test_timestamp_subtraction_without_epoch_is_still_rejected():
+    """The rule's original purpose must survive the fix."""
+    from validation.semantic.semantic_checks import avg_duration_epoch_error
+    sql = "SELECT AVG(ea.frozen_at - ea.started_at) FROM evaluation_attempt ea"
+    msg = avg_duration_epoch_error(_TS_NL, sql, _duration_schema())
+    assert msg is not None
+    assert "EXTRACT(EPOCH" in msg
+
+
+def test_timestamp_subtraction_with_epoch_passes():
+    from validation.semantic.semantic_checks import avg_duration_epoch_error
+    sql = ("SELECT AVG(EXTRACT(EPOCH FROM (ea.frozen_at - ea.started_at)) / 3600) "
+           "FROM evaluation_attempt ea")
+    assert avg_duration_epoch_error(_TS_NL, sql, _duration_schema()) is None
+
+
+def test_message_explains_both_type_cases():
+    """
+    The retry loop only recovers from an error it can act on. A message naming
+    only the TIMESTAMP form is what drove the model into the type error.
+    """
+    from validation.semantic.semantic_checks import avg_duration_epoch_error
+    sql = "SELECT AVG(ea.frozen_at - ea.started_at) FROM evaluation_attempt ea"
+    msg = avg_duration_epoch_error(_TS_NL, sql, _duration_schema())
+    assert "DATE" in msg and "TIMESTAMP" in msg
+
+
+def test_two_argument_call_keeps_legacy_behaviour():
+    """
+    fine_tuning/preprocess/quality.py calls this with two arguments and has no
+    schema to type against. Without a schema_map the conservative original
+    behaviour is correct and must be preserved.
+    """
+    from validation.semantic.semantic_checks import avg_duration_epoch_error
+    sql = ("SELECT AVG(COALESCE(sh.hold_end_date, CURRENT_DATE) - sh.hold_start_date) "
+           "FROM script_hold sh")
+    assert avg_duration_epoch_error(_DATE_NL, sql) is not None
+
+
+def test_unrelated_question_is_untouched():
+    from validation.semantic.semantic_checks import avg_duration_epoch_error
+    sql = "SELECT COUNT(*) FROM script_hold sh"
+    assert avg_duration_epoch_error("How many holds are active?", sql,
+                                    _duration_schema()) is None
